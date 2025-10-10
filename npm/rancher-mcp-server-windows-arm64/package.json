@@ -1,0 +1,20 @@
+{
+  "name": "@futuretea/rancher-mcp-server-windows-arm64",
+  "version": "0.1.0",
+  "description": "Rancher MCP Server binary for windows/arm64",
+  "main": "./bin/rancher-mcp-server-windows-arm64.exe",
+  "bin": {
+    "rancher-mcp-server-windows-arm64": "./bin/rancher-mcp-server-windows-arm64.exe"
+  },
+  "os": ["win32"],
+  "cpu": ["arm64"],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/futuretea/rancher-mcp-server.git"
+  },
+  "author": {
+    "name": "futuretea",
+    "url": "https://github.com/futuretea"
+  },
+  "license": "Apache-2.0"
+}

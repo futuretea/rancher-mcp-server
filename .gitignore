@@ -1,0 +1,77 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Test binary, built with `go test -c`
+*.test
+
+# Output of the go coverage tool, specifically when used with LiteIDE
+*.out
+
+# Dependency directories (remove the comment below to include it)
+# vendor/
+
+# Go workspace file
+go.work
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Project specific
+rancher-mcp-server
+rancher-mcp-server-darwin-amd64
+rancher-mcp-server-darwin-arm64
+rancher-mcp-server-linux-amd64
+rancher-mcp-server-linux-arm64
+rancher-mcp-server-windows-amd64.exe
+rancher-mcp-server-windows-arm64.exe
+
+# Build artifacts
+/dist/
+/build/
+_output/
+
+# npm package directories
+node_modules/
+.npmrc
+
+# Exclude npm package directories but keep the structure
+!npm/rancher-mcp-server/
+!npm/rancher-mcp-server-darwin-amd64/
+!npm/rancher-mcp-server-darwin-arm64/
+!npm/rancher-mcp-server-linux-amd64/
+!npm/rancher-mcp-server-linux-arm64/
+!npm/rancher-mcp-server-windows-amd64/
+!npm/rancher-mcp-server-windows-arm64/
+
+# Exclude specific files in npm directories
+npm/rancher-mcp-server/README.md
+npm/rancher-mcp-server/LICENSE
+
+# Configuration files with secrets
+*.env
+.env.local
+.env.*.local
+
+# Log files
+*.log
+
+# Temporary files
+tmp/
+temp/
+

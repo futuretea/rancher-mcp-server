@@ -1,0 +1,32 @@
+# Rancher MCP Server Configuration Example
+
+# Server configuration
+port: 0  # 0 means stdio mode for MCP client integration
+log_level: 0  # Log level 0-9
+
+# Rancher configuration
+rancher_server_url: https://your-rancher-server.com
+
+# Authentication method 1: Bearer Token
+rancher_token: your-bearer-token-here
+
+# Authentication method 2: Access Key/Secret Key (choose one)
+# rancher_access_key: your-access-key-here
+# rancher_secret_key: your-secret-key-here
+
+# Security configuration
+read_only: false  # Read-only mode
+disable_destructive: false  # Disable destructive operations
+
+# Output configuration
+list_output: table  # Output format: table, yaml, json
+
+# Toolset configuration
+toolsets:
+  - config
+  - core
+  - rancher
+
+# Tool enable/disable configuration
+enabled_tools: []  # Enable specific tools
+disabled_tools: []  # Disable specific tools

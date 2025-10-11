@@ -14,6 +14,9 @@ LD_FLAGS = -s -w \
 	-X '$(PACKAGE)/pkg/version.BinaryName=$(BINARY_NAME)'
 COMMON_BUILD_ARGS = -ldflags "$(LD_FLAGS)"
 
+GOLANGCI_LINT = $(shell pwd)/_output/tools/bin/golangci-lint
+GOLANGCI_LINT_VERSION ?= v2.2.2
+
 # NPM version should not append the -dirty flag
 NPM_VERSION ?= $(shell echo $(shell git describe --tags --always) | sed 's/^v//')
 OSES = darwin linux windows
@@ -60,14 +63,14 @@ npm-publish: npm-copy-binaries ## Publish the npm packages
 		cd npm/$$DIRNAME; \
 		echo '//registry.npmjs.org/:_authToken=$(NPM_TOKEN)' >> .npmrc; \
 		jq '.version = "$(NPM_VERSION)"' package.json > tmp.json && mv tmp.json package.json; \
-		npm publish; \
+		npm publish --access=public; \
 		cd ../..; \
 	))
 	cp README.md LICENSE ./npm/rancher-mcp-server/
 	echo '//registry.npmjs.org/:_authToken=$(NPM_TOKEN)' >> ./npm/rancher-mcp-server/.npmrc
 	jq '.version = "$(NPM_VERSION)"' ./npm/rancher-mcp-server/package.json > tmp.json && mv tmp.json ./npm/rancher-mcp-server/package.json; \
 	jq '.optionalDependencies |= with_entries(.value = "$(NPM_VERSION)")' ./npm/rancher-mcp-server/package.json > tmp.json && mv tmp.json ./npm/rancher-mcp-server/package.json; \
-	cd npm/rancher-mcp-server && npm publish
+	cd npm/rancher-mcp-server && npm publish --access=public
 
 .PHONY: test
 test: ## Run the tests
@@ -81,35 +84,17 @@ format: ## Format the code
 tidy: ## Tidy up the go modules
 	go mod tidy
 
+.PHONY: golangci-lint
+golangci-lint: ## Download and install golangci-lint if not already installed
+		@[ -f $(GOLANGCI_LINT) ] || { \
+    	set -e ;\
+    	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell dirname $(GOLANGCI_LINT)) $(GOLANGCI_LINT_VERSION) ;\
+    	}
+
+.PHONY: lint
+lint: golangci-lint ## Lint the code
+	$(GOLANGCI_LINT) run --verbose --print-resources-usage
+
 .PHONY: version
 version: ## Show version information
 	./$(BINARY_NAME) version
-
-.PHONY: status
-status: ## Show project status
-	@echo "=== Rancher MCP Server Status ==="
-	@echo "Implemented packages:"
-	@echo "  ✓ pkg/version/"
-	@echo "  ✓ pkg/output/"
-	@echo "  ✓ pkg/config/"
-	@echo "  ✓ pkg/api/"
-	@echo "  ✓ pkg/rancher/"
-	@echo "  ✓ pkg/toolsets/config/"
-	@echo "  ✓ pkg/toolsets/core/"
-	@echo "  ✓ pkg/toolsets/rancher/"
-	@echo "  ✓ pkg/mcp/"
-	@echo "  ✓ cmd/rancher-mcp-server/"
-	@echo ""
-	@echo "✅ All packages completed successfully!"
-	@echo "✅ Real Rancher API integration implemented"
-	@echo "✅ Toolsets integrated with MCP server"
-	@echo "✅ Dependencies resolved and vendored"
-	@echo "✅ Server builds and all tests pass"
-	@echo ""
-	@echo "📊 Summary:"
-	@echo "  • 3 toolsets implemented"
-	@echo "  • 9 MCP tools available"
-	@echo "  • All packages compile and test successfully"
-	@echo "  • Binary: rancher-mcp-server"
-	@echo ""
-	@echo "🚀 Ready for npm publishing!"

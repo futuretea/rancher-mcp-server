@@ -2,94 +2,12 @@
 startCommand:
   type: stdio
   configSchema:
-    type: object
-    properties:
-      rancherServerUrl:
-        type: string
-        title: Rancher Server URL
-        description: URL of the Rancher server
-      rancherToken:
-        type: string
-        title: Rancher Token
-        description: Bearer token for Rancher API authentication
-      rancherAccessKey:
-        type: string
-        title: Rancher Access Key
-        description: Access key for Rancher API authentication (alternative to token)
-      rancherSecretKey:
-        type: string
-        title: Rancher Secret Key
-        description: Secret key for Rancher API authentication (alternative to token)
-      listOutput:
-        type: string
-        title: List Output Format
-        description: Output format for resource list operations
-        enum:
-          - table
-          - yaml
-          - json
-        default: table
-      readOnly:
-        type: boolean
-        title: Read Only Mode
-        description: Run in read-only mode (no write operations)
-        default: false
-      disableDestructive:
-        type: boolean
-        title: Disable Destructive Operations
-        description: Disable all destructive operations
-        default: false
-      toolsets:
-        type: string
-        title: Toolsets
-        description: Comma-separated list of toolsets to enable (config, core, rancher)
-    required:
-      - rancherServerUrl
-    oneOf:
-      - required:
-          - rancherToken
-      - required:
-          - rancherAccessKey
-          - rancherSecretKey
+    {}
   commandFunction:
     |-
-    (config) => {
-      const args = ["-y", "@futuretea/rancher-mcp-server@latest"];
-
-      if (config.rancherServerUrl) {
-        args.push("--rancher-server-url", config.rancherServerUrl);
-      }
-
-      if (config.rancherToken) {
-        args.push("--rancher-token", config.rancherToken);
-      }
-
-      if (config.rancherAccessKey) {
-        args.push("--rancher-access-key", config.rancherAccessKey);
-      }
-
-      if (config.rancherSecretKey) {
-        args.push("--rancher-secret-key", config.rancherSecretKey);
-      }
-
-      if (config.listOutput) {
-        args.push("--list-output", config.listOutput);
-      }
-
-      if (config.readOnly) {
-        args.push("--read-only");
-      }
-
-      if (config.disableDestructive) {
-        args.push("--disable-destructive");
-      }
-
-      if (config.toolsets) {
-        args.push("--toolsets", config.toolsets);
-      }
-
-      return {
-        "command": "npx",
-        "args": args
-      };
-    }
+    (config) => ({
+      "command": "npx",
+      "args": [
+        "-y", "@futuretea/rancher-mcp-server@latest"
+      ]
+    })

@@ -1,20 +1,11 @@
 {
   "name": "@futuretea/rancher-mcp-server-linux-arm64",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Rancher MCP Server binary for linux/arm64",
-  "main": "./bin/rancher-mcp-server-linux-arm64",
-  "bin": {
-    "rancher-mcp-server-linux-arm64": "./bin/rancher-mcp-server-linux-arm64"
-  },
-  "os": ["linux"],
-  "cpu": ["arm64"],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/futuretea/rancher-mcp-server.git"
-  },
-  "author": {
-    "name": "futuretea",
-    "url": "https://github.com/futuretea"
-  },
-  "license": "Apache-2.0"
+  "os": [
+    "linux"
+  ],
+  "cpu": [
+    "arm64"
+  ]
 }

@@ -1,18 +1,18 @@
 {
   "name": "@futuretea/rancher-mcp-server",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Model Context Protocol (MCP) server for Rancher multi-cluster management",
   "main": "./bin/index.js",
   "bin": {
     "rancher-mcp-server": "bin/index.js"
   },
   "optionalDependencies": {
-    "@futuretea/rancher-mcp-server-darwin-amd64": "0.1.0",
-    "@futuretea/rancher-mcp-server-darwin-arm64": "0.1.0",
-    "@futuretea/rancher-mcp-server-linux-amd64": "0.1.0",
-    "@futuretea/rancher-mcp-server-linux-arm64": "0.1.0",
-    "@futuretea/rancher-mcp-server-windows-amd64": "0.1.0",
-    "@futuretea/rancher-mcp-server-windows-arm64": "0.1.0"
+    "@futuretea/rancher-mcp-server-darwin-amd64": "0.0.0",
+    "@futuretea/rancher-mcp-server-darwin-arm64": "0.0.0",
+    "@futuretea/rancher-mcp-server-linux-amd64": "0.0.0",
+    "@futuretea/rancher-mcp-server-linux-arm64": "0.0.0",
+    "@futuretea/rancher-mcp-server-windows-amd64": "0.0.0",
+    "@futuretea/rancher-mcp-server-windows-arm64": "0.0.0"
   },
   "repository": {
     "type": "git",
@@ -28,7 +28,7 @@
     "context",
     "protocol"
   ],
-    "author": {
+  "author": {
     "name": "futuretea",
     "url": "https://github.com/futuretea"
   },

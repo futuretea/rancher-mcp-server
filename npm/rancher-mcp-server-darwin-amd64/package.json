@@ -1,20 +1,11 @@
 {
   "name": "@futuretea/rancher-mcp-server-darwin-amd64",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "description": "Rancher MCP Server binary for darwin/amd64",
-  "main": "./bin/rancher-mcp-server-darwin-amd64",
-  "bin": {
-    "rancher-mcp-server-darwin-amd64": "./bin/rancher-mcp-server-darwin-amd64"
-  },
-  "os": ["darwin"],
-  "cpu": ["x64"],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/futuretea/rancher-mcp-server.git"
-  },
-  "author": {
-    "name": "futuretea",
-    "url": "https://github.com/futuretea"
-  },
-  "license": "Apache-2.0"
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "x64"
+  ]
 }

@@ -15,7 +15,7 @@ const BINARY_MAP = {
 const resolveBinaryPath = () => {
   try {
     const binary = BINARY_MAP[`${process.platform}_${process.arch}`];
-    return require.resolve(`${binary.name}/bin/${binary.name}${binary.suffix}`);
+    return require.resolve(`@futuretea/${binary.name}/bin/${binary.name}${binary.suffix}`);
   } catch (e) {
     throw new Error(`Could not resolve binary path for platform/arch: ${process.platform}/${process.arch}`);
   }

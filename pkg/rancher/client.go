@@ -44,6 +44,7 @@ func NewClient(cfg *config.StaticConfig) (*Client, error) {
 		AccessKey: cfg.RancherAccessKey,
 		SecretKey: cfg.RancherSecretKey,
 		TokenKey:  cfg.RancherToken,
+		Insecure:  cfg.RancherTLSInsecure,
 	}
 
 	// Create the management client

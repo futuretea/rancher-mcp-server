@@ -49,6 +49,7 @@ for network access.`,
 	cmd.Flags().StringVar(&cfg.RancherToken, "rancher-token", cfg.RancherToken, "Rancher bearer token")
 	cmd.Flags().StringVar(&cfg.RancherAccessKey, "rancher-access-key", cfg.RancherAccessKey, "Rancher access key")
 	cmd.Flags().StringVar(&cfg.RancherSecretKey, "rancher-secret-key", cfg.RancherSecretKey, "Rancher secret key")
+	cmd.Flags().BoolVar(&cfg.RancherTLSInsecure, "rancher-tls-insecure", cfg.RancherTLSInsecure, "Rancher server tls insecure")
 	cmd.Flags().BoolVar(&cfg.ReadOnly, "read-only", cfg.ReadOnly, "Run in read-only mode")
 	cmd.Flags().BoolVar(&cfg.DisableDestructive, "disable-destructive", cfg.DisableDestructive, "Disable destructive operations")
 	cmd.Flags().StringVar(&cfg.ListOutput, "list-output", cfg.ListOutput, "Output format for list operations (table, yaml)")

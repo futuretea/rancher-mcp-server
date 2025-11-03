@@ -21,6 +21,7 @@ type StaticConfig struct {
 	RancherToken     string `yaml:"rancher_token"`
 	RancherAccessKey string `yaml:"rancher_access_key"`
 	RancherSecretKey string `yaml:"rancher_secret_key"`
+	RancherTLSInsecure bool `yaml:"rancher_tls_insecure"`
 
 	// Security configuration
 	ReadOnly           bool `yaml:"read_only"`
@@ -44,6 +45,7 @@ func DefaultConfig() *StaticConfig {
 		Toolsets:           []string{"config", "core", "rancher"},
 		ReadOnly:           false,
 		DisableDestructive: false,
+		RancherTLSInsecure:    false,
 	}
 }
 

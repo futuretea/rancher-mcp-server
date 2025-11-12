@@ -58,7 +58,7 @@ func configurationViewHandler(client interface{}, params map[string]interface{})
 	}
 
 	// Try to use real Rancher client if available
-	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient.IsConfigured() {
+	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient != nil && rancherClient.IsConfigured() {
 		ctx := context.Background()
 
 		// If cluster is specified, generate kubeconfig for that specific cluster

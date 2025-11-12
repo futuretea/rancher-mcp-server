@@ -162,7 +162,7 @@ func clusterListHandler(client interface{}, params map[string]interface{}) (stri
 	}
 
 	// Try to use real Rancher client if available
-	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient.IsConfigured() {
+	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient != nil && rancherClient.IsConfigured() {
 		ctx := context.Background()
 		clusters, err := rancherClient.ListClusters(ctx)
 		if err != nil {
@@ -222,7 +222,7 @@ func nodeListHandler(client interface{}, params map[string]interface{}) (string,
 	}
 
 	// Try to use real Rancher client if available
-	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient.IsConfigured() {
+	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient != nil && rancherClient.IsConfigured() {
 		ctx := context.Background()
 
 		// Collect nodes from all clusters or specific cluster
@@ -327,7 +327,7 @@ func workloadListHandler(client interface{}, params map[string]interface{}) (str
 	}
 
 	rancherClient, ok := client.(*rancher.Client)
-	if !ok || !rancherClient.IsConfigured() {
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
 		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
 	}
 
@@ -588,7 +588,7 @@ func namespaceListHandler(client interface{}, params map[string]interface{}) (st
 	}
 
 	rancherClient, ok := client.(*rancher.Client)
-	if !ok || !rancherClient.IsConfigured() {
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
 		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
 	}
 

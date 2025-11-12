@@ -150,7 +150,7 @@ func projectListHandler(client interface{}, params map[string]interface{}) (stri
 	}
 
 	// Try to use real Rancher client if available
-	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient.IsConfigured() {
+	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient != nil && rancherClient.IsConfigured() {
 		ctx := context.Background()
 
 		// If cluster is specified, get projects for that cluster
@@ -213,7 +213,7 @@ func userListHandler(client interface{}, params map[string]interface{}) (string,
 	}
 
 	// Try to use real Rancher client if available
-	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient.IsConfigured() {
+	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient != nil && rancherClient.IsConfigured() {
 		ctx := context.Background()
 		users, err := rancherClient.ListUsers(ctx)
 		if err != nil {
@@ -264,7 +264,7 @@ func clusterHealthHandler(client interface{}, params map[string]interface{}) (st
 	}
 
 	// Try to use real Rancher client if available
-	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient.IsConfigured() {
+	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient != nil && rancherClient.IsConfigured() {
 		ctx := context.Background()
 
 		// Convert to map format for consistent output
@@ -345,7 +345,7 @@ func projectAccessHandler(client interface{}, params map[string]interface{}) (st
 	}
 
 	// Try to use real Rancher client if available
-	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient.IsConfigured() {
+	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient != nil && rancherClient.IsConfigured() {
 		ctx := context.Background()
 
 		// Get projects based on cluster filter

@@ -1,13 +1,14 @@
 package cmd
 
 import (
+	"context"
 	"fmt"
 	"io"
-	"net/http"
 
 	"github.com/spf13/cobra"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/config"
+	internalhttp "github.com/futuretea/rancher-mcp-server/pkg/http"
 	"github.com/futuretea/rancher-mcp-server/pkg/mcp"
 	"github.com/futuretea/rancher-mcp-server/pkg/version"
 )
@@ -43,7 +44,8 @@ for network access.`,
 	cmd.SetErr(streams.ErrOut)
 
 	// Add flags
-	cmd.Flags().IntVar(&cfg.Port, "port", cfg.Port, "Port to listen on for HTTP mode (0 for stdio mode)")
+	cmd.Flags().IntVar(&cfg.Port, "port", cfg.Port, "Port to listen on for HTTP/SSE mode (0 for stdio mode)")
+	cmd.Flags().StringVar(&cfg.SSEBaseURL, "sse-base-url", cfg.SSEBaseURL, "SSE public base URL to use when sending the endpoint message (e.g. https://example.com)")
 	cmd.Flags().IntVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "Log level (0-9)")
 	cmd.Flags().StringVar(&cfg.RancherServerURL, "rancher-server-url", cfg.RancherServerURL, "Rancher server URL")
 	cmd.Flags().StringVar(&cfg.RancherToken, "rancher-token", cfg.RancherToken, "Rancher bearer token")
@@ -89,16 +91,15 @@ func runServer(cfg *config.StaticConfig, streams IOStreams) error {
 		fmt.Fprintf(streams.ErrOut, "Enabled tools: %v\n", server.GetEnabledTools())
 		return server.ServeStdio()
 	} else {
-		// HTTP mode
-		fmt.Fprintf(streams.ErrOut, "Starting Rancher MCP Server in HTTP mode on port %d\n", cfg.Port)
+		// HTTP/SSE mode
+		fmt.Fprintf(streams.ErrOut, "Starting Rancher MCP Server in HTTP/SSE mode on port %d\n", cfg.Port)
 		fmt.Fprintf(streams.ErrOut, "Enabled tools: %v\n", server.GetEnabledTools())
-
-		httpServer := &http.Server{
-			Addr: fmt.Sprintf(":%d", cfg.Port),
+		if cfg.SSEBaseURL != "" {
+			fmt.Fprintf(streams.ErrOut, "SSE Base URL: %s\n", cfg.SSEBaseURL)
 		}
 
-		httpMux := server.ServeHTTP(httpServer)
-		return httpMux.Start(fmt.Sprintf(":%d", cfg.Port))
+		ctx := context.Background()
+		return internalhttp.Serve(ctx, server, cfg)
 	}
 }
 

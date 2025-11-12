@@ -12,6 +12,7 @@ import (
 type StaticConfig struct {
 	// Server configuration
 	Port int `yaml:"port"`
+	SSEBaseURL string `yaml:"sse_base_url"`
 
 	// Logging configuration
 	LogLevel int `yaml:"log_level"`
@@ -118,4 +119,12 @@ func LoadConfig(configPath string) (*StaticConfig, error) {
 // HasRancherConfig returns true if Rancher configuration is present
 func (c *StaticConfig) HasRancherConfig() bool {
 	return c.RancherServerURL != "" && (c.RancherToken != "" || (c.RancherAccessKey != "" && c.RancherSecretKey != ""))
+}
+
+// GetPortString returns the port as a string in the format ":port"
+func (c *StaticConfig) GetPortString() string {
+	if c.Port == 0 {
+		return ""
+	}
+	return fmt.Sprintf(":%d", c.Port)
 }

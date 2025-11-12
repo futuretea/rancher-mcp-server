@@ -278,3 +278,36 @@ func TestHasRancherConfig(t *testing.T) {
 	}
 }
 
+func TestGetPortString(t *testing.T) {
+	tests := []struct {
+		name   string
+		config *StaticConfig
+		expect string
+	}{
+		{
+			name:   "stdio mode (port 0)",
+			config: &StaticConfig{Port: 0},
+			expect: "",
+		},
+		{
+			name:   "http mode port 8080",
+			config: &StaticConfig{Port: 8080},
+			expect: ":8080",
+		},
+		{
+			name:   "http mode port 3000",
+			config: &StaticConfig{Port: 3000},
+			expect: ":3000",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result := tt.config.GetPortString()
+			if result != tt.expect {
+				t.Errorf("GetPortString() = %v, want %v", result, tt.expect)
+			}
+		})
+	}
+}
+

@@ -117,7 +117,8 @@ npx @futuretea/rancher-mcp-server@latest --help
 
 | Option | Description |
 |--------|-------------|
-| `--port` | Starts the MCP server in HTTP mode and listens on the specified port. Use 0 for stdio mode (default for MCP clients) |
+| `--port` | Starts the MCP server in HTTP/SSE mode and listens on the specified port. Use 0 for stdio mode (default for MCP clients) |
+| `--sse-base-url` | SSE public base URL to use when sending the endpoint message (e.g. https://example.com) |
 | `--log-level` | Sets the logging level (values from 0-9) |
 | `--rancher-server-url` | URL of the Rancher server |
 | `--rancher-token` | Bearer token for Rancher API authentication |
@@ -133,8 +134,12 @@ npx @futuretea/rancher-mcp-server@latest --help
 Create a configuration file `config.yaml`:
 
 ```yaml
-port: 0  # 0 for stdio mode
+port: 0  # 0 for stdio mode, set to a port number (e.g., 8080) for HTTP/SSE mode
 log_level: 0
+
+# SSE (Server-Sent Events) configuration (optional, for HTTP/SSE mode)
+# sse_base_url: https://your-domain.com:8080
+
 rancher_server_url: https://your-rancher-server.com
 rancher_token: your-bearer-token
 # Or use Access Key/Secret Key:
@@ -147,6 +152,41 @@ toolsets:
   - config
   - core
   - rancher
+```
+
+### HTTP/SSE Mode
+
+The Rancher MCP server supports running in HTTP/SSE (Server-Sent Events) mode for network-based access. This is useful when you want to:
+
+- Access the server from remote clients
+- Use the server in a containerized environment
+- Enable multiple clients to connect to the same server instance
+
+#### Running in HTTP/SSE Mode
+
+```shell
+# Start the server on port 8080
+rancher-mcp-server --port 8080 \
+  --rancher-server-url https://your-rancher-server.com \
+  --rancher-token your-token
+```
+
+The server will expose the following endpoints:
+
+- **`/healthz`** - Health check endpoint (returns 200 OK)
+- **`/mcp`** - Streamable HTTP endpoint for MCP protocol
+- **`/sse`** - Server-Sent Events endpoint for real-time communication
+- **`/message`** - Message endpoint for SSE clients
+
+#### Using SSE Base URL
+
+When deploying behind a reverse proxy or load balancer, you can specify a public base URL:
+
+```shell
+rancher-mcp-server --port 8080 \
+  --sse-base-url https://your-domain.com:8080 \
+  --rancher-server-url https://your-rancher-server.com \
+  --rancher-token your-token
 ```
 
 ## 🛠️ Tools and Functionalities <a id="tools-and-functionalities"></a>

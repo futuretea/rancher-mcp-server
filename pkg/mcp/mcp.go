@@ -159,6 +159,16 @@ func (s *Server) configureTool(tool api.ServerTool) api.ServerTool {
 	}
 }
 
+func contextFunc(ctx context.Context, r *http.Request) context.Context {
+	// Get the Authorization header if needed for future extension
+	authHeader := r.Header.Get("Authorization")
+	if authHeader != "" {
+		return context.WithValue(ctx, "Authorization", authHeader)
+	}
+
+	return ctx
+}
+
 // registerTool registers a single tool with the MCP server
 func (s *Server) registerTool(tool api.ServerTool) error {
 	toolHandler := server.ToolHandlerFunc(func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -200,7 +210,7 @@ func (s *Server) ServeSse(baseURL string, httpServer *http.Server) *server.SSESe
 	logging.Logger.Info("Starting MCP server in SSE mode")
 
 	options := make([]server.SSEOption, 0)
-	options = append(options, server.WithHTTPServer(httpServer))
+	options = append(options, server.WithHTTPServer(httpServer), server.WithSSEContextFunc(contextFunc))
 
 	if baseURL != "" {
 		options = append(options, server.WithBaseURL(baseURL))
@@ -214,6 +224,7 @@ func (s *Server) ServeHTTP(httpServer *http.Server) *server.StreamableHTTPServer
 	logging.Logger.Info("Starting MCP server in HTTP mode")
 
 	options := []server.StreamableHTTPOption{
+		server.WithHTTPContextFunc(contextFunc),
 		server.WithStreamableHTTPServer(httpServer),
 		server.WithStateLess(true),
 	}

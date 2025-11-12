@@ -2,6 +2,12 @@
 
 # Server configuration
 port: 0  # 0 means stdio mode for MCP client integration
+# For HTTP/SSE mode, set a port like 8080
+# port: 8080
+
+# SSE (Server-Sent Events) configuration
+# sse_base_url: https://your-domain.com:8080  # Public base URL for SSE endpoint
+
 log_level: 0  # Log level 0-9
 
 # Rancher configuration

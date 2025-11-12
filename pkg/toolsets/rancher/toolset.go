@@ -3,6 +3,7 @@ package rancher
 import (
 	"context"
 	"fmt"
+	"strconv"
 	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -30,6 +31,27 @@ func (t *Toolset) GetDescription() string {
 // GetTools returns the tools provided by this toolset
 func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 	return []api.ServerTool{
+		{
+			Tool: mcp.Tool{
+				Name:        "cluster_list",
+				Description: "List all available Kubernetes clusters",
+				InputSchema: mcp.ToolInputSchema{
+					Type: "object",
+					Properties: map[string]any{
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: table, yaml, or json",
+							"enum":        []string{"table", "yaml", "json"},
+							"default":     "table",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: clusterListHandler,
+		},
 		{
 			Tool: mcp.Tool{
 				Name:        "project_list",
@@ -135,6 +157,61 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 			Handler: projectAccessHandler,
 		},
 	}
+}
+
+// clusterListHandler handles the cluster_list tool
+func clusterListHandler(client interface{}, params map[string]interface{}) (string, error) {
+	format := "table"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	// Try to use real Rancher client if available
+	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient != nil && rancherClient.IsConfigured() {
+		ctx := context.Background()
+		clusters, err := rancherClient.ListClusters(ctx)
+		if err != nil {
+			return "", fmt.Errorf("failed to list clusters: %v", err)
+		}
+
+		// Convert to map format for consistent output with richer information
+		clusterMaps := make([]map[string]string, len(clusters))
+		for i, cluster := range clusters {
+			version := ""
+			if cluster.Version != nil {
+				version = cluster.Version.GitVersion
+			}
+
+			provider := getClusterProvider(cluster)
+			cpu := getClusterCPU(cluster)
+			ram := getClusterRAM(cluster)
+			pods := getClusterPods(cluster)
+
+			clusterMaps[i] = map[string]string{
+				"id":       cluster.ID,
+				"name":     cluster.Name,
+				"state":    string(cluster.State),
+				"provider": provider,
+				"version":  version,
+				"nodes":    fmt.Sprintf("%d", cluster.NodeCount),
+				"cpu":      cpu,
+				"ram":      ram,
+				"pods":     pods,
+			}
+		}
+
+		switch format {
+		case "yaml":
+			return formatAsYAML(clusterMaps), nil
+		case "json":
+			return formatAsJSON(clusterMaps), nil
+		default:
+			return formatAsTable(clusterMaps, []string{"id", "name", "state", "provider", "version", "nodes", "cpu", "ram", "pods"}), nil
+		}
+	}
+
+	// No Rancher client available
+	return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
 }
 
 // projectListHandler handles the project_list tool
@@ -466,6 +543,84 @@ func formatTime(timestamp string) string {
 	// For now, just return the timestamp as-is
 	// In a real implementation, you might want to parse and format it
 	return timestamp
+}
+
+// Helper functions copied from Rancher CLI for better cluster information
+func getClusterProvider(cluster rancher.Cluster) string {
+	switch cluster.Driver {
+	case "imported":
+		switch cluster.Provider {
+		case "rke2":
+			return "RKE2"
+		case "k3s":
+			return "K3S"
+		default:
+			return "Imported"
+		}
+	case "k3s":
+		return "K3S"
+	case "rke2":
+		return "RKE2"
+	case "rancherKubernetesEngine":
+		return "Rancher Kubernetes Engine"
+	case "azureKubernetesService", "AKS":
+		return "Azure Kubernetes Service"
+	case "googleKubernetesEngine", "GKE":
+		return "Google Kubernetes Engine"
+	case "EKS":
+		return "Elastic Kubernetes Service"
+	default:
+		return "Unknown"
+	}
+}
+
+func getClusterCPU(cluster rancher.Cluster) string {
+	req := parseResourceString(cluster.Requested["cpu"])
+	alloc := parseResourceString(cluster.Allocatable["cpu"])
+	return req + "/" + alloc
+}
+
+func getClusterRAM(cluster rancher.Cluster) string {
+	req := parseResourceString(cluster.Requested["memory"])
+	alloc := parseResourceString(cluster.Allocatable["memory"])
+	return req + "/" + alloc + " GB"
+}
+
+func getClusterPods(cluster rancher.Cluster) string {
+	return cluster.Requested["pods"] + "/" + cluster.Allocatable["pods"]
+}
+
+// parseResourceString returns GB for Ki and Mi and CPU cores from 'm'
+func parseResourceString(mem string) string {
+	if mem == "" {
+		return "-"
+	}
+
+	if strings.HasSuffix(mem, "Ki") {
+		num, err := strconv.ParseFloat(strings.Replace(mem, "Ki", "", -1), 64)
+		if err != nil {
+			return mem
+		}
+		num = num / 1024 / 1024
+		return strings.TrimSuffix(fmt.Sprintf("%.2f", num), ".0")
+	}
+	if strings.HasSuffix(mem, "Mi") {
+		num, err := strconv.ParseFloat(strings.Replace(mem, "Mi", "", -1), 64)
+		if err != nil {
+			return mem
+		}
+		num = num / 1024
+		return strings.TrimSuffix(fmt.Sprintf("%.2f", num), ".0")
+	}
+	if strings.HasSuffix(mem, "m") {
+		num, err := strconv.ParseFloat(strings.Replace(mem, "m", "", -1), 64)
+		if err != nil {
+			return mem
+		}
+		num = num / 1000
+		return strconv.FormatFloat(num, 'f', 2, 32)
+	}
+	return mem
 }
 
 func init() {

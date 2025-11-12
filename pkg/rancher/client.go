@@ -15,13 +15,17 @@ import (
 
 // Type aliases for compatibility with existing code
 type (
-	Cluster   = managementClient.Cluster
-	Project   = managementClient.Project
-	User      = managementClient.User
-	Node      = managementClient.Node
-	Pod       = projectClient.Pod
-	Workload  = projectClient.Workload
-	Namespace = clusterClient.Namespace
+	Cluster          = managementClient.Cluster
+	Project          = managementClient.Project
+	User             = managementClient.User
+	Node             = managementClient.Node
+	Pod              = projectClient.Pod
+	Workload         = projectClient.Workload
+	Namespace        = clusterClient.Namespace
+	ConfigMap        = projectClient.ConfigMap
+	NamespacedSecret = projectClient.NamespacedSecret
+	Service          = projectClient.Service
+	Ingress          = projectClient.Ingress
 )
 
 // Client wraps the Rancher generated clients
@@ -328,4 +332,85 @@ func (c *Client) getClusterClient(clusterID string) (*clusterClient.Client, erro
 
 	c.clusterClients[clusterID] = clusterClient
 	return clusterClient, nil
+}
+
+// ListConfigMaps returns all configmaps for a cluster and project
+func (c *Client) ListConfigMaps(ctx context.Context, clusterID, projectID string) ([]projectClient.ConfigMap, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	// Get or create project client
+	projectClient, err := c.getProjectClient(clusterID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project client for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	configMapList, err := projectClient.ConfigMap.List(&types.ListOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list configmaps for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	return configMapList.Data, nil
+}
+
+// ListSecrets returns all namespaced secrets for a cluster and project
+func (c *Client) ListSecrets(ctx context.Context, clusterID, projectID string) ([]projectClient.NamespacedSecret, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	// Get or create project client
+	projectClient, err := c.getProjectClient(clusterID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project client for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	// Use NamespacedSecret instead of Secret for project-scoped secrets
+	secretList, err := projectClient.NamespacedSecret.List(&types.ListOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list secrets for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	return secretList.Data, nil
+}
+
+// ListServices returns all services for a cluster and project
+func (c *Client) ListServices(ctx context.Context, clusterID, projectID string) ([]projectClient.Service, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	// Get or create project client
+	projectClient, err := c.getProjectClient(clusterID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project client for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	serviceList, err := projectClient.Service.List(&types.ListOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list services for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	return serviceList.Data, nil
+}
+
+// ListIngresses returns all ingresses for a cluster and project
+func (c *Client) ListIngresses(ctx context.Context, clusterID, projectID string) ([]projectClient.Ingress, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	// Get or create project client
+	projectClient, err := c.getProjectClient(clusterID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project client for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	ingressList, err := projectClient.Ingress.List(&types.ListOpts{})
+	if err != nil {
+		return nil, fmt.Errorf("failed to list ingresses for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	return ingressList.Data, nil
 }

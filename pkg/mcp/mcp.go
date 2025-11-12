@@ -14,6 +14,7 @@ import (
 	"github.com/futuretea/rancher-mcp-server/pkg/rancher"
 	configToolset "github.com/futuretea/rancher-mcp-server/pkg/toolsets/config"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolsets/core"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolsets/networking"
 	rancherToolset "github.com/futuretea/rancher-mcp-server/pkg/toolsets/rancher"
 	"github.com/futuretea/rancher-mcp-server/pkg/version"
 )
@@ -72,9 +73,10 @@ func NewServer(configuration Configuration) (*Server, error) {
 func (s *Server) registerTools() error {
 	// Initialize toolsets
 	availableToolsets := map[string]api.Toolset{
-		"config":  &configToolset.Toolset{},
-		"core":    &core.Toolset{},
-		"rancher": &rancherToolset.Toolset{},
+		"config":     &configToolset.Toolset{},
+		"core":       &core.Toolset{},
+		"rancher":    &rancherToolset.Toolset{},
+		"networking": &networking.Toolset{},
 	}
 
 	// Determine which toolsets to enable

@@ -102,7 +102,7 @@ for network access.`,
 	cmd.Flags().String("list-output", "table", "Output format for list operations (table, yaml, json)")
 
 	// Toolset configuration flags
-	cmd.Flags().StringSlice("toolsets", []string{"config", "core", "rancher"}, "Comma-separated list of toolsets to enable")
+	cmd.Flags().StringSlice("toolsets", []string{"config", "core", "rancher", "networking"}, "Comma-separated list of toolsets to enable")
 	cmd.Flags().StringSlice("enabled-tools", []string{}, "Comma-separated list of tools to enable")
 	cmd.Flags().StringSlice("disabled-tools", []string{}, "Comma-separated list of tools to disable")
 

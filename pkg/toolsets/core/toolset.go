@@ -3,7 +3,6 @@ package core
 import (
 	"context"
 	"fmt"
-	"strconv"
 	"strings"
 
 	"golang.org/x/text/cases"
@@ -33,27 +32,6 @@ func (t *Toolset) GetDescription() string {
 // GetTools returns the tools provided by this toolset
 func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 	return []api.ServerTool{
-		{
-			Tool: mcp.Tool{
-				Name:        "cluster_list",
-				Description: "List all available Kubernetes clusters",
-				InputSchema: mcp.ToolInputSchema{
-					Type: "object",
-					Properties: map[string]any{
-						"format": map[string]any{
-							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
-						},
-					},
-				},
-			},
-			Annotations: api.ToolAnnotations{
-				ReadOnlyHint: boolPtr(true),
-			},
-			Handler: clusterListHandler,
-		},
 		{
 			Tool: mcp.Tool{
 				Name:        "node_list",
@@ -151,62 +129,115 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 			},
 			Handler: namespaceListHandler,
 		},
+		{
+			Tool: mcp.Tool{
+				Name:        "configmap_list",
+				Description: "List all configmaps in a cluster",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID",
+						},
+						"project": map[string]any{
+							"type":        "string",
+							"description": "Project ID to filter configmaps (optional)",
+							"default":     "",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name to filter configmaps (optional)",
+							"default":     "",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: table, yaml, or json",
+							"enum":        []string{"table", "yaml", "json"},
+							"default":     "table",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: configMapListHandler,
+		},
+		{
+			Tool: mcp.Tool{
+				Name:        "secret_list",
+				Description: "List all secrets in a cluster (metadata only, does not expose secret data)",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID",
+						},
+						"project": map[string]any{
+							"type":        "string",
+							"description": "Project ID to filter secrets (optional)",
+							"default":     "",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name to filter secrets (optional)",
+							"default":     "",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: table, yaml, or json",
+							"enum":        []string{"table", "yaml", "json"},
+							"default":     "table",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: secretListHandler,
+		},
+		{
+			Tool: mcp.Tool{
+				Name:        "service_list",
+				Description: "List all services in a cluster",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID",
+						},
+						"project": map[string]any{
+							"type":        "string",
+							"description": "Project ID to filter services (optional)",
+							"default":     "",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name to filter services (optional)",
+							"default":     "",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: table, yaml, or json",
+							"enum":        []string{"table", "yaml", "json"},
+							"default":     "table",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: serviceListHandler,
+		},
 	}
-}
-
-// clusterListHandler handles the cluster_list tool
-func clusterListHandler(client interface{}, params map[string]interface{}) (string, error) {
-	format := "table"
-	if formatParam, ok := params["format"].(string); ok {
-		format = formatParam
-	}
-
-	// Try to use real Rancher client if available
-	if rancherClient, ok := client.(*rancher.Client); ok && rancherClient != nil && rancherClient.IsConfigured() {
-		ctx := context.Background()
-		clusters, err := rancherClient.ListClusters(ctx)
-		if err != nil {
-			return "", fmt.Errorf("failed to list clusters: %v", err)
-		}
-
-		// Convert to map format for consistent output with richer information
-		clusterMaps := make([]map[string]string, len(clusters))
-		for i, cluster := range clusters {
-			version := ""
-			if cluster.Version != nil {
-				version = cluster.Version.GitVersion
-			}
-
-			provider := getClusterProvider(cluster)
-			cpu := getClusterCPU(cluster)
-			ram := getClusterRAM(cluster)
-			pods := getClusterPods(cluster)
-
-			clusterMaps[i] = map[string]string{
-				"id":       cluster.ID,
-				"name":     cluster.Name,
-				"state":    string(cluster.State),
-				"provider": provider,
-				"version":  version,
-				"nodes":    fmt.Sprintf("%d", cluster.NodeCount),
-				"cpu":      cpu,
-				"ram":      ram,
-				"pods":     pods,
-			}
-		}
-
-		switch format {
-		case "yaml":
-			return formatAsYAML(clusterMaps), nil
-		case "json":
-			return formatAsJSON(clusterMaps), nil
-		default:
-			return formatAsTable(clusterMaps, []string{"id", "name", "state", "provider", "version", "nodes", "cpu", "ram", "pods"}), nil
-		}
-	}
-
-	// No Rancher client available
-	return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
 }
 
 // nodeListHandler handles the node_list tool
@@ -663,84 +694,6 @@ func titleCase(s string) string {
 	return caser.String(strings.ToLower(s))
 }
 
-// Helper functions copied from Rancher CLI for better cluster information
-func getClusterProvider(cluster rancher.Cluster) string {
-	switch cluster.Driver {
-	case "imported":
-		switch cluster.Provider {
-		case "rke2":
-			return "RKE2"
-		case "k3s":
-			return "K3S"
-		default:
-			return "Imported"
-		}
-	case "k3s":
-		return "K3S"
-	case "rke2":
-		return "RKE2"
-	case "rancherKubernetesEngine":
-		return "Rancher Kubernetes Engine"
-	case "azureKubernetesService", "AKS":
-		return "Azure Kubernetes Service"
-	case "googleKubernetesEngine", "GKE":
-		return "Google Kubernetes Engine"
-	case "EKS":
-		return "Elastic Kubernetes Service"
-	default:
-		return "Unknown"
-	}
-}
-
-func getClusterCPU(cluster rancher.Cluster) string {
-	req := parseResourceString(cluster.Requested["cpu"])
-	alloc := parseResourceString(cluster.Allocatable["cpu"])
-	return req + "/" + alloc
-}
-
-func getClusterRAM(cluster rancher.Cluster) string {
-	req := parseResourceString(cluster.Requested["memory"])
-	alloc := parseResourceString(cluster.Allocatable["memory"])
-	return req + "/" + alloc + " GB"
-}
-
-func getClusterPods(cluster rancher.Cluster) string {
-	return cluster.Requested["pods"] + "/" + cluster.Allocatable["pods"]
-}
-
-// parseResourceString returns GB for Ki and Mi and CPU cores from 'm'
-func parseResourceString(mem string) string {
-	if mem == "" {
-		return "-"
-	}
-
-	if strings.HasSuffix(mem, "Ki") {
-		num, err := strconv.ParseFloat(strings.Replace(mem, "Ki", "", -1), 64)
-		if err != nil {
-			return mem
-		}
-		num = num / 1024 / 1024
-		return strings.TrimSuffix(fmt.Sprintf("%.2f", num), ".0")
-	}
-	if strings.HasSuffix(mem, "Mi") {
-		num, err := strconv.ParseFloat(strings.Replace(mem, "Mi", "", -1), 64)
-		if err != nil {
-			return mem
-		}
-		num = num / 1024
-		return strings.TrimSuffix(fmt.Sprintf("%.2f", num), ".0")
-	}
-	if strings.HasSuffix(mem, "m") {
-		num, err := strconv.ParseFloat(strings.Replace(mem, "m", "", -1), 64)
-		if err != nil {
-			return mem
-		}
-		num = num / 1000
-		return strconv.FormatFloat(num, 'f', 2, 32)
-	}
-	return mem
-}
-
 // formatTime formats time for display
 func formatTime(timestamp string) string {
 	if timestamp == "" {
@@ -749,6 +702,389 @@ func formatTime(timestamp string) string {
 	// For now, just return the timestamp as-is
 	// In a real implementation, you might want to parse and format it
 	return timestamp
+}
+
+// configMapListHandler handles the configmap_list tool
+func configMapListHandler(client interface{}, params map[string]interface{}) (string, error) {
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	projectID := ""
+	if projectParam, ok := params["project"].(string); ok {
+		projectID = projectParam
+	}
+
+	namespaceName := ""
+	if namespaceParam, ok := params["namespace"].(string); ok {
+		namespaceName = namespaceParam
+	}
+
+	format := "table"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// Collect configmaps from all projects or specific project
+	resultMaps := make([]map[string]string, 0)
+
+	if projectID != "" {
+		// Get configmaps for the specified project
+		configMaps, err := rancherClient.ListConfigMaps(ctx, clusterID, projectID)
+		if err != nil {
+			return "", fmt.Errorf("failed to list configmaps for cluster %s, project %s: %v", clusterID, projectID, err)
+		}
+
+		for _, cm := range configMaps {
+			// Apply namespace filter
+			if namespaceName != "" && cm.NamespaceId != namespaceName {
+				continue
+			}
+
+			dataKeys := "-"
+			if len(cm.Data) > 0 {
+				keys := make([]string, 0, len(cm.Data))
+				for k := range cm.Data {
+					keys = append(keys, k)
+				}
+				dataKeys = strings.Join(keys, ",")
+			}
+
+			resultMaps = append(resultMaps, map[string]string{
+				"id":        cm.ID,
+				"name":      cm.Name,
+				"namespace": cm.NamespaceId,
+				"keys":      dataKeys,
+				"created":   formatTime(cm.Created),
+			})
+		}
+	} else {
+		// Get all projects for the cluster
+		projects, err := rancherClient.ListProjects(ctx, clusterID)
+		if err != nil {
+			return "", fmt.Errorf("failed to list projects for cluster %s: %v", clusterID, err)
+		}
+
+		// Collect configmaps from each project
+		for _, project := range projects {
+			configMaps, err := rancherClient.ListConfigMaps(ctx, clusterID, project.ID)
+			if err != nil {
+				// Skip projects that fail
+				continue
+			}
+
+			for _, cm := range configMaps {
+				// Apply namespace filter
+				if namespaceName != "" && cm.NamespaceId != namespaceName {
+					continue
+				}
+
+				dataKeys := "-"
+				if len(cm.Data) > 0 {
+					keys := make([]string, 0, len(cm.Data))
+					for k := range cm.Data {
+						keys = append(keys, k)
+					}
+					dataKeys = strings.Join(keys, ",")
+				}
+
+				resultMaps = append(resultMaps, map[string]string{
+					"id":        cm.ID,
+					"name":      cm.Name,
+					"namespace": cm.NamespaceId,
+					"keys":      dataKeys,
+					"created":   formatTime(cm.Created),
+				})
+			}
+		}
+	}
+
+	if len(resultMaps) == 0 {
+		return "No configmaps found", nil
+	}
+
+	switch format {
+	case "yaml":
+		return formatAsYAML(resultMaps), nil
+	case "json":
+		return formatAsJSON(resultMaps), nil
+	default:
+		return formatAsTable(resultMaps, []string{"id", "name", "namespace", "keys", "created"}), nil
+	}
+}
+
+// secretListHandler handles the secret_list tool
+// Note: This handler ONLY returns metadata (id, name, namespace, type, created)
+// and does NOT expose sensitive secret data (Data or StringData fields)
+func secretListHandler(client interface{}, params map[string]interface{}) (string, error) {
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	projectID := ""
+	if projectParam, ok := params["project"].(string); ok {
+		projectID = projectParam
+	}
+
+	namespaceName := ""
+	if namespaceParam, ok := params["namespace"].(string); ok {
+		namespaceName = namespaceParam
+	}
+
+	format := "table"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// Collect secrets from all projects or specific project
+	resultMaps := make([]map[string]string, 0)
+
+	if projectID != "" {
+		// Get secrets for the specified project
+		secrets, err := rancherClient.ListSecrets(ctx, clusterID, projectID)
+		if err != nil {
+			return "", fmt.Errorf("failed to list secrets for cluster %s, project %s: %v", clusterID, projectID, err)
+		}
+
+		for _, secret := range secrets {
+			// Apply namespace filter
+			if namespaceName != "" && secret.NamespaceId != namespaceName {
+				continue
+			}
+
+			secretType := secret.Type
+			if secretType == "" {
+				secretType = "Opaque"
+			}
+
+			// Only include metadata, never include secret.Data or secret.StringData
+			resultMaps = append(resultMaps, map[string]string{
+				"id":        secret.ID,
+				"name":      secret.Name,
+				"namespace": secret.NamespaceId,
+				"type":      secretType,
+				"created":   formatTime(secret.Created),
+			})
+		}
+	} else {
+		// Get all projects for the cluster
+		projects, err := rancherClient.ListProjects(ctx, clusterID)
+		if err != nil {
+			return "", fmt.Errorf("failed to list projects for cluster %s: %v", clusterID, err)
+		}
+
+		// Collect secrets from each project
+		for _, project := range projects {
+			secrets, err := rancherClient.ListSecrets(ctx, clusterID, project.ID)
+			if err != nil {
+				// Skip projects that fail
+				continue
+			}
+
+			for _, secret := range secrets {
+				// Apply namespace filter
+				if namespaceName != "" && secret.NamespaceId != namespaceName {
+					continue
+				}
+
+				secretType := secret.Type
+				if secretType == "" {
+					secretType = "Opaque"
+				}
+
+				// Only include metadata, never include secret.Data or secret.StringData
+				resultMaps = append(resultMaps, map[string]string{
+					"id":        secret.ID,
+					"name":      secret.Name,
+					"namespace": secret.NamespaceId,
+					"type":      secretType,
+					"created":   formatTime(secret.Created),
+				})
+			}
+		}
+	}
+
+	if len(resultMaps) == 0 {
+		return "No secrets found", nil
+	}
+
+	switch format {
+	case "yaml":
+		return formatAsYAML(resultMaps), nil
+	case "json":
+		return formatAsJSON(resultMaps), nil
+	default:
+		return formatAsTable(resultMaps, []string{"id", "name", "namespace", "type", "created"}), nil
+	}
+}
+
+// serviceListHandler handles the service_list tool
+func serviceListHandler(client interface{}, params map[string]interface{}) (string, error) {
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	projectID := ""
+	if projectParam, ok := params["project"].(string); ok {
+		projectID = projectParam
+	}
+
+	namespaceName := ""
+	if namespaceParam, ok := params["namespace"].(string); ok {
+		namespaceName = namespaceParam
+	}
+
+	format := "table"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// Collect services from all projects or specific project
+	resultMaps := make([]map[string]string, 0)
+
+	if projectID != "" {
+		// Get services for the specified project
+		services, err := rancherClient.ListServices(ctx, clusterID, projectID)
+		if err != nil {
+			return "", fmt.Errorf("failed to list services for cluster %s, project %s: %v", clusterID, projectID, err)
+		}
+
+		for _, svc := range services {
+			// Apply namespace filter
+			if namespaceName != "" && svc.NamespaceId != namespaceName {
+				continue
+			}
+
+			svcType := svc.Kind
+			if svcType == "" {
+				svcType = "ClusterIP"
+			}
+
+			clusterIP := svc.ClusterIp
+			if clusterIP == "" {
+				clusterIP = "-"
+			}
+
+			ports := "-"
+			if len(svc.PublicEndpoints) > 0 {
+				portStrs := make([]string, 0, len(svc.PublicEndpoints))
+				for _, ep := range svc.PublicEndpoints {
+					portStrs = append(portStrs, fmt.Sprintf("%d", ep.Port))
+				}
+				ports = strings.Join(portStrs, ",")
+			}
+
+			resultMaps = append(resultMaps, map[string]string{
+				"id":         svc.ID,
+				"name":       svc.Name,
+				"namespace":  svc.NamespaceId,
+				"type":       svcType,
+				"cluster_ip": clusterIP,
+				"ports":      ports,
+				"created":    formatTime(svc.Created),
+			})
+		}
+	} else {
+		// Get all projects for the cluster
+		projects, err := rancherClient.ListProjects(ctx, clusterID)
+		if err != nil {
+			return "", fmt.Errorf("failed to list projects for cluster %s: %v", clusterID, err)
+		}
+
+		// Collect services from each project
+		for _, project := range projects {
+			services, err := rancherClient.ListServices(ctx, clusterID, project.ID)
+			if err != nil {
+				// Skip projects that fail
+				continue
+			}
+
+			for _, svc := range services {
+				// Apply namespace filter
+				if namespaceName != "" && svc.NamespaceId != namespaceName {
+					continue
+				}
+
+				svcType := svc.Kind
+				if svcType == "" {
+					svcType = "ClusterIP"
+				}
+
+				clusterIP := svc.ClusterIp
+				if clusterIP == "" {
+					clusterIP = "-"
+				}
+
+				ports := "-"
+				if len(svc.PublicEndpoints) > 0 {
+					portStrs := make([]string, 0, len(svc.PublicEndpoints))
+					for _, ep := range svc.PublicEndpoints {
+						portStrs = append(portStrs, fmt.Sprintf("%d", ep.Port))
+					}
+					ports = strings.Join(portStrs, ",")
+				}
+
+				resultMaps = append(resultMaps, map[string]string{
+					"id":         svc.ID,
+					"name":       svc.Name,
+					"namespace":  svc.NamespaceId,
+					"type":       svcType,
+					"cluster_ip": clusterIP,
+					"ports":      ports,
+					"created":    formatTime(svc.Created),
+				})
+			}
+		}
+	}
+
+	if len(resultMaps) == 0 {
+		return "No services found", nil
+	}
+
+	switch format {
+	case "yaml":
+		return formatAsYAML(resultMaps), nil
+	case "json":
+		return formatAsJSON(resultMaps), nil
+	default:
+		return formatAsTable(resultMaps, []string{"id", "name", "namespace", "type", "cluster_ip", "ports", "created"}), nil
+	}
 }
 
 func init() {

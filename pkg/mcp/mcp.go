@@ -34,7 +34,7 @@ type Server struct {
 // NewServer creates a new MCP server with the given configuration
 func NewServer(configuration Configuration) (*Server, error) {
 	// Initialize logging
-	logging.Initialize(configuration.LogLevel)
+	logging.Initialize(configuration.LogLevel, nil)
 
 	var serverOptions []server.ServerOption
 
@@ -50,8 +50,8 @@ func NewServer(configuration Configuration) (*Server, error) {
 	rancherClient, err := rancher.NewClient(configuration.StaticConfig)
 	if err != nil {
 		// Log the error but continue without Rancher client
-		logging.Logger.Warn("Failed to create Rancher client: %v", err)
-		logging.Logger.Warn("Rancher tools will not be available")
+		logging.Warn("Failed to create Rancher client: %v", err)
+		logging.Warn("Rancher tools will not be available")
 	}
 
 	s := &Server{
@@ -108,7 +108,7 @@ func (s *Server) registerTools() error {
 		}
 	}
 
-	logging.Logger.Info("MCP server initialized with %d tools", len(s.enabledTools))
+	logging.Info("MCP server initialized with %d tools", len(s.enabledTools))
 	return nil
 }
 
@@ -172,7 +172,7 @@ func contextFunc(ctx context.Context, r *http.Request) context.Context {
 // registerTool registers a single tool with the MCP server
 func (s *Server) registerTool(tool api.ServerTool) error {
 	toolHandler := server.ToolHandlerFunc(func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		logging.Logger.Debug("Tool %s called with params: %v", tool.Tool.Name, request.Params.Arguments)
+		logging.Debug("Tool %s called with params: %v", tool.Tool.Name, request.Params.Arguments)
 
 		// Convert arguments to the format expected by our tool handlers
 		params := make(map[string]interface{})
@@ -195,19 +195,19 @@ func (s *Server) registerTool(tool api.ServerTool) error {
 	s.server.AddTool(tool.Tool, toolHandler)
 	s.enabledTools = append(s.enabledTools, tool.Tool.Name)
 
-	logging.Logger.Info("Registered tool: %s", tool.Tool.Name)
+	logging.Info("Registered tool: %s", tool.Tool.Name)
 	return nil
 }
 
 // ServeStdio starts the MCP server in stdio mode
 func (s *Server) ServeStdio() error {
-	logging.Logger.Info("Starting MCP server in stdio mode")
+	logging.Info("Starting MCP server in stdio mode")
 	return server.ServeStdio(s.server)
 }
 
 // ServeSse starts the MCP server in SSE mode
 func (s *Server) ServeSse(baseURL string, httpServer *http.Server) *server.SSEServer {
-	logging.Logger.Info("Starting MCP server in SSE mode")
+	logging.Info("Starting MCP server in SSE mode")
 
 	options := make([]server.SSEOption, 0)
 	options = append(options, server.WithHTTPServer(httpServer), server.WithSSEContextFunc(contextFunc))
@@ -221,7 +221,7 @@ func (s *Server) ServeSse(baseURL string, httpServer *http.Server) *server.SSESe
 
 // ServeHTTP starts the MCP server in HTTP mode
 func (s *Server) ServeHTTP(httpServer *http.Server) *server.StreamableHTTPServer {
-	logging.Logger.Info("Starting MCP server in HTTP mode")
+	logging.Info("Starting MCP server in HTTP mode")
 
 	options := []server.StreamableHTTPOption{
 		server.WithHTTPContextFunc(contextFunc),
@@ -239,7 +239,7 @@ func (s *Server) GetEnabledTools() []string {
 
 // Close cleans up the server resources
 func (s *Server) Close() {
-	logging.Logger.Info("Closing MCP server")
+	logging.Info("Closing MCP server")
 	// Nothing to clean up for now
 }
 

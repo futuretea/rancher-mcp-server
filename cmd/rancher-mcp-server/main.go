@@ -3,8 +3,15 @@ package main
 import (
 	"os"
 
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
+
 	"github.com/futuretea/rancher-mcp-server/pkg/rancher-mcp-server/cmd"
 )
+
+func init() {
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+}
 
 func main() {
 	command := cmd.NewMCPServer(cmd.IOStreams{
@@ -14,6 +21,6 @@ func main() {
 	})
 
 	if err := command.Execute(); err != nil {
-		os.Exit(1)
+		log.Fatal().Err(err).Msg("Failed to execute command")
 	}
 }

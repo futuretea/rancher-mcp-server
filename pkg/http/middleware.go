@@ -26,7 +26,7 @@ func RequestMiddleware(next http.Handler) http.Handler {
 		next.ServeHTTP(lrw, r)
 
 		duration := time.Since(start)
-		logging.Logger.Debug("%s %s %d %v", r.Method, r.URL.Path, lrw.statusCode, duration)
+		logging.Debug("%s %s %d %v", r.Method, r.URL.Path, lrw.statusCode, duration)
 	})
 }
 

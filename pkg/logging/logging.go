@@ -1,61 +1,66 @@
 package logging
 
 import (
-	"log"
+	"io"
 	"os"
+
+	"github.com/rs/zerolog"
+	"github.com/rs/zerolog/log"
 )
 
-// Logger represents a leveled logger
-var Logger *LeveledLogger
-
-// LeveledLogger provides leveled logging functionality
-type LeveledLogger struct {
-	level int
-}
-
-// NewLeveledLogger creates a new leveled logger
-func NewLeveledLogger(level int) *LeveledLogger {
-	return &LeveledLogger{
-		level: level,
+// Initialize initializes the global logger with the specified log level and output writer
+func Initialize(level int, output io.Writer) {
+	if output == nil {
+		output = os.Stderr
 	}
-}
 
-// SetLevel sets the log level
-func (l *LeveledLogger) SetLevel(level int) {
-	l.level = level
-}
+	// Set up zerolog with human-friendly console output
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
 
-// Debug logs at debug level (level 5-9)
-func (l *LeveledLogger) Debug(format string, v ...interface{}) {
-	if l.level >= 5 {
-		log.Printf("[DEBUG] "+format, v...)
+	// Map our log level (0-9) to zerolog levels
+	// 0-1: Error, 2-3: Warn, 4-5: Info, 6+: Debug/Trace
+	var zerologLevel zerolog.Level
+	switch {
+	case level >= 6:
+		zerologLevel = zerolog.DebugLevel
+	case level >= 4:
+		zerologLevel = zerolog.InfoLevel
+	case level >= 2:
+		zerologLevel = zerolog.WarnLevel
+	default:
+		zerologLevel = zerolog.ErrorLevel
 	}
+
+	zerolog.SetGlobalLevel(zerologLevel)
+	log.Logger = zerolog.New(output).With().Timestamp().Logger()
 }
 
-// Info logs at info level (level 3-9)
-func (l *LeveledLogger) Info(format string, v ...interface{}) {
-	if l.level >= 3 {
-		log.Printf("[INFO] "+format, v...)
-	}
+// Debug logs a debug message
+func Debug(format string, v ...interface{}) {
+	log.Debug().Msgf(format, v...)
 }
 
-// Warn logs at warning level (level 1-9)
-func (l *LeveledLogger) Warn(format string, v ...interface{}) {
-	if l.level >= 1 {
-		log.Printf("[WARN] "+format, v...)
-	}
+// Info logs an info message
+func Info(format string, v ...interface{}) {
+	log.Info().Msgf(format, v...)
 }
 
-// Error logs at error level (level 0-9)
-func (l *LeveledLogger) Error(format string, v ...interface{}) {
-	if l.level >= 0 {
-		log.Printf("[ERROR] "+format, v...)
-	}
+// Warn logs a warning message
+func Warn(format string, v ...interface{}) {
+	log.Warn().Msgf(format, v...)
 }
 
-// Initialize initializes the global logger
-func Initialize(level int) {
-	Logger = NewLeveledLogger(level)
-	log.SetOutput(os.Stderr)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
+// Error logs an error message
+func Error(format string, v ...interface{}) {
+	log.Error().Msgf(format, v...)
+}
+
+// Fatal logs a fatal message and exits
+func Fatal(format string, v ...interface{}) {
+	log.Fatal().Msgf(format, v...)
+}
+
+// GetLogger returns the global zerolog logger for advanced usage
+func GetLogger() *zerolog.Logger {
+	return &log.Logger
 }

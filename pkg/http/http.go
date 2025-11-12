@@ -48,7 +48,7 @@ func Serve(ctx context.Context, mcpServer *mcp.Server, staticConfig *config.Stat
 
 	serverErr := make(chan error, 1)
 	go func() {
-		logging.Logger.Info("Streaming and SSE HTTP servers starting on port %s and paths /mcp, /sse, /message", staticConfig.GetPortString())
+		logging.Info("Streaming and SSE HTTP servers starting on port %s and paths /mcp, /sse, /message", staticConfig.GetPortString())
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
@@ -56,24 +56,24 @@ func Serve(ctx context.Context, mcpServer *mcp.Server, staticConfig *config.Stat
 
 	select {
 	case sig := <-sigChan:
-		logging.Logger.Info("Received signal %v, initiating graceful shutdown", sig)
+		logging.Info("Received signal %v, initiating graceful shutdown", sig)
 		cancel()
 	case <-ctx.Done():
-		logging.Logger.Info("Context cancelled, initiating graceful shutdown")
+		logging.Info("Context cancelled, initiating graceful shutdown")
 	case err := <-serverErr:
-		logging.Logger.Error("HTTP server error: %v", err)
+		logging.Error("HTTP server error: %v", err)
 		return err
 	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer shutdownCancel()
 
-	logging.Logger.Info("Shutting down HTTP server gracefully...")
+	logging.Info("Shutting down HTTP server gracefully...")
 	if err := httpServer.Shutdown(shutdownCtx); err != nil {
-		logging.Logger.Error("HTTP server shutdown error: %v", err)
+		logging.Error("HTTP server shutdown error: %v", err)
 		return err
 	}
 
-	logging.Logger.Info("HTTP server shutdown complete")
+	logging.Info("HTTP server shutdown complete")
 	return nil
 }

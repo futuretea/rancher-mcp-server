@@ -3,7 +3,7 @@ module github.com/futuretea/rancher-mcp-server
 go 1.24.1
 
 require (
-	github.com/mark3labs/mcp-go v0.41.1
+	github.com/mark3labs/mcp-go v0.43.0
 	github.com/rancher/norman v0.7.0
 	github.com/rancher/rancher/pkg/client v0.0.0-20251010020652-47d600a5c30a
 	github.com/rs/zerolog v1.33.0

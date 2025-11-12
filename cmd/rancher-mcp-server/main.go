@@ -6,11 +6,15 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
+	"github.com/futuretea/rancher-mcp-server/pkg/logging"
 	"github.com/futuretea/rancher-mcp-server/pkg/rancher-mcp-server/cmd"
 )
 
 func init() {
 	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	// Initialize basic logging for early error handling
+	// This will be reconfigured in runServer based on mode (stdio/HTTP)
+	logging.Initialize(0, os.Stderr)
 }
 
 func main() {

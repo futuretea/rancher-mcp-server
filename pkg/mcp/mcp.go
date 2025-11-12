@@ -33,8 +33,8 @@ type Server struct {
 
 // NewServer creates a new MCP server with the given configuration
 func NewServer(configuration Configuration) (*Server, error) {
-	// Initialize logging
-	logging.Initialize(configuration.LogLevel, nil)
+	// Note: Logging is initialized in root.go before calling NewServer
+	// to properly handle stdio vs HTTP/SSE mode
 
 	var serverOptions []server.ServerOption
 

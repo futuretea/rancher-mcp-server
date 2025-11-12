@@ -8,8 +8,29 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+var (
+	// stdioMode indicates if logging should be disabled to avoid interfering with stdio protocol
+	stdioMode bool
+)
+
+// SetStdioMode enables or disables stdio mode
+// In stdio mode, all logs are suppressed to avoid interfering with MCP protocol
+func SetStdioMode(enabled bool) {
+	stdioMode = enabled
+	if enabled {
+		// Disable all logging in stdio mode
+		zerolog.SetGlobalLevel(zerolog.Disabled)
+		log.Logger = zerolog.Nop()
+	}
+}
+
 // Initialize initializes the global logger with the specified log level and output writer
 func Initialize(level int, output io.Writer) {
+	// Skip initialization if stdio mode is enabled
+	if stdioMode {
+		return
+	}
+
 	if output == nil {
 		output = os.Stderr
 	}

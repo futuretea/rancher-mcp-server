@@ -10,6 +10,7 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/config"
 	internalhttp "github.com/futuretea/rancher-mcp-server/pkg/http"
+	"github.com/futuretea/rancher-mcp-server/pkg/logging"
 	"github.com/futuretea/rancher-mcp-server/pkg/mcp"
 	"github.com/futuretea/rancher-mcp-server/pkg/version"
 )
@@ -119,6 +120,15 @@ func runServer(cfgFile string, streams IOStreams) error {
 		return fmt.Errorf("failed to load config: %w", err)
 	}
 
+	// Initialize logging early with configuration
+	if cfg.Port == 0 {
+		// Enable stdio mode - suppress all logging to avoid interfering with MCP protocol
+		logging.SetStdioMode(true)
+	} else {
+		// HTTP/SSE mode - initialize normal logging
+		logging.Initialize(cfg.LogLevel, streams.ErrOut)
+	}
+
 	// Create MCP server configuration
 	mcpConfig := mcp.Configuration{
 		StaticConfig: cfg,
@@ -127,22 +137,22 @@ func runServer(cfgFile string, streams IOStreams) error {
 	// Create MCP server
 	server, err := mcp.NewServer(mcpConfig)
 	if err != nil {
-		return fmt.Errorf("failed to create MCP server: %v", err)
+		return fmt.Errorf("failed to create MCP server: %w", err)
 	}
 	defer server.Close()
 
 	// Start server based on port configuration
 	if cfg.Port == 0 {
-		// Stdio mode
+		// Stdio mode - use fmt.Fprintf for startup messages as logging is disabled
 		fmt.Fprintf(streams.ErrOut, "Starting Rancher MCP Server in stdio mode\n")
 		fmt.Fprintf(streams.ErrOut, "Enabled tools: %v\n", server.GetEnabledTools())
 		return server.ServeStdio()
 	} else {
-		// HTTP/SSE mode
-		fmt.Fprintf(streams.ErrOut, "Starting Rancher MCP Server in HTTP/SSE mode on port %d\n", cfg.Port)
-		fmt.Fprintf(streams.ErrOut, "Enabled tools: %v\n", server.GetEnabledTools())
+		// HTTP/SSE mode - use logging
+		logging.Info("Starting Rancher MCP Server in HTTP/SSE mode on port %d", cfg.Port)
+		logging.Info("Enabled tools: %v", server.GetEnabledTools())
 		if cfg.SSEBaseURL != "" {
-			fmt.Fprintf(streams.ErrOut, "SSE Base URL: %s\n", cfg.SSEBaseURL)
+			logging.Info("SSE Base URL: %s", cfg.SSEBaseURL)
 		}
 
 		ctx := context.Background()

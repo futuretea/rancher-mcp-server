@@ -21,6 +21,36 @@ type IOStreams struct {
 	ErrOut io.Writer
 }
 
+// bindFlags binds command-line flags to viper configuration keys
+func bindFlags(cmd *cobra.Command) {
+	// Map of viper config key to flag name
+	flagBindings := map[string]string{
+		// Server configuration
+		"port":         "port",
+		"sse_base_url": "sse-base-url",
+		"log_level":    "log-level",
+		// Rancher configuration
+		"rancher_server_url":    "rancher-server-url",
+		"rancher_token":         "rancher-token",
+		"rancher_access_key":    "rancher-access-key",
+		"rancher_secret_key":    "rancher-secret-key",
+		"rancher_tls_insecure":  "rancher-tls-insecure",
+		// Security configuration
+		"read_only":           "read-only",
+		"disable_destructive": "disable-destructive",
+		// Output configuration
+		"list_output": "list-output",
+		// Toolset configuration
+		"toolsets":       "toolsets",
+		"enabled_tools":  "enabled-tools",
+		"disabled_tools": "disabled-tools",
+	}
+
+	for key, flag := range flagBindings {
+		viper.BindPFlag(key, cmd.Flags().Lookup(flag))
+	}
+}
+
 // NewMCPServer creates a new cobra command for the Rancher MCP Server
 func NewMCPServer(streams IOStreams) *cobra.Command {
 	var cfgFile string
@@ -36,10 +66,7 @@ for network access.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			// Bind flags to viper
-			if err := viper.BindPFlags(cmd.Flags()); err != nil {
-				return fmt.Errorf("failed to bind flags: %w", err)
-			}
+			bindFlags(cmd)
 			return nil
 		},
 		RunE: func(cmd *cobra.Command, args []string) error {

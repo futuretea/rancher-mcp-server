@@ -1,4 +1,21 @@
 # Rancher MCP Server Configuration Example
+#
+# Configuration Priority (highest to lowest):
+# 1. Command-line flags: --port=8080 --rancher-server-url=...
+# 2. Environment variables: RANCHER_MCP_PORT=8080 RANCHER_MCP_RANCHER_SERVER_URL=...
+# 3. Configuration file: config.yaml
+# 4. Default values
+#
+# Environment Variable Format:
+# - Prefix: RANCHER_MCP_
+# - Field name conversion: Replace hyphens and dots with underscores
+# - Examples:
+#   RANCHER_MCP_PORT=8080
+#   RANCHER_MCP_SSE_BASE_URL=https://example.com
+#   RANCHER_MCP_RANCHER_SERVER_URL=https://rancher.example.com
+#   RANCHER_MCP_RANCHER_TOKEN=your-token
+#   RANCHER_MCP_READ_ONLY=true
+#   RANCHER_MCP_TOOLSETS=config,core,rancher
 
 # Server configuration
 port: 0  # 0 means stdio mode for MCP client integration

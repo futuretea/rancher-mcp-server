@@ -2,52 +2,39 @@ package config
 
 import (
 	"fmt"
-	"os"
 	"strings"
 
-	"gopkg.in/yaml.v3"
+	"github.com/spf13/viper"
 )
 
 // StaticConfig represents the static configuration for the Rancher MCP Server
 type StaticConfig struct {
 	// Server configuration
-	Port int `yaml:"port"`
-	SSEBaseURL string `yaml:"sse_base_url"`
+	Port int `mapstructure:"port"`
+
+	SSEBaseURL string `mapstructure:"sse_base_url"`
 
 	// Logging configuration
-	LogLevel int `yaml:"log_level"`
+	LogLevel int `mapstructure:"log_level"`
 
 	// Rancher configuration
-	RancherServerURL string `yaml:"rancher_server_url"`
-	RancherToken     string `yaml:"rancher_token"`
-	RancherAccessKey string `yaml:"rancher_access_key"`
-	RancherSecretKey string `yaml:"rancher_secret_key"`
-	RancherTLSInsecure bool `yaml:"rancher_tls_insecure"`
+	RancherServerURL string `mapstructure:"rancher_server_url"`
+	RancherToken     string `mapstructure:"rancher_token"`
+	RancherAccessKey string `mapstructure:"rancher_access_key"`
+	RancherSecretKey string `mapstructure:"rancher_secret_key"`
+	RancherTLSInsecure bool `mapstructure:"rancher_tls_insecure"`
 
 	// Security configuration
-	ReadOnly           bool `yaml:"read_only"`
-	DisableDestructive bool `yaml:"disable_destructive"`
+	ReadOnly           bool `mapstructure:"read_only"`
+	DisableDestructive bool `mapstructure:"disable_destructive"`
 
 	// Output configuration
-	ListOutput string `yaml:"list_output"`
+	ListOutput string `mapstructure:"list_output"`
 
 	// Toolset configuration
-	Toolsets      []string `yaml:"toolsets"`
-	EnabledTools  []string `yaml:"enabled_tools"`
-	DisabledTools []string `yaml:"disabled_tools"`
-}
-
-// DefaultConfig returns the default configuration
-func DefaultConfig() *StaticConfig {
-	return &StaticConfig{
-		Port:               0, // 0 means stdio mode
-		LogLevel:           0,
-		ListOutput:         "table",
-		Toolsets:           []string{"config", "core", "rancher"},
-		ReadOnly:           false,
-		DisableDestructive: false,
-		RancherTLSInsecure:    false,
-	}
+	Toolsets      []string `mapstructure:"toolsets"`
+	EnabledTools  []string `mapstructure:"enabled_tools"`
+	DisabledTools []string `mapstructure:"disabled_tools"`
 }
 
 // Validate validates the configuration
@@ -94,26 +81,53 @@ func (c *StaticConfig) Validate() error {
 	return nil
 }
 
-// LoadConfig loads configuration from a YAML file
+// LoadConfig loads configuration from file and environment variables using Viper
+// Priority: command-line flags > environment variables > config file > defaults
 func LoadConfig(configPath string) (*StaticConfig, error) {
-	config := DefaultConfig()
+	// Use the global viper instance to access bound command-line flags
+	v := viper.GetViper()
 
+	// Set configuration file if provided
 	if configPath != "" {
-		data, err := os.ReadFile(configPath)
-		if err != nil {
-			return nil, fmt.Errorf("failed to read config file %s: %v", configPath, err)
-		}
-
-		if err := yaml.Unmarshal(data, config); err != nil {
-			return nil, fmt.Errorf("failed to parse config file %s: %v", configPath, err)
+		v.SetConfigFile(configPath)
+		v.SetConfigType("yaml")
+		if err := v.ReadInConfig(); err != nil {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
 	}
 
+	// Configure environment variable support
+	// Environment variables use RANCHER_MCP_ prefix and replace - with _
+	v.SetEnvPrefix("RANCHER_MCP")
+	v.AllowEmptyEnv(true)
+	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
+	v.AutomaticEnv()
+
+	// Unmarshal configuration into struct
+	config := &StaticConfig{}
+	if err := v.Unmarshal(config); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+	
+	// Apply defaults for empty values
+	applyDefaults(config)
+
+	// Validate configuration
 	if err := config.Validate(); err != nil {
 		return nil, err
 	}
 
 	return config, nil
+}
+
+// applyDefaults applies default values to empty configuration fields
+func applyDefaults(config *StaticConfig) {
+	if config.ListOutput == "" {
+		config.ListOutput = "table"
+	}
+	if len(config.Toolsets) == 0 {
+		config.Toolsets = []string{"config", "core", "rancher"}
+	}
 }
 
 // HasRancherConfig returns true if Rancher configuration is present

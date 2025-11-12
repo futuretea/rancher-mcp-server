@@ -6,6 +6,7 @@ import (
 	"io"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/config"
 	internalhttp "github.com/futuretea/rancher-mcp-server/pkg/http"
@@ -22,7 +23,7 @@ type IOStreams struct {
 
 // NewMCPServer creates a new cobra command for the Rancher MCP Server
 func NewMCPServer(streams IOStreams) *cobra.Command {
-	cfg := config.DefaultConfig()
+	var cfgFile string
 
 	cmd := &cobra.Command{
 		Use:   "rancher-mcp-server",
@@ -34,8 +35,15 @@ This server can run in stdio mode for integration with MCP clients or in HTTP mo
 for network access.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Bind flags to viper
+			if err := viper.BindPFlags(cmd.Flags()); err != nil {
+				return fmt.Errorf("failed to bind flags: %w", err)
+			}
+			return nil
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
-			return runServer(cfg, streams)
+			return runServer(cfgFile, streams)
 		},
 	}
 
@@ -43,21 +51,32 @@ for network access.`,
 	cmd.SetOut(streams.Out)
 	cmd.SetErr(streams.ErrOut)
 
-	// Add flags
-	cmd.Flags().IntVar(&cfg.Port, "port", cfg.Port, "Port to listen on for HTTP/SSE mode (0 for stdio mode)")
-	cmd.Flags().StringVar(&cfg.SSEBaseURL, "sse-base-url", cfg.SSEBaseURL, "SSE public base URL to use when sending the endpoint message (e.g. https://example.com)")
-	cmd.Flags().IntVar(&cfg.LogLevel, "log-level", cfg.LogLevel, "Log level (0-9)")
-	cmd.Flags().StringVar(&cfg.RancherServerURL, "rancher-server-url", cfg.RancherServerURL, "Rancher server URL")
-	cmd.Flags().StringVar(&cfg.RancherToken, "rancher-token", cfg.RancherToken, "Rancher bearer token")
-	cmd.Flags().StringVar(&cfg.RancherAccessKey, "rancher-access-key", cfg.RancherAccessKey, "Rancher access key")
-	cmd.Flags().StringVar(&cfg.RancherSecretKey, "rancher-secret-key", cfg.RancherSecretKey, "Rancher secret key")
-	cmd.Flags().BoolVar(&cfg.RancherTLSInsecure, "rancher-tls-insecure", cfg.RancherTLSInsecure, "Rancher server tls insecure")
-	cmd.Flags().BoolVar(&cfg.ReadOnly, "read-only", cfg.ReadOnly, "Run in read-only mode")
-	cmd.Flags().BoolVar(&cfg.DisableDestructive, "disable-destructive", cfg.DisableDestructive, "Disable destructive operations")
-	cmd.Flags().StringVar(&cfg.ListOutput, "list-output", cfg.ListOutput, "Output format for list operations (table, yaml)")
-	cmd.Flags().StringSliceVar(&cfg.Toolsets, "toolsets", cfg.Toolsets, "Comma-separated list of toolsets to enable")
-	cmd.Flags().StringSliceVar(&cfg.EnabledTools, "enabled-tools", cfg.EnabledTools, "Comma-separated list of tools to enable")
-	cmd.Flags().StringSliceVar(&cfg.DisabledTools, "disabled-tools", cfg.DisabledTools, "Comma-separated list of tools to disable")
+	// Add configuration file flag
+	cmd.PersistentFlags().StringVar(&cfgFile, "config", "", "config file path (supports YAML)")
+
+	// Server configuration flags
+	cmd.Flags().Int("port", 0, "Port to listen on for HTTP/SSE mode (0 for stdio mode)")
+	cmd.Flags().String("sse-base-url", "", "SSE public base URL to use when sending the endpoint message (e.g. https://example.com)")
+	cmd.Flags().Int("log-level", 0, "Log level (0-9)")
+
+	// Rancher configuration flags
+	cmd.Flags().String("rancher-server-url", "", "Rancher server URL")
+	cmd.Flags().String("rancher-token", "", "Rancher bearer token")
+	cmd.Flags().String("rancher-access-key", "", "Rancher access key")
+	cmd.Flags().String("rancher-secret-key", "", "Rancher secret key")
+	cmd.Flags().Bool("rancher-tls-insecure", false, "Rancher server tls insecure")
+
+	// Security configuration flags
+	cmd.Flags().Bool("read-only", false, "Run in read-only mode")
+	cmd.Flags().Bool("disable-destructive", false, "Disable destructive operations")
+
+	// Output configuration flags
+	cmd.Flags().String("list-output", "table", "Output format for list operations (table, yaml, json)")
+
+	// Toolset configuration flags
+	cmd.Flags().StringSlice("toolsets", []string{"config", "core", "rancher"}, "Comma-separated list of toolsets to enable")
+	cmd.Flags().StringSlice("enabled-tools", []string{}, "Comma-separated list of tools to enable")
+	cmd.Flags().StringSlice("disabled-tools", []string{}, "Comma-separated list of tools to disable")
 
 	// Add version command
 	cmd.AddCommand(newVersionCommand(streams))
@@ -66,10 +85,11 @@ for network access.`,
 }
 
 // runServer runs the MCP server with the given configuration
-func runServer(cfg *config.StaticConfig, streams IOStreams) error {
-	// Validate configuration
-	if err := cfg.Validate(); err != nil {
-		return fmt.Errorf("configuration validation failed: %v", err)
+func runServer(cfgFile string, streams IOStreams) error {
+	// Load configuration from file, environment variables, and command-line flags
+	cfg, err := config.LoadConfig(cfgFile)
+	if err != nil {
+		return fmt.Errorf("failed to load config: %w", err)
 	}
 
 	// Create MCP server configuration

@@ -39,7 +39,7 @@ clean: ## Clean up all build artifacts
 
 .PHONY: build
 build: tidy ## Build the project
-	go build $(COMMON_BUILD_ARGS) -o $(BINARY_NAME) ./cmd/rancher-mcp-server
+	CGO_ENABLED=0 go build $(COMMON_BUILD_ARGS) -o $(BINARY_NAME) ./cmd/rancher-mcp-server
 
 .PHONY: build-all-platforms
 build-all-platforms: tidy ## Build the project for all platforms

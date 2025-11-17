@@ -300,6 +300,7 @@ func (c *Client) getProjectClient(clusterID, projectID string) (*projectClient.C
 		AccessKey: c.management.Opts.AccessKey,
 		SecretKey: c.management.Opts.SecretKey,
 		TokenKey:  c.management.Opts.TokenKey,
+		Insecure:  c.management.Opts.Insecure,
 	}
 
 	projectClient, err := projectClient.NewClient(clientOpts)
@@ -323,6 +324,7 @@ func (c *Client) getClusterClient(clusterID string) (*clusterClient.Client, erro
 		AccessKey: c.management.Opts.AccessKey,
 		SecretKey: c.management.Opts.SecretKey,
 		TokenKey:  c.management.Opts.TokenKey,
+		Insecure:  c.management.Opts.Insecure,
 	}
 
 	clusterClient, err := clusterClient.NewClient(clientOpts)

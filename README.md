@@ -124,10 +124,13 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--rancher-token` | Bearer token for Rancher API authentication |
 | `--rancher-access-key` | Access key for Rancher API authentication |
 | `--rancher-secret-key` | Secret key for Rancher API authentication |
+| `--rancher-tls-insecure` | Skip TLS certificate verification for Rancher server (default: false) |
 | `--list-output` | Output format for resource list operations (one of: table, yaml, json) (default "table") |
 | `--read-only` | If set, the MCP server will run in read-only mode, meaning it will not allow any write operations on the Rancher cluster |
 | `--disable-destructive` | If set, the MCP server will disable all destructive operations on the Rancher cluster |
-| `--toolsets` | Comma-separated list of toolsets to enable. Check the [🛠️ Tools and Functionalities](#tools-and-functionalities) section for more information |
+| `--toolsets` | Comma-separated list of toolsets to enable. Default: [config,core,rancher,networking] |
+| `--enabled-tools` | Comma-separated list of tools to enable (overrides toolsets) |
+| `--disabled-tools` | Comma-separated list of tools to disable (overrides toolsets) |
 
 ### Configuration File
 
@@ -152,6 +155,7 @@ toolsets:
   - config
   - core
   - rancher
+  - networking  # Optional: enable network resource management
 ```
 
 ### HTTP/SSE Mode
@@ -202,16 +206,17 @@ The following sets of tools are available (all on by default):
 | Toolset | Description |
 |---------|-------------|
 | config | Tools for managing cluster configuration (kubeconfig) |
-| core | Core Kubernetes resource management tools (clusters, nodes, workloads, namespaces) |
-| rancher | Rancher-specific tools (projects, users, cluster health, access control) |
+| core | Core Kubernetes resource management tools (nodes, workloads, namespaces, configmaps, secrets, services) |
+| rancher | Rancher-specific tools (clusters, projects, users, cluster health, access control) |
+| networking | Network resource management tools (ingresses) |
 
 ### Tools
 
 <details>
 <summary>config</summary>
 
-- **kubeconfig_get** - Get kubeconfig file for a cluster
-  - `cluster_id` (`string`) **(required)** - ID of the cluster to get kubeconfig for
+- **configuration_view** - Generate and view Kubernetes configuration (kubeconfig) for a Rancher cluster
+  - `cluster` (`string`) - Cluster ID to generate kubeconfig for
 
 </details>
 
@@ -237,10 +242,31 @@ The following sets of tools are available (all on by default):
   - `project` (`string`) - Project ID to filter namespaces (optional)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
+- **configmap_list** - List all ConfigMaps in a cluster
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `project` (`string`) - Project ID to filter ConfigMaps (optional)
+  - `namespace` (`string`) - Namespace name to filter ConfigMaps (optional)
+  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+
+- **secret_list** - List all Secrets in a cluster (metadata only, does not expose secret data)
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `project` (`string`) - Project ID to filter secrets (optional)
+  - `namespace` (`string`) - Namespace name to filter secrets (optional)
+  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+
+- **service_list** - List all Services in a cluster
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `project` (`string`) - Project ID to filter services (optional)
+  - `namespace` (`string`) - Namespace name to filter services (optional)
+  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+
 </details>
 
 <details>
 <summary>rancher</summary>
+
+- **cluster_list** - List all available Kubernetes clusters
+  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
 - **project_list** - List Rancher projects across clusters
   - `cluster` (`string`) - Filter projects by cluster ID (optional)
@@ -256,6 +282,17 @@ The following sets of tools are available (all on by default):
 - **project_access** - List user access permissions for Rancher projects
   - `project` (`string`) - Project ID to check access (optional)
   - `cluster` (`string`) - Cluster ID (optional)
+  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+
+</details>
+
+<details>
+<summary>networking</summary>
+
+- **ingress_list** - List all ingresses in a cluster
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `project` (`string`) - Project ID to filter ingresses (optional)
+  - `namespace` (`string`) - Namespace name to filter ingresses (optional)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
 </details>

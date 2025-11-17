@@ -40,9 +40,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 					Properties: map[string]any{
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -51,6 +51,36 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 				ReadOnlyHint: boolPtr(true),
 			},
 			Handler: clusterListHandler,
+		},
+		{
+			Tool: mcp.Tool{
+				Name:        "project_get",
+				Description: "Get a single Rancher project by ID, more efficient than list",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"project"},
+					Properties: map[string]any{
+						"project": map[string]any{
+							"type":        "string",
+							"description": "Project ID to get",
+						},
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (required for verification)",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: projectGetHandler,
 		},
 		{
 			Tool: mcp.Tool{
@@ -66,9 +96,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 						},
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -80,6 +110,32 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 		},
 		{
 			Tool: mcp.Tool{
+				Name:        "user_get",
+				Description: "Get a single Rancher user by ID, more efficient than list",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"user"},
+					Properties: map[string]any{
+						"user": map[string]any{
+							"type":        "string",
+							"description": "User ID to get",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: userGetHandler,
+		},
+		{
+			Tool: mcp.Tool{
 				Name:        "user_list",
 				Description: "List all Rancher users",
 				InputSchema: mcp.ToolInputSchema{
@@ -87,9 +143,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 					Properties: map[string]any{
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -113,9 +169,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 						},
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -144,9 +200,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 						},
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -161,7 +217,7 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 
 // clusterListHandler handles the cluster_list tool
 func clusterListHandler(client interface{}, params map[string]interface{}) (string, error) {
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -214,6 +270,78 @@ func clusterListHandler(client interface{}, params map[string]interface{}) (stri
 	return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
 }
 
+// projectGetHandler handles the project_get tool for single project queries
+func projectGetHandler(client interface{}, params map[string]interface{}) (string, error) {
+	// Extract required parameters
+	projectID := ""
+	if projectParam, ok := params["project"].(string); ok {
+		projectID = projectParam
+	}
+	if projectID == "" {
+		return "", fmt.Errorf("project parameter is required")
+	}
+
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	format := "json"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// Get the project
+	project, err := rancherClient.GetProject(ctx, clusterID, projectID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get project: %v", err)
+	}
+
+	// Build the result
+	result := map[string]interface{}{
+		"id":          project.ID,
+		"name":        project.Name,
+		"cluster":     project.ClusterID,
+		"state":       project.State,
+		"created":     formatTime(project.Created),
+		"description": project.Description,
+	}
+
+	return formatProjectResult(result, format)
+}
+
+// formatProjectResult formats a single project result
+func formatProjectResult(result map[string]interface{}, format string) (string, error) {
+	switch format {
+	case "yaml":
+		return formatAsYAML(result), nil
+	case "json":
+		return formatAsJSON(result), nil
+	default:
+		data := []map[string]string{}
+		row := map[string]string{
+			"id":          getStringValue(result["id"]),
+			"name":        getStringValue(result["name"]),
+			"cluster":     getStringValue(result["cluster"]),
+			"state":       getStringValue(result["state"]),
+			"created":     getStringValue(result["created"]),
+			"description": getStringValue(result["description"]),
+		}
+		data = append(data, row)
+		return formatAsTable(data, []string{"id", "name", "cluster", "state", "created", "description"}), nil
+	}
+}
+
 // projectListHandler handles the project_list tool
 func projectListHandler(client interface{}, params map[string]interface{}) (string, error) {
 	clusterID := ""
@@ -221,7 +349,7 @@ func projectListHandler(client interface{}, params map[string]interface{}) (stri
 		clusterID = clusterParam
 	}
 
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -282,9 +410,70 @@ func projectListHandler(client interface{}, params map[string]interface{}) (stri
 	return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
 }
 
+// userGetHandler handles the user_get tool for single user queries
+func userGetHandler(client interface{}, params map[string]interface{}) (string, error) {
+	// Extract required parameters
+	userID := ""
+	if userParam, ok := params["user"].(string); ok {
+		userID = userParam
+	}
+	if userID == "" {
+		return "", fmt.Errorf("user parameter is required")
+	}
+
+	format := "json"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// Get the user
+	user, err := rancherClient.GetUser(ctx, userID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get user: %v", err)
+	}
+
+	// Build the result
+	result := map[string]interface{}{
+		"id":        user.ID,
+		"name":      user.Name,
+		"created":   formatTime(user.Created),
+		"username":  user.Username,
+		"principal": user.PrincipalIDs,
+	}
+
+	return formatUserResult(result, format)
+}
+
+// formatUserResult formats a single user result
+func formatUserResult(result map[string]interface{}, format string) (string, error) {
+	switch format {
+	case "yaml":
+		return formatAsYAML(result), nil
+	case "json":
+		return formatAsJSON(result), nil
+	default:
+		data := []map[string]string{}
+		row := map[string]string{
+			"id":       getStringValue(result["id"]),
+			"name":     getStringValue(result["name"]),
+			"username": getStringValue(result["username"]),
+			"created":  getStringValue(result["created"]),
+		}
+		data = append(data, row)
+		return formatAsTable(data, []string{"id", "name", "username", "created"}), nil
+	}
+}
+
 // userListHandler handles the user_list tool
 func userListHandler(client interface{}, params map[string]interface{}) (string, error) {
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -335,7 +524,7 @@ func clusterHealthHandler(client interface{}, params map[string]interface{}) (st
 		clusterID = clusterParam
 	}
 
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -416,7 +605,7 @@ func projectAccessHandler(client interface{}, params map[string]interface{}) (st
 		clusterID = clusterParam
 	}
 
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -533,6 +722,17 @@ func formatAsJSON(data interface{}) string {
 
 func boolPtr(b bool) *bool {
 	return &b
+}
+
+// getStringValue extracts a string value from an interface{} safely
+func getStringValue(v interface{}) string {
+	if str, ok := v.(string); ok {
+		return str
+	}
+	if v == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 // formatTime formats time for display

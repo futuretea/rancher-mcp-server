@@ -397,6 +397,28 @@ func (c *Client) ListServices(ctx context.Context, clusterID, projectID string) 
 	return serviceList.Data, nil
 }
 
+// GetIngress gets a single ingress for a cluster, project, and namespace by name
+func (c *Client) GetIngress(ctx context.Context, clusterID, projectID, namespace, name string) (*projectClient.Ingress, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	// Get or create project client
+	projectClient, err := c.getProjectClient(clusterID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project client for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	// Get the ingress by ID
+	ingressID := fmt.Sprintf("%s:%s", namespace, name)
+	ingress, err := projectClient.Ingress.ByID(ingressID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get ingress %s in namespace %s for cluster %s, project %s: %w", name, namespace, clusterID, projectID, err)
+	}
+
+	return ingress, nil
+}
+
 // ListIngresses returns all ingresses for a cluster and project
 func (c *Client) ListIngresses(ctx context.Context, clusterID, projectID string) ([]projectClient.Ingress, error) {
 	if !c.configured {
@@ -415,4 +437,132 @@ func (c *Client) ListIngresses(ctx context.Context, clusterID, projectID string)
 	}
 
 	return ingressList.Data, nil
+}
+
+// GetNode gets a single node for a cluster by ID
+func (c *Client) GetNode(ctx context.Context, clusterID, nodeID string) (*managementClient.Node, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	node, err := c.management.Node.ByID(nodeID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get node %s: %w", nodeID, err)
+	}
+
+	// Verify the node belongs to the specified cluster
+	if node.ClusterID != clusterID {
+		return nil, fmt.Errorf("node %s does not belong to cluster %s", nodeID, clusterID)
+	}
+
+	return node, nil
+}
+
+// GetWorkload gets a single workload for a cluster and project by name and namespace
+func (c *Client) GetWorkload(ctx context.Context, clusterID, projectID, namespace, name string) (*projectClient.Workload, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	// Get or create project client
+	projectClient, err := c.getProjectClient(clusterID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project client for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	// Construct workload ID: namespace:name
+	workloadID := fmt.Sprintf("%s:%s", namespace, name)
+	workload, err := projectClient.Workload.ByID(workloadID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get workload %s in namespace %s for cluster %s, project %s: %w", name, namespace, clusterID, projectID, err)
+	}
+
+	return workload, nil
+}
+
+// GetNamespace gets a single namespace for a cluster by name
+func (c *Client) GetNamespace(ctx context.Context, clusterID, name string) (*clusterClient.Namespace, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	// Get or create cluster client
+	clusterClient, err := c.getClusterClient(clusterID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get cluster client for cluster %s: %w", clusterID, err)
+	}
+
+	// Construct namespace ID: name
+	// For namespaces, the ID is just the name
+	namespace, err := clusterClient.Namespace.ByID(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get namespace %s for cluster %s: %w", name, clusterID, err)
+	}
+
+	return namespace, nil
+}
+
+// GetConfigMap gets a single configmap for a cluster and project by name and namespace
+func (c *Client) GetConfigMap(ctx context.Context, clusterID, projectID, namespace, name string) (*projectClient.ConfigMap, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	// Get or create project client
+	projectClient, err := c.getProjectClient(clusterID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project client for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	// Construct configmap ID: namespace:name
+	configMapID := fmt.Sprintf("%s:%s", namespace, name)
+	configMap, err := projectClient.ConfigMap.ByID(configMapID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get configmap %s in namespace %s for cluster %s, project %s: %w", name, namespace, clusterID, projectID, err)
+	}
+
+	return configMap, nil
+}
+
+// GetSecret gets a single namespaced secret for a cluster and project by name and namespace
+func (c *Client) GetSecret(ctx context.Context, clusterID, projectID, namespace, name string) (*projectClient.NamespacedSecret, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	// Get or create project client
+	projectClient, err := c.getProjectClient(clusterID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project client for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	// Construct secret ID: namespace:name
+	secretID := fmt.Sprintf("%s:%s", namespace, name)
+	secret, err := projectClient.NamespacedSecret.ByID(secretID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get secret %s in namespace %s for cluster %s, project %s: %w", name, namespace, clusterID, projectID, err)
+	}
+
+	return secret, nil
+}
+
+// GetService gets a single service for a cluster, project, and namespace by name
+func (c *Client) GetService(ctx context.Context, clusterID, projectID, namespace, name string) (*projectClient.Service, error) {
+	if !c.configured {
+		return nil, fmt.Errorf("Rancher client not configured")
+	}
+
+	projectClient, err := c.getProjectClient(clusterID, projectID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get project client for cluster %s, project %s: %w", clusterID, projectID, err)
+	}
+
+	// Construct service ID: namespace:name
+	serviceID := fmt.Sprintf("%s:%s", namespace, name)
+	service, err := projectClient.Service.ByID(serviceID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get service %s in namespace %s for cluster %s, project %s: %w", name, namespace, clusterID, projectID, err)
+	}
+
+	return service, nil
 }

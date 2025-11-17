@@ -99,7 +99,7 @@ for network access.`,
 	cmd.Flags().Bool("disable-destructive", false, "Disable destructive operations")
 
 	// Output configuration flags
-	cmd.Flags().String("list-output", "table", "Output format for list operations (table, yaml, json)")
+	cmd.Flags().String("list-output", "json", "Output format for list operations (json, table, yaml)")
 
 	// Toolset configuration flags
 	cmd.Flags().StringSlice("toolsets", []string{"config", "core", "rancher", "networking"}, "Comma-separated list of toolsets to enable")

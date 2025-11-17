@@ -9,6 +9,7 @@ import (
 	"golang.org/x/text/language"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/api"
+	"github.com/futuretea/rancher-mcp-server/pkg/logging"
 	"github.com/futuretea/rancher-mcp-server/pkg/output"
 	"github.com/futuretea/rancher-mcp-server/pkg/rancher"
 	"github.com/mark3labs/mcp-go/mcp"
@@ -34,6 +35,36 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 	return []api.ServerTool{
 		{
 			Tool: mcp.Tool{
+				Name:        "node_get",
+				Description: "Get a single node by ID, more efficient than list",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "node"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID",
+						},
+						"node": map[string]any{
+							"type":        "string",
+							"description": "Node ID to get",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: nodeGetHandler,
+		},
+		{
+			Tool: mcp.Tool{
 				Name:        "node_list",
 				Description: "List nodes in specified cluster or all clusters",
 				InputSchema: mcp.ToolInputSchema{
@@ -45,9 +76,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 						},
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -56,6 +87,45 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 				ReadOnlyHint: boolPtr(true),
 			},
 			Handler: nodeListHandler,
+		},
+		{
+			Tool: mcp.Tool{
+				Name:        "workload_get",
+				Description: "Get a single workload by name and namespace, more efficient than list",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "namespace", "name"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID",
+						},
+						"project": map[string]any{
+							"type":        "string",
+							"description": "Project ID (optional, will auto-detect if not provided)",
+							"default":     "",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Workload name to get",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: workloadGetHandler,
 		},
 		{
 			Tool: mcp.Tool{
@@ -86,9 +156,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 						},
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -97,6 +167,36 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 				ReadOnlyHint: boolPtr(true),
 			},
 			Handler: workloadListHandler,
+		},
+		{
+			Tool: mcp.Tool{
+				Name:        "namespace_get",
+				Description: "Get a single namespace by name, more efficient than list",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "name"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Namespace name to get",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: namespaceGetHandler,
 		},
 		{
 			Tool: mcp.Tool{
@@ -117,9 +217,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 						},
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -153,9 +253,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 						},
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -189,9 +289,9 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 						},
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -203,8 +303,52 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 		},
 		{
 			Tool: mcp.Tool{
+				Name:        "service_get",
+				Description: "Get a single service by name with optional pod diagnostic check (Service → Pods), more efficient than list",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "namespace", "name"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Service name to get",
+						},
+						"project": map[string]any{
+							"type":        "string",
+							"description": "Project ID (optional, will auto-detect if not provided)",
+							"default":     "",
+						},
+						"getPodDetails": map[string]any{
+							"type":        "boolean",
+							"description": "Get detailed pod information and perform health checks",
+							"default":     false,
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: boolPtr(true),
+			},
+			Handler: serviceGetHandler,
+		},
+		{
+			Tool: mcp.Tool{
 				Name:        "service_list",
-				Description: "List all services in a cluster",
+				Description: "List services with optional pod diagnostic check (Service → Pods)",
 				InputSchema: mcp.ToolInputSchema{
 					Type:     "object",
 					Required: []string{"cluster"},
@@ -223,11 +367,16 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 							"description": "Namespace name to filter services (optional)",
 							"default":     "",
 						},
+						"getPodDetails": map[string]any{
+							"type":        "boolean",
+							"description": "Get pod information and perform health checks for services",
+							"default":     false,
+						},
 						"format": map[string]any{
 							"type":        "string",
-							"description": "Output format: table, yaml, or json",
-							"enum":        []string{"table", "yaml", "json"},
-							"default":     "table",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "json",
 						},
 					},
 				},
@@ -240,6 +389,91 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 	}
 }
 
+// nodeGetHandler handles the node_get tool for single node queries
+func nodeGetHandler(client interface{}, params map[string]interface{}) (string, error) {
+	// Extract required parameters
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	nodeID := ""
+	if nodeParam, ok := params["node"].(string); ok {
+		nodeID = nodeParam
+	}
+	if nodeID == "" {
+		return "", fmt.Errorf("node parameter is required")
+	}
+
+	format := "json"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// Get the node
+	node, err := rancherClient.GetNode(ctx, clusterID, nodeID)
+	if err != nil {
+		return "", fmt.Errorf("failed to get node: %v", err)
+	}
+
+	// Build the result
+	result := map[string]interface{}{
+		"id":                node.ID,
+		"name":              node.Name,
+		"state":             node.State,
+		"created":           formatTime(node.Created),
+		"hostname":          node.Hostname,
+		"externalIpAddress": node.ExternalIPAddress,
+	}
+
+	// Add kubelet version if available
+	if node.Info != nil && node.Info.Kubernetes != nil {
+		result["kubeletVersion"] = node.Info.Kubernetes.KubeletVersion
+	}
+
+	// Add resource information if available
+	if node.Allocatable != nil {
+		result["allocatable"] = node.Allocatable
+	}
+	if node.Capacity != nil {
+		result["capacity"] = node.Capacity
+	}
+
+	return formatNodeResult(result, format)
+}
+
+// formatNodeResult formats a single node result
+func formatNodeResult(result map[string]interface{}, format string) (string, error) {
+	switch format {
+	case "yaml":
+		return formatAsYAML(result), nil
+	case "json":
+		return formatAsJSON(result), nil
+	default:
+		data := []map[string]string{}
+		row := map[string]string{
+			"id":       getStringValue(result["id"]),
+			"name":     getStringValue(result["name"]),
+			"state":    getStringValue(result["state"]),
+			"hostname": getStringValue(result["hostname"]),
+			"version":  getStringValue(result["kubeletVersion"]),
+			"created":  getStringValue(result["created"]),
+		}
+		data = append(data, row)
+		return formatAsTable(data, []string{"id", "name", "state", "hostname", "version", "created"}), nil
+	}
+}
+
 // nodeListHandler handles the node_list tool
 func nodeListHandler(client interface{}, params map[string]interface{}) (string, error) {
 	clusterID := ""
@@ -247,7 +481,7 @@ func nodeListHandler(client interface{}, params map[string]interface{}) (string,
 		clusterID = clusterParam
 	}
 
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -326,6 +560,107 @@ func nodeListHandler(client interface{}, params map[string]interface{}) (string,
 	return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
 }
 
+// workloadGetHandler handles the workload_get tool for single workload queries
+func workloadGetHandler(client interface{}, params map[string]interface{}) (string, error) {
+	// Extract required parameters
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	namespace := ""
+	if namespaceParam, ok := params["namespace"].(string); ok {
+		namespace = namespaceParam
+	}
+	if namespace == "" {
+		return "", fmt.Errorf("namespace parameter is required")
+	}
+
+	name := ""
+	if nameParam, ok := params["name"].(string); ok {
+		name = nameParam
+	}
+	if name == "" {
+		return "", fmt.Errorf("name parameter is required")
+	}
+
+	// Extract optional parameters
+	projectID := ""
+	if projectParam, ok := params["project"].(string); ok {
+		projectID = projectParam
+	}
+
+	format := "json"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// If project ID is not provided, auto-detect it
+	if projectID == "" {
+		// Use optimized label-based auto-detection
+		autoDetectedProjectID, err := rancherClient.AutoDetectProjectID(ctx, clusterID, namespace)
+		if err != nil {
+			return "", fmt.Errorf("failed to auto-detect project for namespace %s: %v", namespace, err)
+		}
+		projectID = autoDetectedProjectID
+	}
+
+	// Get the workload
+	workload, err := rancherClient.GetWorkload(ctx, clusterID, projectID, namespace, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to get workload: %v", err)
+	}
+
+	// Build the result
+	result := map[string]interface{}{
+		"id":        workload.ID,
+		"name":      workload.Name,
+		"namespace": workload.NamespaceId,
+		"type":      workload.Type,
+		"state":     workload.State,
+		"created":   formatTime(workload.Created),
+	}
+
+	// Add scale information if available
+	if workload.Scale != nil {
+		result["scale"] = workload.Scale
+	}
+
+	return formatWorkloadResult(result, format)
+}
+
+// formatWorkloadResult formats a single workload result
+func formatWorkloadResult(result map[string]interface{}, format string) (string, error) {
+	switch format {
+	case "yaml":
+		return formatAsYAML(result), nil
+	case "json":
+		return formatAsJSON(result), nil
+	default:
+		data := []map[string]string{}
+		row := map[string]string{
+			"id":        getStringValue(result["id"]),
+			"name":      getStringValue(result["name"]),
+			"namespace": getStringValue(result["namespace"]),
+			"type":      getStringValue(result["type"]),
+			"state":     getStringValue(result["state"]),
+			"created":   getStringValue(result["created"]),
+		}
+		data = append(data, row)
+		return formatAsTable(data, []string{"id", "name", "namespace", "type", "state", "created"}), nil
+	}
+}
+
 // workloadListHandler handles the workload_list tool - shows workloads and orphan pods like Rancher CLI
 func workloadListHandler(client interface{}, params map[string]interface{}) (string, error) {
 	clusterID := ""
@@ -352,7 +687,7 @@ func workloadListHandler(client interface{}, params map[string]interface{}) (str
 		nodeName = nodeParam
 	}
 
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -597,6 +932,82 @@ func workloadListHandler(client interface{}, params map[string]interface{}) (str
 	}
 }
 
+// namespaceGetHandler handles the namespace_get tool for single namespace queries
+func namespaceGetHandler(client interface{}, params map[string]interface{}) (string, error) {
+	// Extract required parameters
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	name := ""
+	if nameParam, ok := params["name"].(string); ok {
+		name = nameParam
+	}
+	if name == "" {
+		return "", fmt.Errorf("name parameter is required")
+	}
+
+	format := "json"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// Get the namespace
+	namespace, err := rancherClient.GetNamespace(ctx, clusterID, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to get namespace: %v", err)
+	}
+
+	// Build the result
+	result := map[string]interface{}{
+		"id":             namespace.ID,
+		"name":           namespace.Name,
+		"state":          namespace.State,
+		"created":        formatTime(namespace.Created),
+		"resourceQuota":  namespace.ResourceQuota,
+		"containerLimit": namespace.ContainerDefaultResourceLimit,
+	}
+
+	// Add project ID if available
+	if namespace.ProjectID != "" {
+		result["projectId"] = namespace.ProjectID
+	}
+
+	return formatNamespaceResult(result, format)
+}
+
+// formatNamespaceResult formats a single namespace result
+func formatNamespaceResult(result map[string]interface{}, format string) (string, error) {
+	switch format {
+	case "yaml":
+		return formatAsYAML(result), nil
+	case "json":
+		return formatAsJSON(result), nil
+	default:
+		data := []map[string]string{}
+		row := map[string]string{
+			"id":        getStringValue(result["id"]),
+			"name":      getStringValue(result["name"]),
+			"state":     getStringValue(result["state"]),
+			"projectId": getStringValue(result["projectId"]),
+			"created":   getStringValue(result["created"]),
+		}
+		data = append(data, row)
+		return formatAsTable(data, []string{"id", "name", "state", "projectId", "created"}), nil
+	}
+}
+
 // namespaceListHandler handles the namespace_list tool
 func namespaceListHandler(client interface{}, params map[string]interface{}) (string, error) {
 	clusterID := ""
@@ -613,7 +1024,7 @@ func namespaceListHandler(client interface{}, params map[string]interface{}) (st
 		projectID = projectParam
 	}
 
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -704,6 +1115,103 @@ func formatTime(timestamp string) string {
 	return timestamp
 }
 
+// configMapGetHandler handles the configmap_get tool for single configmap queries
+func configMapGetHandler(client interface{}, params map[string]interface{}) (string, error) {
+	// Extract required parameters
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	namespace := ""
+	if namespaceParam, ok := params["namespace"].(string); ok {
+		namespace = namespaceParam
+	}
+	if namespace == "" {
+		return "", fmt.Errorf("namespace parameter is required")
+	}
+
+	name := ""
+	if nameParam, ok := params["name"].(string); ok {
+		name = nameParam
+	}
+	if name == "" {
+		return "", fmt.Errorf("name parameter is required")
+	}
+
+	// Extract optional parameters
+	projectID := ""
+	if projectParam, ok := params["project"].(string); ok {
+		projectID = projectParam
+	}
+
+	format := "json"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// If project ID is not provided, auto-detect it
+	if projectID == "" {
+		// Use optimized label-based auto-detection
+		autoDetectedProjectID, err := rancherClient.AutoDetectProjectID(ctx, clusterID, namespace)
+		if err != nil {
+			return "", fmt.Errorf("failed to auto-detect project for namespace %s: %v", namespace, err)
+		}
+		projectID = autoDetectedProjectID
+	}
+
+	// Get the configmap
+	configMap, err := rancherClient.GetConfigMap(ctx, clusterID, projectID, namespace, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to get configmap: %v", err)
+	}
+
+	// Build the result
+	result := map[string]interface{}{
+		"id":        configMap.ID,
+		"name":      configMap.Name,
+		"namespace": configMap.NamespaceId,
+		"created":   formatTime(configMap.Created),
+	}
+
+	// Add data if available (for ConfigMaps, we include the data for inspection)
+	if configMap.Data != nil {
+		result["data"] = configMap.Data
+	}
+
+	return formatConfigMapResult(result, format)
+}
+
+// formatConfigMapResult formats a single configmap result
+func formatConfigMapResult(result map[string]interface{}, format string) (string, error) {
+	switch format {
+	case "yaml":
+		return formatAsYAML(result), nil
+	case "json":
+		return formatAsJSON(result), nil
+	default:
+		data := []map[string]string{}
+		row := map[string]string{
+			"id":        getStringValue(result["id"]),
+			"name":      getStringValue(result["name"]),
+			"namespace": getStringValue(result["namespace"]),
+			"created":   getStringValue(result["created"]),
+		}
+		data = append(data, row)
+		return formatAsTable(data, []string{"id", "name", "namespace", "created"}), nil
+	}
+}
+
 // configMapListHandler handles the configmap_list tool
 func configMapListHandler(client interface{}, params map[string]interface{}) (string, error) {
 	clusterID := ""
@@ -725,7 +1233,7 @@ func configMapListHandler(client interface{}, params map[string]interface{}) (st
 		namespaceName = namespaceParam
 	}
 
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -825,6 +1333,102 @@ func configMapListHandler(client interface{}, params map[string]interface{}) (st
 	}
 }
 
+// secretGetHandler handles the secret_get tool for single secret queries
+// Note: This handler ONLY returns metadata (id, name, namespace, type, created)
+// and does NOT expose sensitive secret data (Data or StringData fields)
+func secretGetHandler(client interface{}, params map[string]interface{}) (string, error) {
+	// Extract required parameters
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	namespace := ""
+	if namespaceParam, ok := params["namespace"].(string); ok {
+		namespace = namespaceParam
+	}
+	if namespace == "" {
+		return "", fmt.Errorf("namespace parameter is required")
+	}
+
+	name := ""
+	if nameParam, ok := params["name"].(string); ok {
+		name = nameParam
+	}
+	if name == "" {
+		return "", fmt.Errorf("name parameter is required")
+	}
+
+	// Extract optional parameters
+	projectID := ""
+	if projectParam, ok := params["project"].(string); ok {
+		projectID = projectParam
+	}
+
+	format := "json"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// If project ID is not provided, auto-detect it
+	if projectID == "" {
+		// Use optimized label-based auto-detection
+		autoDetectedProjectID, err := rancherClient.AutoDetectProjectID(ctx, clusterID, namespace)
+		if err != nil {
+			return "", fmt.Errorf("failed to auto-detect project for namespace %s: %v", namespace, err)
+		}
+		projectID = autoDetectedProjectID
+	}
+
+	// Get the secret
+	secret, err := rancherClient.GetSecret(ctx, clusterID, projectID, namespace, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to get secret: %v", err)
+	}
+
+	// Build the result - ONLY metadata, no sensitive data
+	result := map[string]interface{}{
+		"id":        secret.ID,
+		"name":      secret.Name,
+		"namespace": secret.NamespaceId,
+		"type":      secret.Type,
+		"created":   formatTime(secret.Created),
+	}
+
+	return formatSecretResult(result, format)
+}
+
+// formatSecretResult formats a single secret result
+func formatSecretResult(result map[string]interface{}, format string) (string, error) {
+	switch format {
+	case "yaml":
+		return formatAsYAML(result), nil
+	case "json":
+		return formatAsJSON(result), nil
+	default:
+		data := []map[string]string{}
+		row := map[string]string{
+			"id":        getStringValue(result["id"]),
+			"name":      getStringValue(result["name"]),
+			"namespace": getStringValue(result["namespace"]),
+			"type":      getStringValue(result["type"]),
+			"created":   getStringValue(result["created"]),
+		}
+		data = append(data, row)
+		return formatAsTable(data, []string{"id", "name", "namespace", "type", "created"}), nil
+	}
+}
+
 // secretListHandler handles the secret_list tool
 // Note: This handler ONLY returns metadata (id, name, namespace, type, created)
 // and does NOT expose sensitive secret data (Data or StringData fields)
@@ -848,7 +1452,7 @@ func secretListHandler(client interface{}, params map[string]interface{}) (strin
 		namespaceName = namespaceParam
 	}
 
-	format := "table"
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -942,7 +1546,164 @@ func secretListHandler(client interface{}, params map[string]interface{}) (strin
 	}
 }
 
-// serviceListHandler handles the service_list tool
+// serviceGetHandler handles the service_get tool for single service queries
+func serviceGetHandler(client interface{}, params map[string]interface{}) (string, error) {
+	// Extract required parameters
+	clusterID := ""
+	if clusterParam, ok := params["cluster"].(string); ok {
+		clusterID = clusterParam
+	}
+	if clusterID == "" {
+		return "", fmt.Errorf("cluster parameter is required")
+	}
+
+	namespace := ""
+	if namespaceParam, ok := params["namespace"].(string); ok {
+		namespace = namespaceParam
+	}
+	if namespace == "" {
+		return "", fmt.Errorf("namespace parameter is required")
+	}
+
+	name := ""
+	if nameParam, ok := params["name"].(string); ok {
+		name = nameParam
+	}
+	if name == "" {
+		return "", fmt.Errorf("name parameter is required")
+	}
+
+	// Extract optional parameters
+	projectID := ""
+	if projectParam, ok := params["project"].(string); ok {
+		projectID = projectParam
+	}
+
+	getPodDetails := false
+	if detailsParam, ok := params["getPodDetails"].(bool); ok {
+		getPodDetails = detailsParam
+	}
+
+	format := "json"
+	if formatParam, ok := params["format"].(string); ok {
+		format = formatParam
+	}
+
+	rancherClient, ok := client.(*rancher.Client)
+	if !ok || rancherClient == nil || !rancherClient.IsConfigured() {
+		return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
+	}
+
+	ctx := context.Background()
+
+	// If project ID is not provided, auto-detect it
+	if projectID == "" {
+		// Use optimized label-based auto-detection
+		autoDetectedProjectID, err := rancherClient.AutoDetectProjectID(ctx, clusterID, namespace)
+		if err != nil {
+			return "", fmt.Errorf("failed to auto-detect project for namespace %s: %v", namespace, err)
+		}
+		projectID = autoDetectedProjectID
+	}
+
+	// Get the service
+	service, err := rancherClient.GetService(ctx, clusterID, projectID, namespace, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to get service: %v", err)
+	}
+
+	// Build the result
+	result := map[string]interface{}{
+		"id":              service.ID,
+		"name":            service.Name,
+		"namespace":       service.NamespaceId,
+		"state":           service.State,
+		"created":         formatTime(service.Created),
+		"type":            service.Type,
+		"clusterIp":       service.ClusterIp,
+		"sessionAffinity": service.SessionAffinity,
+	}
+
+	if service.Selector != nil {
+		result["selector"] = service.Selector
+	}
+
+	if len(service.PublicEndpoints) > 0 {
+		endpoints := []map[string]interface{}{}
+		for _, ep := range service.PublicEndpoints {
+			endpointInfo := map[string]interface{}{
+				"addresses": ep.Addresses,
+				"port":      ep.Port,
+				"protocol":  ep.Protocol,
+			}
+			endpoints = append(endpoints, endpointInfo)
+		}
+		result["endpoints"] = endpoints
+	}
+
+	// Perform diagnostic if requested
+	if getPodDetails {
+		// Fetch pods for this project namespace
+		podList, err := rancherClient.ListPods(ctx, clusterID, projectID)
+		if err != nil {
+			logging.Warn("Failed to list pods: %v", err)
+		}
+
+		status := diagnoseService(ctx, rancherClient, clusterID, projectID, *service, podList)
+		result["status"] = status
+	}
+
+	return formatSingleServiceResult(result, format)
+}
+
+// formatSingleServiceResult formats a single service result
+func formatSingleServiceResult(result map[string]interface{}, format string) (string, error) {
+	switch format {
+	case "yaml":
+		return formatAsYAML(result), nil
+	case "json":
+		return formatAsJSON(result), nil
+	default:
+		// For table format (though not recommended for single objects), we still support it
+		data := []map[string]string{}
+		row := map[string]string{
+			"id":          getStringValue(result["id"]),
+			"name":        getStringValue(result["name"]),
+			"namespace":   getStringValue(result["namespace"]),
+			"type":        getStringValue(result["type"]),
+			"clusterIp":   getStringValue(result["clusterIp"]),
+			"created":     getStringValue(result["created"]),
+		}
+
+		if status, exists := result["status"]; exists {
+			if diagStatus, ok := status.(ServiceDiagnosticStatus); ok {
+				if diagStatus.Ready {
+					row["ready"] = "Yes"
+				} else {
+					row["ready"] = "No"
+				}
+
+				if diagStatus.Degraded {
+					row["degraded"] = "Yes"
+				} else {
+					row["degraded"] = "No"
+				}
+			}
+		} else {
+			row["ready"] = "-"
+			row["degraded"] = "-"
+		}
+
+		data = append(data, row)
+		return formatAsTable(data, []string{"id", "name", "namespace", "type", "clusterIp", "ready", "degraded", "created"}), nil
+	}
+}
+
+// serviceListHandler handles the service_list tool with diagnostic capabilities
+// It lists services across projects and optionally performs a full diagnostic chain
+// check: Service → Pods
+// The diagnostic chain is performed when getPodDetails=true using optimized API calls
+// that fetch all pods once per project rather than for each service
 func serviceListHandler(client interface{}, params map[string]interface{}) (string, error) {
 	clusterID := ""
 	if clusterParam, ok := params["cluster"].(string); ok {
@@ -963,7 +1724,12 @@ func serviceListHandler(client interface{}, params map[string]interface{}) (stri
 		namespaceName = namespaceParam
 	}
 
-	format := "table"
+	getPodDetails := false
+	if detailsParam, ok := params["getPodDetails"].(bool); ok {
+		getPodDetails = detailsParam
+	}
+
+	format := "json"
 	if formatParam, ok := params["format"].(string); ok {
 		format = formatParam
 	}
@@ -975,51 +1741,30 @@ func serviceListHandler(client interface{}, params map[string]interface{}) (stri
 
 	ctx := context.Background()
 
-	// Collect services from all projects or specific project
-	resultMaps := make([]map[string]string, 0)
+	// Pre-fetch pods for optimization when diagnostics are requested
+	var podList []rancher.Pod
+	var err error
+
+	if getPodDetails {
+		if projectID != "" {
+			// For single project, fetch once
+			podList, err = rancherClient.ListPods(ctx, clusterID, projectID)
+			if err != nil {
+				logging.Warn("Failed to list pods: %v", err)
+			}
+		}
+	}
+
+	// Collect services with diagnostic information
+	serviceResults := []interface{}{}
 
 	if projectID != "" {
 		// Get services for the specified project
-		services, err := rancherClient.ListServices(ctx, clusterID, projectID)
+		results, err := getServicesWithDiagnostic(ctx, rancherClient, clusterID, projectID, namespaceName, getPodDetails, podList)
 		if err != nil {
-			return "", fmt.Errorf("failed to list services for cluster %s, project %s: %v", clusterID, projectID, err)
+			return "", fmt.Errorf("failed to list services: %v", err)
 		}
-
-		for _, svc := range services {
-			// Apply namespace filter
-			if namespaceName != "" && svc.NamespaceId != namespaceName {
-				continue
-			}
-
-			svcType := svc.Kind
-			if svcType == "" {
-				svcType = "ClusterIP"
-			}
-
-			clusterIP := svc.ClusterIp
-			if clusterIP == "" {
-				clusterIP = "-"
-			}
-
-			ports := "-"
-			if len(svc.PublicEndpoints) > 0 {
-				portStrs := make([]string, 0, len(svc.PublicEndpoints))
-				for _, ep := range svc.PublicEndpoints {
-					portStrs = append(portStrs, fmt.Sprintf("%d", ep.Port))
-				}
-				ports = strings.Join(portStrs, ",")
-			}
-
-			resultMaps = append(resultMaps, map[string]string{
-				"id":         svc.ID,
-				"name":       svc.Name,
-				"namespace":  svc.NamespaceId,
-				"type":       svcType,
-				"cluster_ip": clusterIP,
-				"ports":      ports,
-				"created":    formatTime(svc.Created),
-			})
-		}
+		serviceResults = results
 	} else {
 		// Get all projects for the cluster
 		projects, err := rancherClient.ListProjects(ctx, clusterID)
@@ -1029,62 +1774,158 @@ func serviceListHandler(client interface{}, params map[string]interface{}) (stri
 
 		// Collect services from each project
 		for _, project := range projects {
-			services, err := rancherClient.ListServices(ctx, clusterID, project.ID)
+			// Fetch pods for this specific project when diagnostics enabled
+			if getPodDetails {
+				podList, err = rancherClient.ListPods(ctx, clusterID, project.ID)
+				if err != nil {
+					logging.Warn("Failed to list pods for project %s: %v", project.ID, err)
+				}
+			}
+
+			results, err := getServicesWithDiagnostic(ctx, rancherClient, clusterID, project.ID, namespaceName, getPodDetails, podList)
 			if err != nil {
 				// Skip projects that fail
 				continue
 			}
-
-			for _, svc := range services {
-				// Apply namespace filter
-				if namespaceName != "" && svc.NamespaceId != namespaceName {
-					continue
-				}
-
-				svcType := svc.Kind
-				if svcType == "" {
-					svcType = "ClusterIP"
-				}
-
-				clusterIP := svc.ClusterIp
-				if clusterIP == "" {
-					clusterIP = "-"
-				}
-
-				ports := "-"
-				if len(svc.PublicEndpoints) > 0 {
-					portStrs := make([]string, 0, len(svc.PublicEndpoints))
-					for _, ep := range svc.PublicEndpoints {
-						portStrs = append(portStrs, fmt.Sprintf("%d", ep.Port))
-					}
-					ports = strings.Join(portStrs, ",")
-				}
-
-				resultMaps = append(resultMaps, map[string]string{
-					"id":         svc.ID,
-					"name":       svc.Name,
-					"namespace":  svc.NamespaceId,
-					"type":       svcType,
-					"cluster_ip": clusterIP,
-					"ports":      ports,
-					"created":    formatTime(svc.Created),
-				})
-			}
+			serviceResults = append(serviceResults, results...)
 		}
 	}
 
-	if len(resultMaps) == 0 {
+	if len(serviceResults) == 0 {
+		return "No services found", nil
+	}
+
+	return formatServiceResults(serviceResults, format)
+}
+
+// getServicesWithDiagnostic lists services with diagnostic information
+// When getPodDetails is true, it performs diagnostic checks using the provided podList
+// to avoid redundant API calls for each service
+func getServicesWithDiagnostic(ctx context.Context,
+	rancherClient *rancher.Client,
+	clusterID, projectID, namespaceName string,
+	getPodDetails bool,
+	podList []rancher.Pod) ([]interface{}, error) {
+
+	services, err := rancherClient.ListServices(ctx, clusterID, projectID)
+	if err != nil {
+		return nil, err
+	}
+
+	results := []interface{}{}
+	for _, svc := range services {
+		// Apply namespace filter
+		if namespaceName != "" && svc.NamespaceId != namespaceName {
+			continue
+		}
+
+		// Build basic service info
+		serviceInfo := map[string]interface{}{
+			"id":          svc.ID,
+			"name":        svc.Name,
+			"namespace":   svc.NamespaceId,
+			"state":       svc.State,
+			"created":     formatTime(svc.Created),
+			"annotations": svc.Annotations,
+			"labels":      svc.Labels,
+		}
+
+		// Add service type
+		svcType := svc.Kind
+		if svcType == "" {
+			svcType = "ClusterIP"
+		}
+		serviceInfo["type"] = svcType
+
+		// Add cluster IP
+		clusterIP := svc.ClusterIp
+		if clusterIP == "" {
+			clusterIP = "-"
+		}
+		serviceInfo["cluster_ip"] = clusterIP
+
+		// Add ports
+		if len(svc.PublicEndpoints) > 0 {
+			endpoints := []map[string]interface{}{}
+			for _, ep := range svc.PublicEndpoints {
+				endpointInfo := map[string]interface{}{
+					"addresses": ep.Addresses,
+					"port":      ep.Port,
+					"protocol":  ep.Protocol,
+				}
+				endpoints = append(endpoints, endpointInfo)
+			}
+			serviceInfo["endpoints"] = endpoints
+		}
+
+		// Perform diagnostic if requested
+		if getPodDetails {
+			diagnosticStatus := diagnoseService(ctx, rancherClient, clusterID, projectID, svc, podList)
+			serviceInfo["status"] = diagnosticStatus
+		}
+
+		results = append(results, serviceInfo)
+	}
+
+	return results, nil
+}
+
+// formatServiceResults formats the service results based on output format
+func formatServiceResults(results []interface{}, format string) (string, error) {
+	if len(results) == 0 {
 		return "No services found", nil
 	}
 
 	switch format {
 	case "yaml":
-		return formatAsYAML(resultMaps), nil
+		return formatAsYAML(results), nil
 	case "json":
-		return formatAsJSON(resultMaps), nil
+		return formatAsJSON(results), nil
 	default:
-		return formatAsTable(resultMaps, []string{"id", "name", "namespace", "type", "cluster_ip", "ports", "created"}), nil
+		// For table format, extract basic information
+		tableData := []map[string]string{}
+		for _, result := range results {
+			if svc, ok := result.(map[string]interface{}); ok {
+				row := map[string]string{
+					"id":        getStringValue(svc["id"]),
+					"name":      getStringValue(svc["name"]),
+					"namespace": getStringValue(svc["namespace"]),
+					"type":      getStringValue(svc["type"]),
+					"cluster_ip": getStringValue(svc["cluster_ip"]),
+					"state":     getStringValue(svc["state"]),
+					"created":   getStringValue(svc["created"]),
+				}
+
+				// Determine ready status
+				if status, exists := svc["status"]; exists {
+					if diagStatus, ok := status.(ServiceDiagnosticStatus); ok {
+						if diagStatus.Ready {
+							row["ready"] = "Yes"
+						} else {
+							row["ready"] = "No"
+						}
+					}
+				} else {
+					row["ready"] = "-"
+				}
+
+				tableData = append(tableData, row)
+			}
+		}
+
+		return formatAsTable(tableData, []string{"id", "name", "namespace", "type", "cluster_ip", "state", "ready", "created"}), nil
 	}
+}
+
+// Helper function to get string value from interface
+func getStringValue(v interface{}) string {
+	if str, ok := v.(string); ok {
+		return str
+	}
+	if v == nil {
+		return "-"
+	}
+	return fmt.Sprintf("%v", v)
 }
 
 func init() {

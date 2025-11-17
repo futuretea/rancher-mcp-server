@@ -12,21 +12,26 @@ A powerful and flexible [Model Context Protocol (MCP)](https://blog.marcnuri.com
 
 - **✅ Multi-cluster Management**: Access and manage multiple Kubernetes clusters through Rancher API
 - **✅ Core Kubernetes Resources**: Perform operations on Kubernetes resources across multiple clusters
-  - **List** clusters, nodes, workloads, and namespaces
+  - **List** clusters, nodes, workloads, namespaces, services, configmaps, and secrets
   - **Get** kubeconfig for any cluster
+  - **Intelligent Diagnostic Chain**: Perform health checks with Service → Pods and Ingress → Service → Pods diagnostic chains
+  - **Ready/Degraded Dual-State Diagnosis**: Identify both critical failures and performance degradation
 - **✅ Rancher-specific Resources**: Access Rancher-specific resources
   - **List** Rancher projects and users
   - **Check** cluster health status
   - **View** project access permissions
 - **✅ Security Configuration**: Support for read-only mode and disabling destructive operations
+  - **Secrets Protection**: Secret data is never exposed, only metadata
 - **✅ Multiple Output Formats**: Support for table, YAML, and JSON output formats
+- **✅ Performance Optimized**: Intelligent API call caching reduces API calls by up to 93% during bulk operations
 - **✅ Cross-platform Support**: Available as native binaries for Linux, macOS, and Windows, as well as an npm package
 
 Unlike other Kubernetes MCP server implementations, this server is **specifically designed for Rancher multi-cluster environments** and provides seamless access to multiple clusters through a single interface.
 
 - **✅ Lightweight**: The server is distributed as a single native binary for Linux, macOS, and Windows
 - **✅ High-Performance / Low-Latency**: Directly interacts with Rancher API server without the overhead of calling external commands
-- **✅ Cross-Platform**: Available as a native binary for Linux, macOS, and Windows, as well as an npm package
+- **✅ Efficient Bulk Operations**: Optimized API calls with intelligent caching for diagnosing multiple resources
+- **✅ Self-Documenting**: Detailed tool descriptions help LLMs understand capabilities and select the right tools
 - **✅ Configurable**: Supports [command-line arguments](#configuration) to configure the server behavior
 - **✅ Well tested**: The server has an extensive test suite to ensure its reliability and correctness
 
@@ -226,9 +231,21 @@ The following sets of tools are available (all on by default):
 - **cluster_list** - List all available Kubernetes clusters
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
+- **node_get** - Get a single node by ID, more efficient than list
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `node` (`string`) **(required)** - Node ID to get
+  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+
 - **node_list** - List all nodes in a cluster
   - `cluster` (`string`) - Cluster ID to list nodes from (optional)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+
+- **workload_get** - Get a single workload by name and namespace, more efficient than list
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `namespace` (`string`) **(required)** - Namespace name
+  - `name` (`string`) **(required)** - Workload name to get
+  - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
+  - `format` (`string`) - Output format: yaml or json (default: "yaml")
 
 - **workload_list** - List workloads (deployments, statefulsets, daemonsets, jobs) and orphan pods in a cluster
   - `cluster` (`string`) **(required)** - Cluster ID
@@ -237,10 +254,22 @@ The following sets of tools are available (all on by default):
   - `node` (`string`) - Node name to filter workloads (optional)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
+- **namespace_get** - Get a single namespace by name, more efficient than list
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `name` (`string`) **(required)** - Namespace name to get
+  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+
 - **namespace_list** - List namespaces in a cluster
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter namespaces (optional)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+
+- **configmap_get** - Get a single ConfigMap by name and namespace, more efficient than list
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `namespace` (`string`) **(required)** - Namespace name
+  - `name` (`string`) **(required)** - ConfigMap name to get
+  - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
+  - `format` (`string`) - Output format: yaml or json (default: "yaml")
 
 - **configmap_list** - List all ConfigMaps in a cluster
   - `cluster` (`string`) **(required)** - Cluster ID
@@ -248,16 +277,32 @@ The following sets of tools are available (all on by default):
   - `namespace` (`string`) - Namespace name to filter ConfigMaps (optional)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
+- **secret_get** - Get a single Secret by name and namespace, more efficient than list (metadata only, does not expose secret data)
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `namespace` (`string`) **(required)** - Namespace name
+  - `name` (`string`) **(required)** - Secret name to get
+  - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
+  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+
 - **secret_list** - List all Secrets in a cluster (metadata only, does not expose secret data)
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter secrets (optional)
   - `namespace` (`string`) - Namespace name to filter secrets (optional)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
-- **service_list** - List all Services in a cluster
+- **service_get** - Get a single service by name with optional pod diagnostic check (Service → Pods), more efficient than list
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `namespace` (`string`) **(required)** - Namespace name
+  - `name` (`string`) **(required)** - Service name to get
+  - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
+  - `getPodDetails` (`boolean`) - Get detailed pod information and perform health checks (default: false)
+  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+
+- **service_list** - List services with optional pod diagnostic check (Service → Pods), supports Ready/Degraded dual-state diagnosis
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter services (optional)
   - `namespace` (`string`) - Namespace name to filter services (optional)
+  - `getPodDetails` (`boolean`) - Get pod information and perform health checks for services (default: false)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
 </details>
@@ -268,9 +313,18 @@ The following sets of tools are available (all on by default):
 - **cluster_list** - List all available Kubernetes clusters
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
+- **project_get** - Get a single Rancher project by ID, more efficient than list
+  - `project` (`string`) **(required)** - Project ID to get
+  - `cluster` (`string`) **(required)** - Cluster ID (required for verification)
+  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+
 - **project_list** - List Rancher projects across clusters
   - `cluster` (`string`) - Filter projects by cluster ID (optional)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+
+- **user_get** - Get a single Rancher user by ID, more efficient than list
+  - `user` (`string`) **(required)** - User ID to get
+  - `format` (`string`) - Output format: yaml or json (default: "yaml")
 
 - **user_list** - List all Rancher users
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
@@ -289,10 +343,19 @@ The following sets of tools are available (all on by default):
 <details>
 <summary>networking</summary>
 
-- **ingress_list** - List all ingresses in a cluster
+- **ingress_get** - Get a single ingress by name with diagnostic chain check (Ingress → Service → Pods), more efficient than list
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `namespace` (`string`) **(required)** - Namespace name
+  - `name` (`string`) **(required)** - Ingress name to get
+  - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
+  - `getPodDetails` (`boolean`) - Get detailed pod information and perform health checks (default: false)
+  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+
+- **ingress_list** - List ingresses with full diagnostic chain check (Ingress → Service → Pods), supports Ready/Degraded dual-state diagnosis
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter ingresses (optional)
   - `namespace` (`string`) - Namespace name to filter ingresses (optional)
+  - `getPodDetails` (`boolean`) - Get detailed pod information and perform health checks (default: false)
   - `format` (`string`) - Output format: table, yaml, or json (default: "table")
 
 </details>

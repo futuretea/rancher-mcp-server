@@ -6,6 +6,7 @@ import (
 
 	projectClient "github.com/rancher/rancher/pkg/client/generated/project/v3"
 	"github.com/futuretea/rancher-mcp-server/pkg/rancher"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolsets/common"
 )
 
 // IngressDiagnosticStatus represents the diagnostic status of an ingress with degraded support
@@ -69,7 +70,36 @@ type ServiceDetails struct {
 	NotReadyPods int `json:"notReadyPods"`
 }
 
-// diagnoseIngressService performs diagnostic checks for a service backend used by ingress
+// diagnoseIngressService performs comprehensive diagnostic checks for a service backend used by an ingress.
+// This function uses an optimization pattern to avoid N+1 API queries by accepting pre-fetched
+// serviceList and podList parameters.
+//
+// Diagnostic Process:
+//  1. Locates the target service from the provided serviceList using namespace and name
+//  2. Validates service selector configuration
+//  3. Filters pods matching the service selector from the provided podList
+//  4. Calculates pod health statistics (ready vs not-ready)
+//  5. Determines overall service health status for ingress routing
+//
+// Status Determination:
+//  - Ready: True if at least one pod is ready to accept ingress traffic
+//  - Degraded: True if no pods exist OR some pods are not ready (reduced capacity)
+//
+// Optimization Pattern:
+//   When diagnosing multiple ingress paths or services, pass pre-fetched serviceList and podList
+//   to avoid making redundant API calls for each diagnostic check. This is especially important
+//   when listing ingresses across a project.
+//
+// Parameters:
+//  - ctx: Context for potential cancellation
+//  - rancherClient: Rancher API client (used for logging, not API calls)
+//  - namespace: Namespace containing the service
+//  - serviceName: Name of the service to diagnose
+//  - serviceList: Pre-fetched list of services to search from
+//  - podList: Pre-fetched list of pods for health checking
+//
+// Returns:
+//   IngressPathDiagnosticStatus containing ready/degraded state and detailed service/pod statistics
 func diagnoseIngressService(ctx context.Context,
 	rancherClient *rancher.Client,
 	namespace, serviceName string,
@@ -170,7 +200,28 @@ func diagnoseIngressService(ctx context.Context,
 	return status
 }
 
-// diagnoseIngressPath performs diagnostic checks for an ingress path with degraded support
+// diagnoseIngressPath performs diagnostic checks for an ingress HTTP path with full chain analysis.
+// This function validates the complete routing chain: Ingress Path → Service → Pods.
+//
+// Diagnostic Chain:
+//  1. Extracts service name from the ingress path configuration
+//  2. Delegates to diagnoseIngressService for service-level health checks
+//  3. Returns comprehensive status including service and pod health
+//
+// Optimization Pattern:
+//   Accepts pre-fetched serviceList and podList to avoid N+1 queries when processing
+//   multiple paths within the same ingress or across multiple ingresses.
+//
+// Parameters:
+//  - ctx: Context for potential cancellation
+//  - rancherClient: Rancher API client
+//  - namespace: Namespace containing the ingress and target service
+//  - path: HTTP ingress path configuration to diagnose
+//  - serviceList: Pre-fetched list of services for efficient lookup
+//  - podList: Pre-fetched list of pods for health validation
+//
+// Returns:
+//   IngressPathDiagnosticStatus indicating if the path can successfully route traffic
 func diagnoseIngressPath(ctx context.Context,
 	rancherClient *rancher.Client,
 	namespace string,
@@ -252,5 +303,5 @@ func extractServiceNameFromID(serviceID string) string {
 
 // isPodReady checks if a pod is in ready state
 func isPodReady(pod rancher.Pod) bool {
-	return pod.State == "running" || pod.State == "active"
+	return pod.State == common.PodStateRunning || pod.State == common.PodStateActive
 }

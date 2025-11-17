@@ -8,6 +8,7 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/api"
 	"github.com/futuretea/rancher-mcp-server/pkg/rancher"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolsets/common"
 )
 
 // Toolset implements the config toolset
@@ -43,7 +44,7 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 				},
 			},
 			Annotations: api.ToolAnnotations{
-				ReadOnlyHint: boolPtr(true),
+				ReadOnlyHint: common.BoolPtr(true),
 			},
 			Handler: configurationViewHandler,
 		},
@@ -109,14 +110,5 @@ func configurationViewHandler(client interface{}, params map[string]interface{})
 	}
 
 	// No Rancher client available
-	return "", fmt.Errorf("Rancher client not configured. Please configure Rancher credentials to use this tool")
-}
-
-func boolPtr(b bool) *bool {
-	return &b
-}
-
-func init() {
-	// Register this toolset
-	// This will be implemented when we have the toolsets registry
+	return "", common.ErrRancherNotConfigured
 }

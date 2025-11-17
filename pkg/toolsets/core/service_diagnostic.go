@@ -5,6 +5,7 @@ import (
 
 	projectClient "github.com/rancher/rancher/pkg/client/generated/project/v3"
 	"github.com/futuretea/rancher-mcp-server/pkg/rancher"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolsets/common"
 )
 
 // ServiceDiagnosticStatus represents the diagnostic status of a service with degraded support
@@ -32,9 +33,31 @@ type ServicePodDetails struct {
 	NotReadyPods   int `json:"notReadyPods"`
 }
 
-// diagnoseService performs diagnostic checks for a service with degraded support
-// It checks the service's selector and finds matching pods to determine readiness
-// The podList is passed in to avoid redundant API calls when diagnosing multiple services
+// diagnoseService performs comprehensive diagnostic checks for a Kubernetes service.
+// This function uses an optimization pattern to avoid N+1 API queries by accepting
+// a pre-fetched podList parameter.
+//
+// Diagnostic Process:
+//  1. Validates service selector configuration
+//  2. Filters pods matching the service selector from the provided podList
+//  3. Calculates pod health statistics (ready vs not-ready)
+//  4. Determines overall service health status
+//
+// Status Determination:
+//  - Ready: True if at least one pod is ready to accept traffic
+//  - Degraded: True if no pods exist OR some pods are not ready
+//  - EndpointReady: Same as Ready (endpoint exists if pods are available)
+//
+// Parameters:
+//  - ctx: Context for potential cancellation
+//  - rancherClient: Rancher API client
+//  - clusterID: Target cluster identifier
+//  - projectID: Project identifier containing the service
+//  - service: Service object to diagnose
+//  - podList: Pre-fetched list of pods to avoid redundant API calls
+//
+// Returns:
+//   ServiceDiagnosticStatus containing ready/degraded state and detailed pod statistics
 func diagnoseService(ctx context.Context,
 	rancherClient *rancher.Client,
 	clusterID, projectID string,
@@ -122,7 +145,7 @@ func diagnoseService(ctx context.Context,
 
 // isPodReady checks if a pod is in ready state
 func isPodReady(pod rancher.Pod) bool {
-	return pod.State == "running" || pod.State == "active"
+	return pod.State == common.PodStateRunning || pod.State == common.PodStateActive
 }
 
 // extractEndpointAddresses extracts addresses from PublicEndpoints for informational purposes

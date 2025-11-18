@@ -271,6 +271,13 @@ The following sets of tools are available (all on by default):
   - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
   - `format` (`string`) - Output format: yaml or json (default: "yaml")
 
+- **configmap_get** - Get a single ConfigMap by name and namespace, more efficient than list
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `namespace` (`string`) **(required)** - Namespace name
+  - `name` (`string`) **(required)** - ConfigMap name to get
+  - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
+  - `format` (`string`) - Output format: yaml or json (default: "json")
+
 - **configmap_list** - List all ConfigMaps in a cluster
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter ConfigMaps (optional)
@@ -283,6 +290,13 @@ The following sets of tools are available (all on by default):
   - `name` (`string`) **(required)** - Secret name to get
   - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
   - `format` (`string`) - Output format: yaml or json (default: "yaml")
+
+- **secret_get** - Get a single Secret by name and namespace, more efficient than list (metadata only, does not expose secret data)
+  - `cluster` (`string`) **(required)** - Cluster ID
+  - `namespace` (`string`) **(required)** - Namespace name
+  - `name` (`string`) **(required)** - Secret name to get
+  - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
+  - `format` (`string`) - Output format: yaml or json (default: "json")
 
 - **secret_list** - List all Secrets in a cluster (metadata only, does not expose secret data)
   - `cluster` (`string`) **(required)** - Cluster ID

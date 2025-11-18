@@ -222,6 +222,45 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 		},
 		{
 			Tool: mcp.Tool{
+				Name:        "configmap_get",
+				Description: "Get a single ConfigMap by name and namespace, more efficient than list",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "namespace", "name"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "ConfigMap name to get",
+						},
+						"project": map[string]any{
+							"type":        "string",
+							"description": "Project ID (optional, will auto-detect if not provided)",
+							"default":     "",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: common.BoolPtr(true),
+			},
+			Handler: configMapGetHandler,
+		},
+		{
+			Tool: mcp.Tool{
 				Name:        "configmap_list",
 				Description: "List all configmaps in a cluster",
 				InputSchema: mcp.ToolInputSchema{
@@ -255,6 +294,45 @@ func (t *Toolset) GetTools(client interface{}) []api.ServerTool {
 				ReadOnlyHint: common.BoolPtr(true),
 			},
 			Handler: configMapListHandler,
+		},
+		{
+			Tool: mcp.Tool{
+				Name:        "secret_get",
+				Description: "Get a single Secret by name and namespace, more efficient than list (metadata only, does not expose secret data)",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "namespace", "name"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Secret name to get",
+						},
+						"project": map[string]any{
+							"type":        "string",
+							"description": "Project ID (optional, will auto-detect if not provided)",
+							"default":     "",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: api.ToolAnnotations{
+				ReadOnlyHint: common.BoolPtr(true),
+			},
+			Handler: secretGetHandler,
 		},
 		{
 			Tool: mcp.Tool{

@@ -47,13 +47,13 @@ changelog:
       - Merge branch
 release:
   github:
-    owner: rancher
+    owner: futuretea
     name: rancher-mcp-server
   prerelease: auto
 dockers:
   - image_templates:
-      - "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}-amd64"
-      - "ghcr.io/rancher/rancher-mcp-server:latest-amd64"
+      - "ghcr.io/futuretea/rancher-mcp-server:v{{ .Version }}-amd64"
+      - "ghcr.io/futuretea/rancher-mcp-server:latest-amd64"
     dockerfile: Dockerfile
     use: buildx
     build_flag_templates:
@@ -67,8 +67,8 @@ dockers:
       - "--label=org.opencontainers.image.description=Rancher MCP Server"
     goarch: amd64
   - image_templates:
-      - "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}-arm64"
-      - "ghcr.io/rancher/rancher-mcp-server:latest-arm64"
+      - "ghcr.io/futuretea/rancher-mcp-server:v{{ .Version }}-arm64"
+      - "ghcr.io/futuretea/rancher-mcp-server:latest-arm64"
     dockerfile: Dockerfile
     use: buildx
     build_flag_templates:
@@ -82,11 +82,11 @@ dockers:
       - "--label=org.opencontainers.image.description=Rancher MCP Server"
     goarch: arm64
 docker_manifests:
-  - name_template: "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}"
+  - name_template: "ghcr.io/futuretea/rancher-mcp-server:v{{ .Version }}"
     image_templates:
-      - "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}-amd64"
-      - "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}-arm64"
-  - name_template: "ghcr.io/rancher/rancher-mcp-server:latest"
+      - "ghcr.io/futuretea/rancher-mcp-server:v{{ .Version }}-amd64"
+      - "ghcr.io/futuretea/rancher-mcp-server:v{{ .Version }}-arm64"
+  - name_template: "ghcr.io/futuretea/rancher-mcp-server:latest"
     image_templates:
-      - "ghcr.io/rancher/rancher-mcp-server:latest-amd64"
-      - "ghcr.io/rancher/rancher-mcp-server:latest-arm64"
+      - "ghcr.io/futuretea/rancher-mcp-server:latest-amd64"
+      - "ghcr.io/futuretea/rancher-mcp-server:latest-arm64"

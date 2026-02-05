@@ -59,7 +59,7 @@ Open your `claude_desktop_config.json` and add the mcp server to the list of `mc
         "-y",
         "@futuretea/rancher-mcp-server@latest",
         "--rancher-server-url",
-        "https://your-rancher-server.com",
+        "https://your-rancher-server.com/v3",
         "--rancher-token",
         "your-token"
       ]
@@ -74,10 +74,10 @@ Install the Rancher MCP server extension in VS Code by running the following com
 
 ```shell
 # For VS Code
-code --add-mcp '{"name":"rancher","command":"npx","args":["@futuretea/rancher-mcp-server@latest","--rancher-server-url","https://your-rancher-server.com","--rancher-token","your-token"]}'
+code --add-mcp '{"name":"rancher","command":"npx","args":["@futuretea/rancher-mcp-server@latest","--rancher-server-url","https://your-rancher-server.com/v3","--rancher-token","your-token"]}'
 
 # For VS Code Insiders
-code-insiders --add-mcp '{"name":"rancher","command":"npx","args":["@futuretea/rancher-mcp-server@latest","--rancher-server-url","https://your-rancher-server.com","--rancher-token","your-token"]}'
+code-insiders --add-mcp '{"name":"rancher","command":"npx","args":["@futuretea/rancher-mcp-server@latest","--rancher-server-url","https://your-rancher-server.com/v3","--rancher-token","your-token"]}'
 ```
 
 ### Cursor
@@ -93,7 +93,7 @@ Install the Rancher MCP server extension in Cursor by editing the `mcp.json` fil
         "-y",
         "@futuretea/rancher-mcp-server@latest",
         "--rancher-server-url",
-        "https://your-rancher-server.com",
+        "https://your-rancher-server.com/v3",
         "--rancher-token",
         "your-token"
       ]
@@ -125,12 +125,12 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--port` | Starts the MCP server in HTTP/SSE mode and listens on the specified port. Use 0 for stdio mode (default for MCP clients) |
 | `--sse-base-url` | SSE public base URL to use when sending the endpoint message (e.g. https://example.com) |
 | `--log-level` | Sets the logging level (values from 0-9) |
-| `--rancher-server-url` | URL of the Rancher server |
+| `--rancher-server-url` | URL of the Rancher server (must include `/v3` path, e.g., `https://your-rancher-server.com/v3`) |
 | `--rancher-token` | Bearer token for Rancher API authentication |
 | `--rancher-access-key` | Access key for Rancher API authentication |
 | `--rancher-secret-key` | Secret key for Rancher API authentication |
 | `--rancher-tls-insecure` | Skip TLS certificate verification for Rancher server (default: false) |
-| `--list-output` | Output format for resource list operations (one of: table, yaml, json) (default "table") |
+| `--list-output` | Output format for resource list operations (one of: table, yaml, json) (default "json") |
 | `--read-only` | If set, the MCP server will run in read-only mode, meaning it will not allow any write operations on the Rancher cluster |
 | `--disable-destructive` | If set, the MCP server will disable all destructive operations on the Rancher cluster |
 | `--toolsets` | Comma-separated list of toolsets to enable. Default: [config,core,rancher,networking] |
@@ -148,12 +148,12 @@ log_level: 0
 # SSE (Server-Sent Events) configuration (optional, for HTTP/SSE mode)
 # sse_base_url: https://your-domain.com:8080
 
-rancher_server_url: https://your-rancher-server.com
+rancher_server_url: https://your-rancher-server.com/v3
 rancher_token: your-bearer-token
 # Or use Access Key/Secret Key:
 # rancher_access_key: your-access-key
 # rancher_secret_key: your-secret-key
-list_output: table
+list_output: json
 read_only: false
 disable_destructive: false
 toolsets:
@@ -176,7 +176,7 @@ The Rancher MCP server supports running in HTTP/SSE (Server-Sent Events) mode fo
 ```shell
 # Start the server on port 8080
 rancher-mcp-server --port 8080 \
-  --rancher-server-url https://your-rancher-server.com \
+  --rancher-server-url https://your-rancher-server.com/v3 \
   --rancher-token your-token
 ```
 
@@ -194,7 +194,7 @@ When deploying behind a reverse proxy or load balancer, you can specify a public
 ```shell
 rancher-mcp-server --port 8080 \
   --sse-base-url https://your-domain.com:8080 \
-  --rancher-server-url https://your-rancher-server.com \
+  --rancher-server-url https://your-rancher-server.com/v3 \
   --rancher-token your-token
 ```
 
@@ -229,47 +229,40 @@ The following sets of tools are available (all on by default):
 <summary>core</summary>
 
 - **cluster_list** - List all available Kubernetes clusters
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **node_get** - Get a single node by ID, more efficient than list
   - `cluster` (`string`) **(required)** - Cluster ID
   - `node` (`string`) **(required)** - Node ID to get
-  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+  - `format` (`string`) - Output format: yaml or json (default: "json")
 
 - **node_list** - List all nodes in a cluster
   - `cluster` (`string`) - Cluster ID to list nodes from (optional)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **workload_get** - Get a single workload by name and namespace, more efficient than list
   - `cluster` (`string`) **(required)** - Cluster ID
   - `namespace` (`string`) **(required)** - Namespace name
   - `name` (`string`) **(required)** - Workload name to get
   - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
-  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+  - `format` (`string`) - Output format: yaml or json (default: "json")
 
 - **workload_list** - List workloads (deployments, statefulsets, daemonsets, jobs) and orphan pods in a cluster
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter workloads (optional)
   - `namespace` (`string`) - Namespace name to filter workloads (optional)
   - `node` (`string`) - Node name to filter workloads (optional)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **namespace_get** - Get a single namespace by name, more efficient than list
   - `cluster` (`string`) **(required)** - Cluster ID
   - `name` (`string`) **(required)** - Namespace name to get
-  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+  - `format` (`string`) - Output format: yaml or json (default: "json")
 
 - **namespace_list** - List namespaces in a cluster
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter namespaces (optional)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
-
-- **configmap_get** - Get a single ConfigMap by name and namespace, more efficient than list
-  - `cluster` (`string`) **(required)** - Cluster ID
-  - `namespace` (`string`) **(required)** - Namespace name
-  - `name` (`string`) **(required)** - ConfigMap name to get
-  - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
-  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **configmap_get** - Get a single ConfigMap by name and namespace, more efficient than list
   - `cluster` (`string`) **(required)** - Cluster ID
@@ -282,14 +275,7 @@ The following sets of tools are available (all on by default):
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter ConfigMaps (optional)
   - `namespace` (`string`) - Namespace name to filter ConfigMaps (optional)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
-
-- **secret_get** - Get a single Secret by name and namespace, more efficient than list (metadata only, does not expose secret data)
-  - `cluster` (`string`) **(required)** - Cluster ID
-  - `namespace` (`string`) **(required)** - Namespace name
-  - `name` (`string`) **(required)** - Secret name to get
-  - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
-  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **secret_get** - Get a single Secret by name and namespace, more efficient than list (metadata only, does not expose secret data)
   - `cluster` (`string`) **(required)** - Cluster ID
@@ -302,7 +288,7 @@ The following sets of tools are available (all on by default):
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter secrets (optional)
   - `namespace` (`string`) - Namespace name to filter secrets (optional)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **service_get** - Get a single service by name with optional pod diagnostic check (Service → Pods), more efficient than list
   - `cluster` (`string`) **(required)** - Cluster ID
@@ -310,14 +296,14 @@ The following sets of tools are available (all on by default):
   - `name` (`string`) **(required)** - Service name to get
   - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
   - `getPodDetails` (`boolean`) - Get detailed pod information and perform health checks (default: false)
-  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+  - `format` (`string`) - Output format: yaml or json (default: "json")
 
-- **service_list** - List services with optional pod diagnostic check (Service → Pods), supports Ready/Degraded dual-state diagnosis
+- **service_list** - List services with optional pod diagnostic check (Service → Pods)
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter services (optional)
   - `namespace` (`string`) - Namespace name to filter services (optional)
   - `getPodDetails` (`boolean`) - Get pod information and perform health checks for services (default: false)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 </details>
 
@@ -325,32 +311,32 @@ The following sets of tools are available (all on by default):
 <summary>rancher</summary>
 
 - **cluster_list** - List all available Kubernetes clusters
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **project_get** - Get a single Rancher project by ID, more efficient than list
   - `project` (`string`) **(required)** - Project ID to get
   - `cluster` (`string`) **(required)** - Cluster ID (required for verification)
-  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+  - `format` (`string`) - Output format: yaml or json (default: "json")
 
 - **project_list** - List Rancher projects across clusters
   - `cluster` (`string`) - Filter projects by cluster ID (optional)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **user_get** - Get a single Rancher user by ID, more efficient than list
   - `user` (`string`) **(required)** - User ID to get
-  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+  - `format` (`string`) - Output format: yaml or json (default: "json")
 
 - **user_list** - List all Rancher users
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **cluster_health** - Get health status of Rancher clusters
   - `cluster` (`string`) - Specific cluster ID to check health (optional)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 - **project_access** - List user access permissions for Rancher projects
   - `project` (`string`) - Project ID to check access (optional)
   - `cluster` (`string`) - Cluster ID (optional)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 </details>
 
@@ -363,14 +349,14 @@ The following sets of tools are available (all on by default):
   - `name` (`string`) **(required)** - Ingress name to get
   - `project` (`string`) - Project ID (optional, will auto-detect if not provided)
   - `getPodDetails` (`boolean`) - Get detailed pod information and perform health checks (default: false)
-  - `format` (`string`) - Output format: yaml or json (default: "yaml")
+  - `format` (`string`) - Output format: yaml or json (default: "json")
 
-- **ingress_list** - List ingresses with full diagnostic chain check (Ingress → Service → Pods), supports Ready/Degraded dual-state diagnosis
+- **ingress_list** - List ingresses with full diagnostic chain check (Ingress → Service → Pods)
   - `cluster` (`string`) **(required)** - Cluster ID
   - `project` (`string`) - Project ID to filter ingresses (optional)
   - `namespace` (`string`) - Namespace name to filter ingresses (optional)
   - `getPodDetails` (`boolean`) - Get detailed pod information and perform health checks (default: false)
-  - `format` (`string`) - Output format: table, yaml, or json (default: "table")
+  - `format` (`string`) - Output format: table, yaml, or json (default: "json")
 
 </details>
 

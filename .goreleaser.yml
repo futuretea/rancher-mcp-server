@@ -1,0 +1,92 @@
+version: 2
+before:
+  hooks:
+    - go mod tidy
+dist: releases
+snapshot:
+  version_template: "{{ .Summary }}"
+builds:
+  - id: default
+    env:
+      - CGO_ENABLED=0
+    binary: rancher-mcp-server
+    main: ./cmd/rancher-mcp-server
+    goarch:
+      - amd64
+      - arm64
+    goos:
+      - linux
+    tags:
+      - netgo
+    flags:
+      - -trimpath
+    ldflags:
+      - -s
+      - -w
+      - -X "github.com/rancher/rancher-mcp-server/pkg/version.Version=v{{ .Version }}"
+      - -X "github.com/rancher/rancher-mcp-server/pkg/version.CommitHash={{ .FullCommit }}"
+      - -X "github.com/rancher/rancher-mcp-server/pkg/version.BuildTime={{ .Date }}"
+      - -X "github.com/rancher/rancher-mcp-server/pkg/version.BinaryName=rancher-mcp-server"
+archives:
+  - formats: ["tar.gz"]
+    ids:
+      - default
+    name_template: >-
+      {{ .ProjectName }}_ {{- .Os }}_ {{- if eq .Arch "amd64" }}x86_64 {{- else }}{{ .Arch }}{{ end }}
+checksum:
+  name_template: "{{ .ProjectName }}_v{{ .Version }}_checksums.txt"
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^ci:"
+      - Merge pull request
+      - Merge branch
+release:
+  github:
+    owner: rancher
+    name: rancher-mcp-server
+  prerelease: auto
+dockers:
+  - image_templates:
+      - "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}-amd64"
+      - "ghcr.io/rancher/rancher-mcp-server:latest-amd64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--target=release"
+      - "--platform=linux/amd64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--label=org.opencontainers.image.description=Rancher MCP Server"
+    goarch: amd64
+  - image_templates:
+      - "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}-arm64"
+      - "ghcr.io/rancher/rancher-mcp-server:latest-arm64"
+    dockerfile: Dockerfile
+    use: buildx
+    build_flag_templates:
+      - "--target=release"
+      - "--platform=linux/arm64"
+      - "--label=org.opencontainers.image.created={{.Date}}"
+      - "--label=org.opencontainers.image.title={{.ProjectName}}"
+      - "--label=org.opencontainers.image.revision={{.FullCommit}}"
+      - "--label=org.opencontainers.image.version={{.Version}}"
+      - "--label=org.opencontainers.image.source={{.GitURL}}"
+      - "--label=org.opencontainers.image.description=Rancher MCP Server"
+    goarch: arm64
+docker_manifests:
+  - name_template: "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}"
+    image_templates:
+      - "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}-amd64"
+      - "ghcr.io/rancher/rancher-mcp-server:v{{ .Version }}-arm64"
+  - name_template: "ghcr.io/rancher/rancher-mcp-server:latest"
+    image_templates:
+      - "ghcr.io/rancher/rancher-mcp-server:latest-amd64"
+      - "ghcr.io/rancher/rancher-mcp-server:latest-arm64"

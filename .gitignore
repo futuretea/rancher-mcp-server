@@ -45,6 +45,7 @@ npm/rancher-mcp-server-linux-arm64/bin/
 /dist/
 /build/
 _output/
+releases/
 
 # npm package directories
 node_modules/

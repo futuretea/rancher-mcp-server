@@ -6,8 +6,8 @@ import (
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
 
-	"github.com/futuretea/rancher-mcp-server/pkg/logging"
-	"github.com/futuretea/rancher-mcp-server/pkg/rancher-mcp-server/cmd"
+	"github.com/futuretea/rancher-mcp-server/internal/cmd"
+	"github.com/futuretea/rancher-mcp-server/pkg/core/logging"
 )
 
 func init() {

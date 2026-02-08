@@ -38,11 +38,19 @@ rancher_token: your-bearer-token-here
 # rancher_secret_key: your-secret-key-here
 
 # Security configuration
-read_only: false  # Read-only mode
+read_only: true  # Read-only mode (default: true)
 disable_destructive: false  # Disable destructive operations
 
 # Output configuration
 list_output: table  # Output format: table, yaml, json
+
+# Output filters - Remove verbose fields from Kubernetes resources to reduce output size
+# Path format: dot-separated keys, e.g. "metadata.managedFields"
+# For annotation keys containing dots, use full path after "annotations."
+# Example: "metadata.annotations.kubectl.kubernetes.io/last-applied-configuration"
+output_filters:
+  - metadata.managedFields
+  - metadata.annotations.kubectl.kubernetes.io/last-applied-configuration
 
 # Toolset configuration
 toolsets:

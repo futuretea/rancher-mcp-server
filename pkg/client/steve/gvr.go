@@ -10,35 +10,54 @@ var K8sKindsToGVRs = map[string]schema.GroupVersionResource{
 	// --- CORE Kubernetes Resources (Group: "") ---
 	"pod":                   {Group: "", Version: "v1", Resource: "pods"},
 	"service":               {Group: "", Version: "v1", Resource: "services"},
+	"svc":                   {Group: "", Version: "v1", Resource: "services"},
 	"configmap":             {Group: "", Version: "v1", Resource: "configmaps"},
+	"cm":                    {Group: "", Version: "v1", Resource: "configmaps"},
 	"secret":                {Group: "", Version: "v1", Resource: "secrets"},
 	"event":                 {Group: "", Version: "v1", Resource: "events"},
+	"ev":                    {Group: "", Version: "v1", Resource: "events"},
 	"namespace":             {Group: "", Version: "v1", Resource: "namespaces"},
+	"ns":                    {Group: "", Version: "v1", Resource: "namespaces"},
 	"node":                  {Group: "", Version: "v1", Resource: "nodes"},
+	"no":                    {Group: "", Version: "v1", Resource: "nodes"},
 	"serviceaccount":        {Group: "", Version: "v1", Resource: "serviceaccounts"},
+	"sa":                    {Group: "", Version: "v1", Resource: "serviceaccounts"},
 	"persistentvolume":      {Group: "", Version: "v1", Resource: "persistentvolumes"},
+	"pv":                    {Group: "", Version: "v1", Resource: "persistentvolumes"},
 	"persistentvolumeclaim": {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
+	"pvc":                   {Group: "", Version: "v1", Resource: "persistentvolumeclaims"},
 	"resourcequota":         {Group: "", Version: "v1", Resource: "resourcequotas"},
+	"quota":                 {Group: "", Version: "v1", Resource: "resourcequotas"},
 	"limitrange":            {Group: "", Version: "v1", Resource: "limitranges"},
+	"limits":                {Group: "", Version: "v1", Resource: "limitranges"},
 	"endpoints":             {Group: "", Version: "v1", Resource: "endpoints"},
+	"ep":                    {Group: "", Version: "v1", Resource: "endpoints"},
 
 	// --- Apps Resources (Group: "apps") ---
 	"deployment":  {Group: "apps", Version: "v1", Resource: "deployments"},
+	"deploy":      {Group: "apps", Version: "v1", Resource: "deployments"},
 	"statefulset": {Group: "apps", Version: "v1", Resource: "statefulsets"},
+	"sts":         {Group: "apps", Version: "v1", Resource: "statefulsets"},
 	"daemonset":   {Group: "apps", Version: "v1", Resource: "daemonsets"},
+	"ds":          {Group: "apps", Version: "v1", Resource: "daemonsets"},
 	"replicaset":  {Group: "apps", Version: "v1", Resource: "replicasets"},
+	"rs":          {Group: "apps", Version: "v1", Resource: "replicasets"},
 
 	// --- Batch Resources (Group: "batch") ---
 	"job":     {Group: "batch", Version: "v1", Resource: "jobs"},
 	"cronjob": {Group: "batch", Version: "v1", Resource: "cronjobs"},
+	"cj":      {Group: "batch", Version: "v1", Resource: "cronjobs"},
 
 	// --- Networking Resources (Group: "networking.k8s.io") ---
 	"ingress":       {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
+	"ing":           {Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"},
 	"networkpolicy": {Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"},
+	"netpol":        {Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"},
 	"ingressclass":  {Group: "networking.k8s.io", Version: "v1", Resource: "ingressclasses"},
 
 	// --- Autoscaling Resources (Group: "autoscaling") ---
 	"horizontalpodautoscaler": {Group: "autoscaling", Version: "v2", Resource: "horizontalpodautoscalers"},
+	"hpa":                     {Group: "autoscaling", Version: "v2", Resource: "horizontalpodautoscalers"},
 	"vpa":                     {Group: "autoscaling.k8s.io", Version: "v1", Resource: "verticalpodautoscalers"},
 
 	// --- RBAC Resources (Group: "rbac.authorization.k8s.io") ---
@@ -49,6 +68,7 @@ var K8sKindsToGVRs = map[string]schema.GroupVersionResource{
 
 	// --- Storage Resources (Group: "storage.k8s.io") ---
 	"storageclass":     {Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"},
+	"sc":               {Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"},
 	"volumeattachment": {Group: "storage.k8s.io", Version: "v1", Resource: "volumeattachments"},
 
 	// --- Custom Resource Definitions (Group: "apiextensions.k8s.io") ---
@@ -62,6 +82,7 @@ var K8sKindsToGVRs = map[string]schema.GroupVersionResource{
 
 	// --- Policy Resources (Group: "policy") ---
 	"poddisruptionbudget": {Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"},
+	"pdb":                 {Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"},
 
 	// --- METRICS Resources (Group: "metrics.k8s.io") ---
 	"node.metrics.k8s.io": {Group: "metrics.k8s.io", Version: "v1beta1", Resource: "nodes"},

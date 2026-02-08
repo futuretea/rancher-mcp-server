@@ -114,13 +114,101 @@ func (c *Client) getResourceInterface(clusterID string, gvr schema.GroupVersionR
 }
 
 // getResourceInterfaceByKind resolves the kind to GVR and returns a dynamic resource interface.
+// It first checks the static GVR map, then falls back to API discovery for dotted kinds
+// (e.g., "cluster.apps.kubeblocks.io").
 func (c *Client) getResourceInterfaceByKind(clusterID, kind, namespace string) (dynamic.ResourceInterface, error) {
 	kind = strings.ToLower(kind)
-	gvr, ok := GetGVR(kind)
-	if !ok {
+	if gvr, ok := GetGVR(kind); ok {
+		return c.getResourceInterface(clusterID, gvr, namespace)
+	}
+
+	// Fall back to API discovery for dotted resource kinds (<resource>.<apiGroup>)
+	if !strings.Contains(kind, ".") {
 		return nil, fmt.Errorf("unsupported resource kind: %s", kind)
 	}
+
+	gvr, err := c.discoverGVR(clusterID, kind)
+	if err != nil {
+		return nil, fmt.Errorf("unsupported resource kind: %s (%w)", kind, err)
+	}
 	return c.getResourceInterface(clusterID, gvr, namespace)
+}
+
+// discoverGVR resolves a dotted resource kind (e.g., "cluster.apps.kubeblocks.io") to a
+// GroupVersionResource using the Kubernetes API discovery mechanism.
+// The format is <singularName>.<apiGroup>.
+func (c *Client) discoverGVR(clusterID, dottedKind string) (schema.GroupVersionResource, error) {
+	resourceName, apiGroup, ok := parseDottedKind(dottedKind)
+	if !ok {
+		return schema.GroupVersionResource{}, fmt.Errorf("invalid dotted kind format: %s", dottedKind)
+	}
+
+	clientset, err := c.getClientset(clusterID)
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	// Find the API group and its preferred version
+	groups, err := clientset.Discovery().ServerGroups()
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to discover API groups: %w", err)
+	}
+
+	var groupVersion string
+	for _, g := range groups.Groups {
+		if g.Name == apiGroup {
+			groupVersion = g.PreferredVersion.GroupVersion
+			break
+		}
+	}
+	if groupVersion == "" {
+		return schema.GroupVersionResource{}, fmt.Errorf("API group %s not found on server", apiGroup)
+	}
+
+	// Discover resources for the preferred group version
+	resourceList, err := clientset.Discovery().ServerResourcesForGroupVersion(groupVersion)
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to discover resources for %s: %w", groupVersion, err)
+	}
+
+	gv, _ := schema.ParseGroupVersion(groupVersion)
+
+	// Match by singular name, resource (plural) name, or lowercased Kind
+	for _, r := range resourceList.APIResources {
+		// Skip sub-resources (e.g., pods/log)
+		if strings.Contains(r.Name, "/") {
+			continue
+		}
+		if matchesResourceName(r, resourceName) {
+			return schema.GroupVersionResource{
+				Group:    gv.Group,
+				Version:  gv.Version,
+				Resource: r.Name,
+			}, nil
+		}
+	}
+
+	return schema.GroupVersionResource{}, fmt.Errorf("resource %s not found in group %s", resourceName, apiGroup)
+}
+
+// parseDottedKind splits a dotted kind (e.g., "cluster.apps.kubeblocks.io")
+// into its singular resource name and API group.
+func parseDottedKind(dottedKind string) (resource, apiGroup string, ok bool) {
+	idx := strings.Index(dottedKind, ".")
+	if idx < 0 {
+		return "", "", false
+	}
+	return dottedKind[:idx], dottedKind[idx+1:], true
+}
+
+// matchesResourceName checks if an API resource matches the given name
+// by comparing against its singular name, plural name, or lowercased Kind.
+func matchesResourceName(r metav1.APIResource, name string) bool {
+	singularName := r.SingularName
+	if singularName == "" {
+		singularName = strings.ToLower(r.Kind)
+	}
+	return singularName == name || r.Name == name
 }
 
 // GetResource retrieves a single Kubernetes resource by name.

@@ -16,7 +16,9 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
   - Create resources from JSON manifests
   - Patch resources using JSON Patch (RFC 6902)
   - Delete resources
-  - Query container logs with filtering (tail lines, time range, timestamps)
+  - Describe resources with related events (similar to `kubectl describe`)
+  - List and filter Kubernetes events by namespace, object name, and object kind
+  - Query container logs with filtering (tail lines, time range, timestamps, keyword search)
   - Inspect pods with parent workload, metrics, and logs
 - **Rancher Resources via Norman API**: List clusters and projects
 - **Security Controls**:
@@ -35,45 +37,21 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
 - Access to a Rancher server
 - Rancher API credentials (Token or Access Key/Secret Key)
 
-### Claude Desktop
-
-Using npx:
-
-```json
-{
-  "mcpServers": {
-    "rancher": {
-      "command": "npx",
-      "args": [
-        "-y",
-        "@futuretea/rancher-mcp-server@latest",
-        "--rancher-server-url",
-        "https://your-rancher-server.com",
-        "--rancher-token",
-        "your-token"
-      ]
-    }
-  }
-}
-```
-
-### VS Code / VS Code Insiders
+### Claude Code
 
 ```shell
-# For VS Code
-code --add-mcp '{"name":"rancher","command":"npx","args":["@futuretea/rancher-mcp-server@latest","--rancher-server-url","https://your-rancher-server.com","--rancher-token","your-token"]}'
-
-# For VS Code Insiders
-code-insiders --add-mcp '{"name":"rancher","command":"npx","args":["@futuretea/rancher-mcp-server@latest","--rancher-server-url","https://your-rancher-server.com","--rancher-token","your-token"]}'
+claude mcp add rancher -- npx @futuretea/rancher-mcp-server@latest \
+  --rancher-server-url https://your-rancher-server.com \
+  --rancher-token your-token
 ```
 
-### Cursor
+### VS Code / Cursor
 
-Edit `mcp.json`:
+Add to `.vscode/mcp.json` or `~/.cursor/mcp.json`:
 
 ```json
 {
-  "mcpServers": {
+  "servers": {
     "rancher": {
       "command": "npx",
       "args": [
@@ -255,6 +233,7 @@ Get logs from a pod container.
 | `sinceSeconds` | integer | No | Logs from last N seconds |
 | `timestamps` | boolean | No | Include timestamps (default: false) |
 | `previous` | boolean | No | Previous container instance (default: false) |
+| `keyword` | string | No | Filter log lines containing this keyword (case-insensitive) |
 
 </details>
 
@@ -268,6 +247,38 @@ Get pod diagnostics: details, parent workload, metrics, and logs.
 | `cluster` | string | Yes | Cluster ID |
 | `namespace` | string | Yes | Namespace |
 | `name` | string | Yes | Pod name |
+
+</details>
+
+<details>
+<summary>kubernetes_describe</summary>
+
+Describe a Kubernetes resource with its related events. Similar to `kubectl describe`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, node) |
+| `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
+| `name` | string | Yes | Resource name |
+| `format` | string | No | Output format: json, yaml (default: json) |
+
+</details>
+
+<details>
+<summary>kubernetes_events</summary>
+
+List Kubernetes events. Supports filtering by namespace, involved object name, and kind.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `namespace` | string | No | Namespace (empty = all namespaces) |
+| `name` | string | No | Filter by involved object name |
+| `kind` | string | No | Filter by involved object kind (e.g., Pod, Deployment, Node) |
+| `limit` | integer | No | Events per page (default: 50) |
+| `page` | integer | No | Page number, starting from 1 (default: 1) |
+| `format` | string | No | Output format: json, table, yaml (default: table) |
 
 </details>
 

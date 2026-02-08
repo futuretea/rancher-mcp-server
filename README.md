@@ -110,7 +110,7 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--config` | Config file path (YAML) | |
 | `--port` | Port for HTTP/SSE mode (0 = stdio mode) | `0` |
 | `--sse-base-url` | Public base URL for SSE endpoint | |
-| `--log-level` | Log level (0-9) | `0` |
+| `--log-level` | Log level (0-9) | `5` |
 | `--rancher-server-url` | Rancher server URL | |
 | `--rancher-token` | Rancher bearer token | |
 | `--rancher-access-key` | Rancher access key | |
@@ -131,7 +131,7 @@ Create `config.yaml`:
 ```yaml
 port: 0  # 0 for stdio, or set a port like 8080 for HTTP/SSE
 
-log_level: 0
+log_level: 5
 
 rancher_server_url: https://your-rancher-server.com
 rancher_token: your-bearer-token

@@ -27,13 +27,12 @@ type (
 // Client wraps the Rancher management client for Norman API operations
 type Client struct {
 	management *managementClient.Client
-	configured bool
 }
 
 // NewClient creates a new Norman API client
 func NewClient(cfg *config.StaticConfig) (*Client, error) {
 	if !cfg.HasRancherConfig() {
-		return &Client{configured: false}, nil
+		return &Client{}, nil
 	}
 
 	// Create management client configuration
@@ -54,18 +53,13 @@ func NewClient(cfg *config.StaticConfig) (*Client, error) {
 
 	return &Client{
 		management: management,
-		configured: true,
 	}, nil
 }
 
-// IsConfigured returns whether the client is properly configured
-func (c *Client) IsConfigured() bool {
-	return c.configured
-}
 
 // ListClusters returns all clusters
 func (c *Client) ListClusters(ctx context.Context) ([]managementClient.Cluster, error) {
-	if !c.configured {
+	if c.management == nil {
 		return nil, ErrNotConfigured
 	}
 
@@ -85,7 +79,7 @@ func (c *Client) GetCluster(ctx context.Context, clusterID string) (*managementC
 
 // ListProjects returns all projects for a cluster
 func (c *Client) ListProjects(ctx context.Context, clusterID string) ([]managementClient.Project, error) {
-	if !c.configured {
+	if c.management == nil {
 		return nil, ErrNotConfigured
 	}
 
@@ -103,7 +97,7 @@ func (c *Client) ListProjects(ctx context.Context, clusterID string) ([]manageme
 
 // ListUsers returns all users
 func (c *Client) ListUsers(ctx context.Context) ([]managementClient.User, error) {
-	if !c.configured {
+	if c.management == nil {
 		return nil, ErrNotConfigured
 	}
 
@@ -133,7 +127,7 @@ func (c *Client) GenerateKubeconfig(ctx context.Context, clusterID string) (stri
 // LookupCluster finds a cluster by ID
 // Returns the cluster if found, or a helpful error if not found
 func (c *Client) LookupCluster(ctx context.Context, clusterID string) (*Cluster, error) {
-	if !c.configured {
+	if c.management == nil {
 		return nil, ErrNotConfigured
 	}
 
@@ -147,7 +141,7 @@ func (c *Client) LookupCluster(ctx context.Context, clusterID string) (*Cluster,
 // LookupProject finds a project by ID within a cluster
 // Returns the project if found, or a helpful error if not found
 func (c *Client) LookupProject(ctx context.Context, clusterID, projectID string) (*Project, error) {
-	if !c.configured {
+	if c.management == nil {
 		return nil, ErrNotConfigured
 	}
 
@@ -161,7 +155,7 @@ func (c *Client) LookupProject(ctx context.Context, clusterID, projectID string)
 // LookupUser finds a user by ID
 // Returns the user if found, or a helpful error if not found
 func (c *Client) LookupUser(ctx context.Context, userID string) (*User, error) {
-	if !c.configured {
+	if c.management == nil {
 		return nil, ErrNotConfigured
 	}
 

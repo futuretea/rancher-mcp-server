@@ -86,7 +86,7 @@ for network access.`,
 	// Server configuration flags
 	cmd.Flags().Int("port", 0, "Port to listen on for HTTP/SSE mode (0 for stdio mode)")
 	cmd.Flags().String("sse-base-url", "", "SSE public base URL to use when sending the endpoint message (e.g. https://example.com)")
-	cmd.Flags().Int("log-level", 0, "Log level (0-9)")
+	cmd.Flags().Int("log-level", 5, "Log level (0-9)")
 
 	// Rancher configuration flags
 	cmd.Flags().String("rancher-server-url", "", "Rancher server URL")

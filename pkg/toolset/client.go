@@ -17,7 +17,7 @@ type CombinedClient struct {
 func ValidateNormanClient(client interface{}) (*norman.Client, error) {
 	// Check if it's a CombinedClient first
 	if combined, ok := client.(*CombinedClient); ok {
-		if combined.Norman == nil || !combined.Norman.IsConfigured() {
+		if combined.Norman == nil {
 			return nil, handler.ErrRancherNotConfigured
 		}
 		return combined.Norman, nil
@@ -25,7 +25,7 @@ func ValidateNormanClient(client interface{}) (*norman.Client, error) {
 
 	// Legacy: direct Norman client
 	normanClient, ok := client.(*norman.Client)
-	if !ok || normanClient == nil || !normanClient.IsConfigured() {
+	if !ok || normanClient == nil {
 		return nil, handler.ErrRancherNotConfigured
 	}
 	return normanClient, nil

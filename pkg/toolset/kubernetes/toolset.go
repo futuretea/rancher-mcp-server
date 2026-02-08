@@ -129,7 +129,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 		{
 			Tool: mcp.Tool{
 				Name:        "kubernetes_logs",
-				Description: "Get logs from a pod or specific container. Supports tail lines and time range filtering.",
+				Description: "Get logs from a pod or specific container. Supports tail lines, time range filtering, and keyword search.",
 				InputSchema: mcp.ToolInputSchema{
 					Type:     "object",
 					Required: []string{"cluster", "namespace", "name"},
@@ -170,6 +170,11 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 							"description": "Get logs from previous container instance",
 							"default":     false,
 						},
+						"keyword": map[string]any{
+							"type":        "string",
+							"description": "Filter log lines containing this keyword (case-insensitive)",
+							"default":     "",
+						},
 					},
 				},
 			},
@@ -205,6 +210,96 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				ReadOnlyHint: handler.BoolPtr(true),
 			},
 			Handler: inspectPodHandler,
+		},
+		{
+			Tool: mcp.Tool{
+				Name:        "kubernetes_describe",
+				Description: "Describe a Kubernetes resource with its related events. Similar to 'kubectl describe', returns resource details and associated events.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "kind", "name"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+						},
+						"kind": map[string]any{
+							"type":        "string",
+							"description": "Resource kind (e.g., pod, deployment, service, node, etc.)",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name (optional for cluster-scoped resources)",
+							"default":     "",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Resource name",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: describeHandler,
+		},
+		{
+			Tool: mcp.Tool{
+				Name:        "kubernetes_events",
+				Description: "List Kubernetes events. Supports filtering by namespace, involved object name, and involved object kind.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name (optional, empty for all namespaces)",
+							"default":     "",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Filter by involved object name (optional)",
+							"default":     "",
+						},
+						"kind": map[string]any{
+							"type":        "string",
+							"description": "Filter by involved object kind, e.g., Pod, Deployment, Node (optional)",
+							"default":     "",
+						},
+						"limit": map[string]any{
+							"type":        "integer",
+							"description": "Number of events per page",
+							"default":     50,
+						},
+						"page": map[string]any{
+							"type":        "integer",
+							"description": "Page number (starting from 1)",
+							"default":     1,
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "table",
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: eventsHandler,
 		},
 	}
 

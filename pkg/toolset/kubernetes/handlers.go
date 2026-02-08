@@ -4,12 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
 	"strings"
+	"time"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
 	"gopkg.in/yaml.v3"
+	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -114,6 +117,7 @@ func logsHandler(client interface{}, params map[string]interface{}) (string, err
 	sinceSeconds := handler.ExtractOptionalInt64(params, handler.ParamSinceSeconds)
 	timestamps := handler.ExtractBool(params, handler.ParamTimestamps, false)
 	previous := handler.ExtractBool(params, handler.ParamPrevious, false)
+	keyword := handler.ExtractOptionalString(params, handler.ParamKeyword)
 
 	ctx := context.Background()
 
@@ -130,13 +134,18 @@ func logsHandler(client interface{}, params map[string]interface{}) (string, err
 		if err != nil {
 			return "", fmt.Errorf("failed to get pod logs: %w", err)
 		}
-		return logs, nil
+		return filterLogsByKeyword(logs, keyword), nil
 	}
 
 	// Get logs for all containers
 	logs, err := steveClient.GetAllContainerLogs(ctx, cluster, namespace, name, tailLines)
 	if err != nil {
 		return "", fmt.Errorf("failed to get pod logs: %w", err)
+	}
+
+	// Apply keyword filter to each container's logs
+	for containerName, containerLogs := range logs {
+		logs[containerName] = filterLogsByKeyword(containerLogs, keyword)
 	}
 
 	result, err := json.MarshalIndent(logs, "", "  ")
@@ -173,6 +182,136 @@ func inspectPodHandler(client interface{}, params map[string]interface{}) (strin
 	}
 
 	return result.ToJSON()
+}
+
+// describeHandler handles the kubernetes_describe tool
+func describeHandler(client interface{}, params map[string]interface{}) (string, error) {
+	steveClient, err := toolset.ValidateSteveClient(client)
+	if err != nil {
+		return "", err
+	}
+
+	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	if err != nil {
+		return "", err
+	}
+	kind, err := handler.ExtractRequiredString(params, handler.ParamKind)
+	if err != nil {
+		return "", err
+	}
+	name, err := handler.ExtractRequiredString(params, handler.ParamName)
+	if err != nil {
+		return "", err
+	}
+	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
+	format := handler.ExtractFormat(params)
+
+	ctx := context.Background()
+	result, err := steveClient.DescribeResource(ctx, cluster, kind, namespace, name)
+	if err != nil {
+		return "", fmt.Errorf("failed to describe resource: %w", err)
+	}
+
+	switch format {
+	case handler.FormatYAML:
+		data, err := yaml.Marshal(result)
+		if err != nil {
+			return "", fmt.Errorf("failed to format as YAML: %w", err)
+		}
+		return string(data), nil
+	default: // json
+		return result.ToJSON()
+	}
+}
+
+// eventsHandler handles the kubernetes_events tool
+func eventsHandler(client interface{}, params map[string]interface{}) (string, error) {
+	steveClient, err := toolset.ValidateSteveClient(client)
+	if err != nil {
+		return "", err
+	}
+
+	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	if err != nil {
+		return "", err
+	}
+	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
+	nameFilter := handler.ExtractOptionalString(params, handler.ParamName)
+	kindFilter := handler.ExtractOptionalString(params, handler.ParamKind)
+	limit := handler.ExtractInt64(params, handler.ParamLimit, 50)
+	page := handler.ExtractInt64(params, handler.ParamPage, 1)
+	format := handler.ExtractOptionalStringWithDefault(params, handler.ParamFormat, handler.FormatTable)
+
+	ctx := context.Background()
+	events, err := steveClient.GetEvents(ctx, cluster, namespace, nameFilter, kindFilter)
+	if err != nil {
+		return "", fmt.Errorf("failed to get events: %w", err)
+	}
+
+	sortEventsByTime(events)
+
+	events, _ = handler.ApplyPagination(events, limit, page)
+
+	if len(events) == 0 {
+		return "No events found", nil
+	}
+
+	switch format {
+	case handler.FormatYAML:
+		data, err := yaml.Marshal(events)
+		if err != nil {
+			return "", fmt.Errorf("failed to format as YAML: %w", err)
+		}
+		return string(data), nil
+	case handler.FormatTable:
+		return formatEventsAsTable(events), nil
+	default: // json
+		data, err := json.MarshalIndent(events, "", "  ")
+		if err != nil {
+			return "", fmt.Errorf("failed to format as JSON: %w", err)
+		}
+		return string(data), nil
+	}
+}
+
+// eventTime returns the most relevant timestamp for an event,
+// preferring LastTimestamp over EventTime.
+func eventTime(e corev1.Event) time.Time {
+	if !e.LastTimestamp.IsZero() {
+		return e.LastTimestamp.Time
+	}
+	return e.EventTime.Time
+}
+
+// sortEventsByTime sorts events by timestamp, most recent first.
+func sortEventsByTime(events []corev1.Event) {
+	sort.Slice(events, func(i, j int) bool {
+		return eventTime(events[i]).After(eventTime(events[j]))
+	})
+}
+
+// formatEventsAsTable formats events as a human-readable table
+func formatEventsAsTable(events []corev1.Event) string {
+	var b strings.Builder
+	fmt.Fprintf(&b, "%-8s %-25s %-40s %-6s %-s\n", "TYPE", "REASON", "OBJECT", "COUNT", "MESSAGE")
+	fmt.Fprintf(&b, "%-8s %-25s %-40s %-6s %-s\n", "----", "------", "------", "-----", "-------")
+
+	for _, event := range events {
+		object := fmt.Sprintf("%s/%s", event.InvolvedObject.Kind, event.InvolvedObject.Name)
+		message := event.Message
+		if len(message) > 100 {
+			message = message[:97] + "..."
+		}
+		fmt.Fprintf(&b, "%-8s %-25s %-40s %-6d %s\n",
+			truncate(event.Type, 8),
+			truncate(event.Reason, 25),
+			truncate(object, 40),
+			event.Count,
+			message,
+		)
+	}
+
+	return b.String()
 }
 
 // createHandler handles the kubernetes_create tool
@@ -398,4 +537,24 @@ func paginateResourceList(list *unstructured.UnstructuredList, limit, page int64
 		end = total
 	}
 	return &unstructured.UnstructuredList{Object: list.Object, Items: list.Items[start:end]}
+}
+
+// filterLogsByKeyword filters log lines by keyword (case-insensitive).
+// Returns the original logs if keyword is empty.
+func filterLogsByKeyword(logs, keyword string) string {
+	if keyword == "" {
+		return logs
+	}
+	keywordLower := strings.ToLower(keyword)
+	lines := strings.Split(logs, "\n")
+	var filtered []string
+	for _, line := range lines {
+		if strings.Contains(strings.ToLower(line), keywordLower) {
+			filtered = append(filtered, line)
+		}
+	}
+	if len(filtered) == 0 {
+		return fmt.Sprintf("No log lines matching keyword %q", keyword)
+	}
+	return strings.Join(filtered, "\n")
 }

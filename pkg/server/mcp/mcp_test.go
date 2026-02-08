@@ -36,7 +36,7 @@ func TestNewServer(t *testing.T) {
 	}
 
 	// Check that we have our expected tools
-	expectedTools := []string{"configuration_view", "cluster_list", "project_list", "user_list"}
+	expectedTools := []string{"cluster_list", "project_list", "kubernetes_get", "kubernetes_list", "kubernetes_describe", "kubernetes_events"}
 	for _, expected := range expectedTools {
 		found := false
 		for _, actual := range tools {

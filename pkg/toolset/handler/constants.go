@@ -21,14 +21,16 @@ const (
 	ParamTailLines     = "tailLines"
 	ParamSinceSeconds  = "sinceSeconds"
 	ParamTimestamps    = "timestamps"
+	ParamPrevious      = "previous"
+	ParamKeyword       = "keyword"
 	// Kubernetes toolset parameters
 	ParamKind          = "kind"
 	ParamLabelSelector = "labelSelector"
 	ParamLimit         = "limit"
 	ParamResource      = "resource"
 	ParamPatch         = "patch"
-	ParamPrevious      = "previous"
 	ParamPage          = "page"
+	ParamFieldSelector = "fieldSelector"
 )
 
 // Error definitions

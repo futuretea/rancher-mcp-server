@@ -25,7 +25,11 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
 - **Security Controls**:
   - `read_only`: Disables create, patch, and delete operations
   - `disable_destructive`: Disables delete operations only
-  - Secret data is never exposed, only metadata
+  - `show_sensitive_data`: Global administrator control for sensitive data visibility (default: `false`)
+    - When disabled (default): All sensitive data is masked with `***`
+    - When enabled: Per-tool `showSensitiveData` parameter controls visibility
+    - Applies to: Kubernetes Secret `data` and `stringData` fields
+    - Affects tools: `kubernetes_get`, `kubernetes_list`, `kubernetes_describe`
 - **Output Formats**: Table, YAML, and JSON
 - **Output Filters**: Remove verbose fields like `managedFields` from responses
 - **Pagination**: Limit and page parameters for list operations
@@ -97,6 +101,7 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--rancher-tls-insecure` | Skip TLS verification | `false` |
 | `--read-only` | Disable write operations | `true` |
 | `--disable-destructive` | Disable delete operations | `false` |
+| `--show-sensitive-data` | Global admin flag to allow sensitive data visibility | `false` |
 | `--list-output` | Output format (json, table, yaml) | `json` |
 | `--output-filters` | Fields to remove from output | `metadata.managedFields` |
 | `--toolsets` | Toolsets to enable | `kubernetes,rancher` |
@@ -122,6 +127,13 @@ rancher_token: your-bearer-token
 read_only: true  # default: true
 disable_destructive: false
 
+# Sensitive Data Control:
+# Global administrator setting that controls whether sensitive data can be shown.
+# - false (default): All sensitive data is always masked with '***'
+# - true: Allows per-tool showSensitiveData parameter to control visibility
+# Applies to Kubernetes Secret data and stringData fields.
+show_sensitive_data: false
+
 list_output: json
 
 # Remove verbose fields from output
@@ -146,6 +158,7 @@ RANCHER_MCP_PORT=8080
 RANCHER_MCP_RANCHER_SERVER_URL=https://rancher.example.com
 RANCHER_MCP_RANCHER_TOKEN=your-token
 RANCHER_MCP_READ_ONLY=true
+RANCHER_MCP_SHOW_SENSITIVE_DATA=false  # Global admin control for sensitive data
 ```
 
 ### HTTP/SSE Mode
@@ -174,6 +187,86 @@ rancher-mcp-server --port 8080 \
 ```
 
 ## Tools and Functionalities <a id="tools-and-functionalities"></a>
+
+### Sensitive Data Protection
+
+The server provides a two-tier security control for handling sensitive Kubernetes resources (currently Secrets):
+
+#### Global Administrator Control
+
+The `--show-sensitive-data` flag (default: `false`) is a global administrator setting that determines whether sensitive data can ever be revealed:
+
+- **Disabled (default: `false`)**: All sensitive data is **always masked** with `***`, regardless of per-tool parameters
+  - Secret `data` and `stringData` fields are masked
+  - Provides maximum security by preventing any accidental data exposure
+  - Recommended for production environments
+
+- **Enabled (`true`)**: Allows per-tool `showSensitiveData` parameter to control visibility
+  - Each tool call can choose whether to show or mask sensitive data
+  - Useful for troubleshooting and administrative tasks
+  - Requires explicit per-call parameter to reveal data
+
+#### Per-Tool Parameter Control
+
+When global `--show-sensitive-data` is enabled, tools that access sensitive resources accept a `showSensitiveData` parameter:
+
+- `showSensitiveData: false` (default): Masks sensitive fields with `***`
+- `showSensitiveData: true`: Shows actual values
+
+**Affected Tools:**
+- `kubernetes_get`: Get individual resources including Secrets
+- `kubernetes_list`: List resources including Secrets
+- `kubernetes_describe`: Describe resources with events
+
+**Example Behavior:**
+
+```yaml
+# Global flag disabled (--show-sensitive-data=false)
+# Secret data is ALWAYS masked, regardless of per-tool parameter
+apiVersion: v1
+kind: Secret
+data:
+  password: "***"  # Always masked
+  token: "***"     # Always masked
+
+# Global flag enabled (--show-sensitive-data=true)
+# Per-tool parameter controls visibility:
+
+# With showSensitiveData: false (default)
+apiVersion: v1
+kind: Secret
+data:
+  password: "***"  # Masked
+  token: "***"     # Masked
+
+# With showSensitiveData: true
+apiVersion: v1
+kind: Secret
+data:
+  password: "<base64-encoded-value>"  # Actual base64 value shown
+  token: "<base64-encoded-value>"     # Actual base64 value shown
+```
+
+**Configuration Examples:**
+
+```shell
+# Maximum security (production recommended)
+rancher-mcp-server --show-sensitive-data=false  # or omit (default)
+
+# Allow administrators to reveal data when needed
+rancher-mcp-server --show-sensitive-data=true
+```
+
+```yaml
+# config.yaml
+show_sensitive_data: false  # Production: always mask
+# show_sensitive_data: true  # Development: allow per-tool control
+```
+
+```shell
+# Environment variable
+RANCHER_MCP_SHOW_SENSITIVE_DATA=false
+```
 
 Tools are organized into toolsets. Use `--toolsets` to enable specific sets or `--enabled-tools`/`--disabled-tools` for fine-grained control.
 
@@ -215,6 +308,7 @@ Get a Kubernetes resource by kind, namespace, and name.
 | `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
 | `name` | string | Yes | Resource name |
 | `format` | string | No | Output format: json, yaml (default: json) |
+| `showSensitiveData` | boolean | No | Show sensitive data values (e.g., Secret data). Default: false. Only takes effect when global `--show-sensitive-data` is enabled. When global setting is disabled, data is always masked with `***` |
 
 </details>
 
@@ -233,6 +327,7 @@ List Kubernetes resources by kind.
 | `limit` | integer | No | Items per page (default: 100) |
 | `page` | integer | No | Page number, starting from 1 (default: 1) |
 | `format` | string | No | Output format: json, table, yaml (default: json) |
+| `showSensitiveData` | boolean | No | Show sensitive data values (e.g., Secret data). Default: false. Only takes effect when global `--show-sensitive-data` is enabled. When global setting is disabled, data is always masked with `***` |
 
 </details>
 
@@ -280,6 +375,7 @@ Describe a Kubernetes resource with its related events. Similar to `kubectl desc
 | `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
 | `name` | string | Yes | Resource name |
 | `format` | string | No | Output format: json, yaml (default: json) |
+| `showSensitiveData` | boolean | No | Show sensitive data values (e.g., Secret data). Default: false. Only takes effect when global `--show-sensitive-data` is enabled. When global setting is disabled, data is always masked with `***` |
 
 </details>
 

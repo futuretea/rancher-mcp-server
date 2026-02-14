@@ -190,6 +190,11 @@ func (s *Server) configureTool(tool toolset.ServerTool) toolset.ServerTool {
 				params["outputFilters"] = s.configuration.OutputFilters
 			}
 
+			// Admin policy: if show_sensitive_data is disabled, force mask regardless of per-call param
+			if !s.configuration.ShowSensitiveData {
+				params["showSensitiveData"] = false
+			}
+
 			return tool.Handler(client, params)
 		},
 	}

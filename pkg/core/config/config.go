@@ -18,15 +18,16 @@ type StaticConfig struct {
 	LogLevel int `mapstructure:"log_level"`
 
 	// Rancher configuration
-	RancherServerURL string `mapstructure:"rancher_server_url"`
-	RancherToken     string `mapstructure:"rancher_token"`
-	RancherAccessKey string `mapstructure:"rancher_access_key"`
-	RancherSecretKey string `mapstructure:"rancher_secret_key"`
-	RancherTLSInsecure bool `mapstructure:"rancher_tls_insecure"`
+	RancherServerURL   string `mapstructure:"rancher_server_url"`
+	RancherToken       string `mapstructure:"rancher_token"`
+	RancherAccessKey   string `mapstructure:"rancher_access_key"`
+	RancherSecretKey   string `mapstructure:"rancher_secret_key"`
+	RancherTLSInsecure bool   `mapstructure:"rancher_tls_insecure"`
 
 	// Security configuration
 	ReadOnly           bool `mapstructure:"read_only"`
 	DisableDestructive bool `mapstructure:"disable_destructive"`
+	ShowSensitiveData  bool `mapstructure:"show_sensitive_data"`
 
 	// Output configuration
 	ListOutput    string   `mapstructure:"list_output"`

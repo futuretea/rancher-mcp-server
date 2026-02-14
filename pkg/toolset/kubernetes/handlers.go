@@ -46,6 +46,11 @@ func getHandler(client interface{}, params map[string]interface{}) (string, erro
 		return "", fmt.Errorf("failed to get resource: %w", err)
 	}
 
+	// Mask sensitive data (e.g., Secret data) unless showSensitiveData is true
+	if sensitiveFilter := handler.NewSensitiveDataFilterFromParams(params); sensitiveFilter != nil {
+		resource = sensitiveFilter.Filter(resource)
+	}
+
 	return formatResource(resource, format, filter)
 }
 
@@ -90,6 +95,11 @@ func listHandler(client interface{}, params map[string]interface{}) (string, err
 
 	// Client-side: page pagination
 	list = paginateResourceList(list, limit, page)
+
+	// Mask sensitive data (e.g., Secret data) unless showSensitiveData is true
+	if sensitiveFilter := handler.NewSensitiveDataFilterFromParams(params); sensitiveFilter != nil {
+		list = sensitiveFilter.FilterList(list)
+	}
 
 	return formatResourceList(list, format, filter)
 }
@@ -211,6 +221,11 @@ func describeHandler(client interface{}, params map[string]interface{}) (string,
 	result, err := steveClient.DescribeResource(ctx, cluster, kind, namespace, name)
 	if err != nil {
 		return "", fmt.Errorf("failed to describe resource: %w", err)
+	}
+
+	// Mask sensitive data (e.g., Secret data) unless showSensitiveData is true
+	if sensitiveFilter := handler.NewSensitiveDataFilterFromParams(params); sensitiveFilter != nil {
+		result.Resource = sensitiveFilter.Filter(result.Resource)
 	}
 
 	switch format {

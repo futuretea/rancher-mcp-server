@@ -18,6 +18,14 @@ type Toolset struct {
 
 var _ toolset.Toolset = (*Toolset)(nil)
 
+// showSensitiveDataProperty is the shared schema for the showSensitiveData parameter
+// used across multiple tool definitions.
+var showSensitiveDataProperty = map[string]any{
+	"type":        "boolean",
+	"description": "Show sensitive data values (e.g., Secret data). Default is false, which masks values with '***'",
+	"default":     false,
+}
+
 // GetName returns the name of the toolset
 func (t *Toolset) GetName() string {
 	return "kubernetes"
@@ -63,6 +71,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 							"enum":        []string{"json", "yaml"},
 							"default":     "json",
 						},
+						"showSensitiveData": showSensitiveDataProperty,
 					},
 				},
 			},
@@ -118,6 +127,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 							"enum":        []string{"json", "table", "yaml"},
 							"default":     "json",
 						},
+						"showSensitiveData": showSensitiveDataProperty,
 					},
 				},
 			},
@@ -242,6 +252,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 							"enum":        []string{"json", "yaml"},
 							"default":     "json",
 						},
+						"showSensitiveData": showSensitiveDataProperty,
 					},
 				},
 			},

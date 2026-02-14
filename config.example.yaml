@@ -40,6 +40,7 @@ rancher_token: your-bearer-token-here
 # Security configuration
 read_only: true  # Read-only mode (default: true)
 disable_destructive: false  # Disable destructive operations
+show_sensitive_data: false  # Allow showing sensitive data (e.g., Secret values). Default: false
 
 # Output configuration
 list_output: table  # Output format: table, yaml, json

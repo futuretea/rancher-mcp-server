@@ -9,10 +9,10 @@ import (
 	"github.com/spf13/viper"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/core/config"
-	internalhttp "github.com/futuretea/rancher-mcp-server/pkg/server/http"
 	"github.com/futuretea/rancher-mcp-server/pkg/core/logging"
-	"github.com/futuretea/rancher-mcp-server/pkg/server/mcp"
 	"github.com/futuretea/rancher-mcp-server/pkg/core/version"
+	internalhttp "github.com/futuretea/rancher-mcp-server/pkg/server/http"
+	"github.com/futuretea/rancher-mcp-server/pkg/server/mcp"
 )
 
 // IOStreams represents standard input, output, and error streams
@@ -39,6 +39,7 @@ func bindFlags(cmd *cobra.Command) {
 		// Security configuration
 		"read_only":           "read-only",
 		"disable_destructive": "disable-destructive",
+		"show_sensitive_data": "show-sensitive-data",
 		// Output configuration
 		"list_output":    "list-output",
 		"output_filters": "output-filters",
@@ -98,6 +99,7 @@ for network access.`,
 	// Security configuration flags
 	cmd.Flags().Bool("read-only", true, "Run in read-only mode")
 	cmd.Flags().Bool("disable-destructive", false, "Disable destructive operations")
+	cmd.Flags().Bool("show-sensitive-data", false, "Allow showing sensitive data (e.g., Secret values)")
 
 	// Output configuration flags
 	cmd.Flags().String("list-output", "json", "Output format for list operations (json, table, yaml)")

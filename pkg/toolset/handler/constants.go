@@ -34,6 +34,8 @@ const (
 	// Dep tool parameters
 	ParamDirection = "direction"
 	ParamDepth     = "depth"
+	// Sensitive data parameters
+	ParamShowSensitiveData = "showSensitiveData"
 )
 
 // Error definitions

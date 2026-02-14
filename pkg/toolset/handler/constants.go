@@ -11,18 +11,18 @@ const (
 
 // Parameter name constants
 const (
-	ParamCluster       = "cluster"
-	ParamNamespace     = "namespace"
-	ParamProject       = "project"
-	ParamFormat        = "format"
-	ParamName          = "name"
-	ParamUser          = "user"
-	ParamContainer     = "container"
-	ParamTailLines     = "tailLines"
-	ParamSinceSeconds  = "sinceSeconds"
-	ParamTimestamps    = "timestamps"
-	ParamPrevious      = "previous"
-	ParamKeyword       = "keyword"
+	ParamCluster      = "cluster"
+	ParamNamespace    = "namespace"
+	ParamProject      = "project"
+	ParamFormat       = "format"
+	ParamName         = "name"
+	ParamUser         = "user"
+	ParamContainer    = "container"
+	ParamTailLines    = "tailLines"
+	ParamSinceSeconds = "sinceSeconds"
+	ParamTimestamps   = "timestamps"
+	ParamPrevious     = "previous"
+	ParamKeyword      = "keyword"
 	// Kubernetes toolset parameters
 	ParamKind          = "kind"
 	ParamLabelSelector = "labelSelector"
@@ -31,6 +31,9 @@ const (
 	ParamPatch         = "patch"
 	ParamPage          = "page"
 	ParamFieldSelector = "fieldSelector"
+	// Dep tool parameters
+	ParamDirection = "direction"
+	ParamDepth     = "depth"
 )
 
 // Error definitions

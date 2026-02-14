@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
+	"github.com/futuretea/rancher-mcp-server/pkg/dep"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
 	"gopkg.in/yaml.v3"
@@ -557,4 +558,51 @@ func filterLogsByKeyword(logs, keyword string) string {
 		return fmt.Sprintf("No log lines matching keyword %q", keyword)
 	}
 	return strings.Join(filtered, "\n")
+}
+
+// depHandler handles the kubernetes_dep tool
+func depHandler(client interface{}, params map[string]interface{}) (string, error) {
+	steveClient, err := toolset.ValidateSteveClient(client)
+	if err != nil {
+		return "", err
+	}
+
+	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	if err != nil {
+		return "", err
+	}
+	kind, err := handler.ExtractRequiredString(params, handler.ParamKind)
+	if err != nil {
+		return "", err
+	}
+	name, err := handler.ExtractRequiredString(params, handler.ParamName)
+	if err != nil {
+		return "", err
+	}
+	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
+	direction := handler.ExtractOptionalStringWithDefault(params, handler.ParamDirection, "dependents")
+	maxDepth := int(handler.ExtractInt64(params, handler.ParamDepth, 10))
+	format := handler.ExtractOptionalStringWithDefault(params, handler.ParamFormat, "tree")
+
+	if direction != "dependents" && direction != "dependencies" {
+		return "", fmt.Errorf("%w: direction must be 'dependents' or 'dependencies'", handler.ErrMissingParameter)
+	}
+	if maxDepth < 1 || maxDepth > 20 {
+		maxDepth = 10
+	}
+
+	ctx := context.Background()
+	result, err := dep.Resolve(ctx, steveClient, cluster, kind, namespace, name, direction, maxDepth)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve dependencies: %w", err)
+	}
+
+	depsIsDependencies := direction == "dependencies"
+
+	switch format {
+	case "json":
+		return dep.FormatJSON(result, depsIsDependencies)
+	default: // tree
+		return dep.FormatTree(result, depsIsDependencies), nil
+	}
 }

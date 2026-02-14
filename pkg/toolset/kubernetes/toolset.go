@@ -301,6 +301,56 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 			},
 			Handler: eventsHandler,
 		},
+		{
+			Tool: mcp.Tool{
+				Name:        "kubernetes_dep",
+				Description: "Show all dependencies or dependents of any Kubernetes resource as a tree. Covers OwnerReference chains, Pod->Node/SA/ConfigMap/Secret/PVC, Service->Pod (label selector), Ingress->IngressClass/Service/TLS Secret, PVC<->PV->StorageClass, RBAC bindings, PDB->Pod, and Events.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "kind", "name"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+						},
+						"kind": map[string]any{
+							"type":        "string",
+							"description": "Resource kind (e.g., deployment, pod, service, ingress, node, etc.)",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name (optional for cluster-scoped resources)",
+							"default":     "",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Resource name",
+						},
+						"direction": map[string]any{
+							"type":        "string",
+							"description": "Traversal direction: 'dependents' shows resources that depend on this resource, 'dependencies' shows resources this resource depends on",
+							"enum":        []string{"dependents", "dependencies"},
+							"default":     "dependents",
+						},
+						"depth": map[string]any{
+							"type":        "integer",
+							"description": "Maximum traversal depth (1-20)",
+							"default":     10,
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: tree (human-readable) or json (structured)",
+							"enum":        []string{"tree", "json"},
+							"default":     "tree",
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: depHandler,
+		},
 	}
 
 	// Add write operations if not in read-only mode

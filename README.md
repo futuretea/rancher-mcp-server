@@ -20,6 +20,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
   - List and filter Kubernetes events by namespace, object name, and object kind
   - Query container logs with filtering (tail lines, time range, timestamps, keyword search)
   - Inspect pods with parent workload, metrics, and logs
+  - Show dependency/dependent trees for any resource (inspired by kube-lineage)
 - **Rancher Resources via Norman API**: List clusters and projects
 - **Security Controls**:
   - `read_only`: Disables create, patch, and delete operations
@@ -184,6 +185,23 @@ Tools are organized into toolsets. Use `--toolsets` to enable specific sets or `
 | rancher | Norman | Cluster and project listing |
 
 ### kubernetes
+
+<details>
+<summary>kubernetes_dep</summary>
+
+Show all dependencies or dependents of any Kubernetes resource as a tree. Covers OwnerReference chains, Pod→Node/SA/ConfigMap/Secret/PVC, Service→Pod (label selector), Ingress→IngressClass/Service/TLS Secret, PVC↔PV→StorageClass, RBAC bindings, PDB→Pod, and Events.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `kind` | string | Yes | Resource kind (e.g., deployment, pod, service, ingress, node) |
+| `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
+| `name` | string | Yes | Resource name |
+| `direction` | string | No | Traversal direction: `dependents` (default) or `dependencies` |
+| `depth` | integer | No | Maximum traversal depth, 1-20 (default: 10) |
+| `format` | string | No | Output format: tree, json (default: tree) |
+
+</details>
 
 <details>
 <summary>kubernetes_get</summary>

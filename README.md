@@ -24,6 +24,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
   - Analyze node health and resource usage
   - Inspect pods with parent workload, metrics, and logs
   - Show dependency/dependent trees for any resource (inspired by kube-lineage)
+  - **Resource capacity overview** (inspired by [kube-capacity](https://github.com/robscott/kube-capacity)): Show cluster resource capacity, requests, limits, and utilization
 - **Rancher Resources via Norman API**: List clusters and projects
 - **Security Controls**:
   - `read_only`: Disables create, patch, and delete operations
@@ -281,6 +282,133 @@ Tools are organized into toolsets. Use `--toolsets` to enable specific sets or `
 | rancher | Norman | Cluster and project listing |
 
 ### kubernetes
+
+<details>
+<summary>kubernetes_capacity</summary>
+
+Show Kubernetes cluster resource capacity, requests, limits, and utilization. Similar to [kube-capacity](https://github.com/robscott/kube-capacity) CLI tool.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `pods` | boolean | No | Include individual pod resources in the output (default: false) |
+| `containers` | boolean | No | Include individual container resources in the output (implies pods=true) (default: false) |
+| `util` | boolean | No | Include actual resource utilization from metrics-server (requires metrics-server) (default: false) |
+| `available` | boolean | No | Show raw available capacity instead of percentages (default: false) |
+| `podCount` | boolean | No | Include pod counts for each node and the whole cluster (default: false) |
+| `showLabels` | boolean | No | Include node labels in the output (default: false) |
+| `hideRequests` | boolean | No | Hide request columns from output (default: false) |
+| `hideLimits` | boolean | No | Hide limit columns from output (default: false) |
+| `namespace` | string | No | Filter by namespace (empty for all namespaces) |
+| `labelSelector` | string | No | Filter pods by label selector (e.g., "app=nginx,env=prod") |
+| `nodeLabelSelector` | string | No | Filter nodes by label selector (e.g., "node-role.kubernetes.io/worker=true") |
+| `namespaceLabelSelector` | string | No | Filter namespaces by label selector (e.g., "env=production") |
+| `nodeTaints` | string | No | Filter nodes by taints. Use 'key=value:effect' to include, 'key=value:effect-' to exclude. Multiple taints can be separated by comma |
+| `noTaint` | boolean | No | Exclude nodes with any taints (default: false) |
+| `sortBy` | string | No | Sort by: cpu.util, mem.util, cpu.request, mem.request, cpu.limit, mem.limit, cpu.util.percentage, mem.util.percentage, name |
+| `format` | string | No | Output format: table, json, yaml (default: table) |
+
+**Examples:**
+
+```json
+// Basic node overview
+{
+  "cluster": "c-abc123"
+}
+
+// Include pods detail
+{
+  "cluster": "c-abc123",
+  "pods": true
+}
+
+// Include utilization metrics (requires metrics-server)
+{
+  "cluster": "c-abc123",
+  "util": true
+}
+
+// Full detail with utilization
+{
+  "cluster": "c-abc123",
+  "pods": true,
+  "util": true
+}
+
+// Filter by namespace
+{
+  "cluster": "c-abc123",
+  "namespace": "production"
+}
+
+// Sort by CPU utilization
+{
+  "cluster": "c-abc123",
+  "sortBy": "cpu.util"
+}
+
+// Filter by node labels (show only worker nodes)
+{
+  "cluster": "c-abc123",
+  "nodeLabelSelector": "node-role.kubernetes.io/worker=true"
+}
+
+// Include container-level details
+{
+  "cluster": "c-abc123",
+  "containers": true
+}
+
+// Show pod counts per node
+{
+  "cluster": "c-abc123",
+  "podCount": true
+}
+
+// Show node labels in output
+{
+  "cluster": "c-abc123",
+  "showLabels": true
+}
+
+// Hide request columns (show only limits)
+{
+  "cluster": "c-abc123",
+  "hideRequests": true
+}
+
+// Filter by namespace labels
+{
+  "cluster": "c-abc123",
+  "namespaceLabelSelector": "env=production"
+}
+
+// Filter by node taints (include nodes with specific taint)
+{
+  "cluster": "c-abc123",
+  "nodeTaints": "dedicated=special:NoSchedule"
+}
+
+// Exclude nodes with specific taint
+{
+  "cluster": "c-abc123",
+  "nodeTaints": "dedicated=special:NoSchedule-"
+}
+
+// Exclude all tainted nodes
+{
+  "cluster": "c-abc123",
+  "noTaint": true
+}
+
+// Sort by CPU utilization percentage
+{
+  "cluster": "c-abc123",
+  "sortBy": "cpu.util.percentage"
+}
+```
+
+</details>
 
 <details>
 <summary>kubernetes_dep</summary>

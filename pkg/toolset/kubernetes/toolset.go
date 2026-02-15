@@ -600,6 +600,108 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 			},
 			Handler: diffHandler,
 		},
+		{
+			Tool: mcp.Tool{
+				Name:        "kubernetes_capacity",
+				Description: "Show Kubernetes cluster resource capacity, requests, limits, and utilization. Similar to kube-capacity CLI tool. Combines the best parts of kubectl top and kubectl describe into an easy to read table showing node and pod resource information.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+						},
+						"pods": map[string]any{
+							"type":        "boolean",
+							"description": "Include individual pod resources in the output",
+							"default":     false,
+						},
+						"util": map[string]any{
+							"type":        "boolean",
+							"description": "Include actual resource utilization from metrics-server (requires metrics-server to be installed)",
+							"default":     false,
+						},
+						"available": map[string]any{
+							"type":        "boolean",
+							"description": "Show raw available capacity instead of percentages",
+							"default":     false,
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Filter by namespace (optional, empty for all namespaces)",
+							"default":     "",
+						},
+						"labelSelector": map[string]any{
+							"type":        "string",
+							"description": "Filter pods by label selector (e.g., 'app=nginx,env=prod')",
+							"default":     "",
+						},
+						"nodeLabelSelector": map[string]any{
+							"type":        "string",
+							"description": "Filter nodes by label selector (e.g., 'node-role.kubernetes.io/worker=true')",
+							"default":     "",
+						},
+						"namespaceLabelSelector": map[string]any{
+							"type":        "string",
+							"description": "Filter namespaces by label selector (e.g., 'env=production')",
+							"default":     "",
+						},
+						"nodeTaints": map[string]any{
+							"type":        "string",
+							"description": "Filter nodes by taints. Use 'key=value:effect' to include, 'key=value:effect-' to exclude. Multiple taints can be separated by comma",
+							"default":     "",
+						},
+						"noTaint": map[string]any{
+							"type":        "boolean",
+							"description": "Exclude nodes with any taints",
+							"default":     false,
+						},
+						"containers": map[string]any{
+							"type":        "boolean",
+							"description": "Include individual container resources in the output (implies pods=true)",
+							"default":     false,
+						},
+						"podCount": map[string]any{
+							"type":        "boolean",
+							"description": "Include pod counts for each node and the whole cluster",
+							"default":     false,
+						},
+						"showLabels": map[string]any{
+							"type":        "boolean",
+							"description": "Include node labels in the output",
+							"default":     false,
+						},
+						"hideRequests": map[string]any{
+							"type":        "boolean",
+							"description": "Hide request columns from output",
+							"default":     false,
+						},
+						"hideLimits": map[string]any{
+							"type":        "boolean",
+							"description": "Hide limit columns from output",
+							"default":     false,
+						},
+						"sortBy": map[string]any{
+							"type":        "string",
+							"description": "Sort by field: cpu.util, mem.util, cpu.request, mem.request, cpu.limit, mem.limit, cpu.util.percentage, mem.util.percentage, name",
+							"enum":        []string{"", "cpu.util", "mem.util", "cpu.request", "mem.request", "cpu.limit", "mem.limit", "cpu.util.percentage", "mem.util.percentage", "cpu.request.percentage", "mem.request.percentage", "cpu.limit.percentage", "mem.limit.percentage", "name"},
+							"default":     "",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: table, json, yaml",
+							"enum":        []string{"table", "json", "yaml"},
+							"default":     "table",
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: capacityHandler,
+		},
 	}
 
 	// Add write operations if not in read-only mode

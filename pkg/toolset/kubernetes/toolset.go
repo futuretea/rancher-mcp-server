@@ -402,6 +402,36 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 			},
 			Handler: rolloutHistoryHandler,
 		},
+		{
+			Tool: mcp.Tool{
+				Name:        "kubernetes_node_analysis",
+				Description: "Get comprehensive node analysis including capacity, allocated resources, taints, labels, and list of pods running on the node.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "name"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Node name",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or yaml",
+							"enum":        []string{"json", "yaml"},
+							"default":     "json",
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: nodeAnalysisHandler,
+		},
 	}
 
 	// Add write operations if not in read-only mode

@@ -19,6 +19,9 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
   - Describe resources with related events (similar to `kubectl describe`)
   - List and filter Kubernetes events by namespace, object name, and object kind
   - Query container logs with filtering (tail lines, time range, timestamps, keyword search)
+  - Multi-pod log aggregation via label selector with time-based sorting
+  - View rollout history for Deployments
+  - Analyze node health and resource usage
   - Inspect pods with parent workload, metrics, and logs
   - Show dependency/dependent trees for any resource (inspired by kube-lineage)
 - **Rancher Resources via Norman API**: List clusters and projects
@@ -334,19 +337,25 @@ List Kubernetes resources by kind.
 <details>
 <summary>kubernetes_logs</summary>
 
-Get logs from a pod container.
+Get logs from a pod container. Supports multi-pod log aggregation via label selector with time-based sorting.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
 | `namespace` | string | Yes | Namespace |
-| `name` | string | Yes | Pod name |
+| `name` | string | No | Pod name (required if labelSelector not specified) |
+| `labelSelector` | string | No | Label selector for multi-pod log aggregation (e.g., "app=nginx") |
 | `container` | string | No | Container name (empty = all containers) |
 | `tailLines` | integer | No | Lines from end (default: 100) |
 | `sinceSeconds` | integer | No | Logs from last N seconds |
-| `timestamps` | boolean | No | Include timestamps (default: false) |
+| `timestamps` | boolean | No | Include timestamps (default: true) |
 | `previous` | boolean | No | Previous container instance (default: false) |
 | `keyword` | string | No | Filter log lines containing this keyword (case-insensitive) |
+
+**Notes:**
+- When `labelSelector` is specified, logs from all matching pods are aggregated and sorted by timestamp
+- Output format for single pod: `[container] timestamp content`
+- Output format for multi-pod: `[pod/container] timestamp content`
 
 </details>
 
@@ -360,6 +369,31 @@ Get pod diagnostics: details, parent workload, metrics, and logs.
 | `cluster` | string | Yes | Cluster ID |
 | `namespace` | string | Yes | Namespace |
 | `name` | string | Yes | Pod name |
+
+</details>
+
+<details>
+<summary>kubernetes_rollout_history</summary>
+
+View rollout history for Deployments. Shows revision history with change annotations (similar to `kubectl rollout history`).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `namespace` | string | Yes | Namespace |
+| `name` | string | Yes | Deployment name |
+
+</details>
+
+<details>
+<summary>kubernetes_node_analysis</summary>
+
+Analyze node health and resource usage. Shows node capacity, allocatable resources, pod distribution, and identifies potential issues.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `name` | string | No | Node name (if empty, analyzes all nodes) |
 
 </details>
 

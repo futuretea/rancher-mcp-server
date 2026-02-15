@@ -139,10 +139,10 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 		{
 			Tool: mcp.Tool{
 				Name:        "kubernetes_logs",
-				Description: "Get logs from a pod or specific container. Supports tail lines, time range filtering, and keyword search.",
+				Description: "Get logs from a pod or specific container. Supports tail lines, time range filtering, keyword search, and multi-pod log aggregation via label selector. Use 'name' for single pod logs, or 'labelSelector' to aggregate logs from multiple pods (e.g., all pods of a deployment).",
 				InputSchema: mcp.ToolInputSchema{
 					Type:     "object",
-					Required: []string{"cluster", "namespace", "name"},
+					Required: []string{"cluster", "namespace"},
 					Properties: map[string]any{
 						"cluster": map[string]any{
 							"type":        "string",
@@ -154,7 +154,13 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 						},
 						"name": map[string]any{
 							"type":        "string",
-							"description": "Pod name",
+							"description": "Pod name (optional, use for single pod logs. Either 'name' or 'labelSelector' is required)",
+							"default":     "",
+						},
+						"labelSelector": map[string]any{
+							"type":        "string",
+							"description": "Label selector for filtering pods (optional, use for multi-pod log aggregation. Either 'name' or 'labelSelector' is required). Example: 'app=nginx,env=prod'",
+							"default":     "",
 						},
 						"container": map[string]any{
 							"type":        "string",

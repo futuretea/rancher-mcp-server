@@ -355,6 +355,61 @@ func (c *Client) GetAllContainerLogs(ctx context.Context, clusterID, namespace, 
 	return logs, nil
 }
 
+// MultiPodLogResult contains the log result for a single pod
+type MultiPodLogResult struct {
+	Pod       string            `json:"pod"`
+	Namespace string            `json:"namespace,omitempty"`
+	Logs      map[string]string `json:"logs,omitempty"`
+	Error     string            `json:"error,omitempty"`
+}
+
+// GetMultiPodLogs retrieves logs from multiple pods using label selector and merges them.
+// Returns logs organized by pod name, with each pod's logs organized by container name.
+func (c *Client) GetMultiPodLogs(ctx context.Context, clusterID, namespace string, labelSelector string, opts *PodLogOptions) ([]MultiPodLogResult, error) {
+	// List pods matching the label selector
+	listOpts := &ListOptions{
+		LabelSelector: labelSelector,
+	}
+	podList, err := c.ListResources(ctx, clusterID, "pod", namespace, listOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pods: %w", err)
+	}
+
+	if len(podList.Items) == 0 {
+		return []MultiPodLogResult{}, nil
+	}
+
+	tailLines := int64(100)
+	if opts != nil && opts.TailLines != nil {
+		tailLines = *opts.TailLines
+	}
+
+	results := make([]MultiPodLogResult, 0, len(podList.Items))
+
+	for _, pod := range podList.Items {
+		podName := pod.GetName()
+		podNamespace := pod.GetNamespace()
+
+		result := MultiPodLogResult{
+			Pod:       podName,
+			Namespace: podNamespace,
+			Logs:      make(map[string]string),
+		}
+
+		// Get logs for all containers in this pod
+		containerLogs, err := c.GetAllContainerLogs(ctx, clusterID, podNamespace, podName, tailLines)
+		if err != nil {
+			result.Error = err.Error()
+		} else {
+			result.Logs = containerLogs
+		}
+
+		results = append(results, result)
+	}
+
+	return results, nil
+}
+
 // InspectPodResult contains the results of inspecting a pod.
 type InspectPodResult struct {
 	Pod      *unstructured.Unstructured `json:"pod"`

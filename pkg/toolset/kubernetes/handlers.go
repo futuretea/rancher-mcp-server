@@ -119,10 +119,8 @@ func logsHandler(client interface{}, params map[string]interface{}) (string, err
 	if err != nil {
 		return "", err
 	}
-	name, err := handler.ExtractRequiredString(params, handler.ParamName)
-	if err != nil {
-		return "", err
-	}
+	name := handler.ExtractOptionalString(params, handler.ParamName)
+	labelSelector := handler.ExtractOptionalString(params, handler.ParamLabelSelector)
 	container := handler.ExtractOptionalString(params, handler.ParamContainer)
 	tailLines := handler.ExtractInt64(params, handler.ParamTailLines, 100)
 	sinceSeconds := handler.ExtractOptionalInt64(params, handler.ParamSinceSeconds)
@@ -131,6 +129,16 @@ func logsHandler(client interface{}, params map[string]interface{}) (string, err
 	keyword := handler.ExtractOptionalString(params, handler.ParamKeyword)
 
 	ctx := context.Background()
+
+	// If labelSelector is provided, get logs from multiple pods
+	if labelSelector != "" {
+		return getMultiPodLogs(ctx, steveClient, cluster, namespace, labelSelector, container, tailLines, keyword)
+	}
+
+	// If name is not provided and no labelSelector, return error
+	if name == "" {
+		return "", fmt.Errorf("either 'name' (pod name) or 'labelSelector' must be specified")
+	}
 
 	if container != "" {
 		// Get logs for specific container
@@ -160,6 +168,48 @@ func logsHandler(client interface{}, params map[string]interface{}) (string, err
 	}
 
 	result, err := json.MarshalIndent(logs, "", "  ")
+	if err != nil {
+		return "", fmt.Errorf("failed to format logs: %w", err)
+	}
+	return string(result), nil
+}
+
+// getMultiPodLogs retrieves and merges logs from multiple pods matching the label selector
+func getMultiPodLogs(ctx context.Context, steveClient *steve.Client, cluster, namespace, labelSelector, container string, tailLines int64, keyword string) (string, error) {
+	opts := &steve.PodLogOptions{
+		TailLines: &tailLines,
+	}
+
+	results, err := steveClient.GetMultiPodLogs(ctx, cluster, namespace, labelSelector, opts)
+	if err != nil {
+		return "", fmt.Errorf("failed to get multi pod logs: %w", err)
+	}
+
+	if len(results) == 0 {
+		return "No pods found matching the label selector", nil
+	}
+
+	// If a specific container is requested, filter the results
+	if container != "" {
+		for i := range results {
+			if containerLogs, ok := results[i].Logs[container]; ok {
+				results[i].Logs = map[string]string{container: filterLogsByKeyword(containerLogs, keyword)}
+			} else {
+				results[i].Logs = map[string]string{container: fmt.Sprintf("Container %s not found", container)}
+			}
+		}
+	} else {
+		// Apply keyword filter to all container logs
+		if keyword != "" {
+			for i := range results {
+				for containerName, containerLogs := range results[i].Logs {
+					results[i].Logs[containerName] = filterLogsByKeyword(containerLogs, keyword)
+				}
+			}
+		}
+	}
+
+	result, err := json.MarshalIndent(results, "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("failed to format logs: %w", err)
 	}

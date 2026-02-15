@@ -316,7 +316,7 @@ func (c *Client) GetPodLogs(ctx context.Context, clusterID, namespace, podName s
 }
 
 // GetAllContainerLogs retrieves logs from all containers in a pod.
-func (c *Client) GetAllContainerLogs(ctx context.Context, clusterID, namespace, podName string, tailLines int64) (map[string]string, error) {
+func (c *Client) GetAllContainerLogs(ctx context.Context, clusterID, namespace, podName string, opts *PodLogOptions) (map[string]string, error) {
 	// First get the pod to find all containers
 	pod, err := c.GetResource(ctx, clusterID, "pod", namespace, podName)
 	if err != nil {
@@ -327,6 +327,15 @@ func (c *Client) GetAllContainerLogs(ctx context.Context, clusterID, namespace, 
 	containers, found, err := unstructured.NestedSlice(pod.Object, "spec", "containers")
 	if err != nil || !found {
 		return nil, fmt.Errorf("failed to get containers from pod spec: %w", err)
+	}
+
+	tailLines := int64(100)
+	timestamps := false
+	if opts != nil {
+		if opts.TailLines != nil {
+			tailLines = *opts.TailLines
+		}
+		timestamps = opts.Timestamps
 	}
 
 	logs := make(map[string]string)
@@ -341,8 +350,9 @@ func (c *Client) GetAllContainerLogs(ctx context.Context, clusterID, namespace, 
 		}
 
 		logOpts := &PodLogOptions{
-			Container: name,
-			TailLines: &tailLines,
+			Container:  name,
+			TailLines:  &tailLines,
+			Timestamps: timestamps,
 		}
 		containerLogs, err := c.GetPodLogs(ctx, clusterID, namespace, podName, logOpts)
 		if err != nil {
@@ -379,11 +389,6 @@ func (c *Client) GetMultiPodLogs(ctx context.Context, clusterID, namespace strin
 		return []MultiPodLogResult{}, nil
 	}
 
-	tailLines := int64(100)
-	if opts != nil && opts.TailLines != nil {
-		tailLines = *opts.TailLines
-	}
-
 	results := make([]MultiPodLogResult, 0, len(podList.Items))
 
 	for _, pod := range podList.Items {
@@ -397,7 +402,7 @@ func (c *Client) GetMultiPodLogs(ctx context.Context, clusterID, namespace strin
 		}
 
 		// Get logs for all containers in this pod
-		containerLogs, err := c.GetAllContainerLogs(ctx, clusterID, podNamespace, podName, tailLines)
+		containerLogs, err := c.GetAllContainerLogs(ctx, clusterID, podNamespace, podName, opts)
 		if err != nil {
 			result.Error = err.Error()
 		} else {
@@ -494,7 +499,8 @@ func (c *Client) InspectPod(ctx context.Context, clusterID, namespace, podName s
 	result.Metrics, _ = c.GetResource(ctx, clusterID, "pod.metrics.k8s.io", namespace, podName)
 
 	// Get container logs
-	if logs, err := c.GetAllContainerLogs(ctx, clusterID, namespace, podName, 50); err == nil {
+	tailLines := int64(50)
+	if logs, err := c.GetAllContainerLogs(ctx, clusterID, namespace, podName, &PodLogOptions{TailLines: &tailLines}); err == nil {
 		result.Logs = logs
 	}
 

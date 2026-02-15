@@ -179,7 +179,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 						"timestamps": map[string]any{
 							"type":        "boolean",
 							"description": "Include timestamps in log output",
-							"default":     false,
+							"default":     true,
 						},
 						"previous": map[string]any{
 							"type":        "boolean",

@@ -398,6 +398,29 @@ Analyze node health and resource usage. Shows node capacity, allocatable resourc
 </details>
 
 <details>
+<summary>kubernetes_watch_diff</summary>
+
+Watch Kubernetes resources and return git-style diffs of changes at regular intervals, similar to the Linux `watch` command.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, or dotted `resource.group` form) |
+| `namespace` | string | No | Namespace (empty = all namespaces or cluster-scoped resources) |
+| `labelSelector` | string | No | Label selector (e.g., "app=nginx,env=prod") |
+| `fieldSelector` | string | No | Field selector for filtering resources |
+| `ignoreStatus` | boolean | No | Ignore changes under the `status` field when computing diffs (similar to `--no-status`) |
+| `ignoreMeta` | boolean | No | Ignore non-essential metadata differences (similar to `--no-meta`) |
+| `intervalSeconds` | integer | No | Interval in seconds between evaluations (default: 10, min: 1, max: 600) |
+| `iterations` | integer | No | Number of times to re-evaluate and diff before returning (default: 6, min: 1, max: 100) |
+
+**Notes:**
+- Each iteration compares the current resource state with the previous iteration and only emits diffs when there are changes.
+- The tool returns the concatenated diffs for all iterations in a single response.
+
+</details>
+
+<details>
 <summary>kubernetes_describe</summary>
 
 Describe a Kubernetes resource with its related events. Similar to `kubectl describe`.

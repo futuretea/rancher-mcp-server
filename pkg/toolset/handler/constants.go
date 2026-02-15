@@ -36,6 +36,9 @@ const (
 	ParamDepth     = "depth"
 	// Sensitive data parameters
 	ParamShowSensitiveData = "showSensitiveData"
+	// Watch/diff tool parameters
+	ParamIntervalSeconds = "intervalSeconds"
+	ParamIterations      = "iterations"
 )
 
 // Error definitions

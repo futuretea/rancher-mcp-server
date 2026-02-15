@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"io"
 	"strings"
-
+	
 	"github.com/futuretea/rancher-mcp-server/pkg/util/url"
-
+	
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/apimachinery/pkg/types"
+	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -47,6 +48,12 @@ type ListOptions struct {
 	LabelSelector string
 	FieldSelector string
 	Limit         int64
+}
+
+// WatchOptions contains options for watching resources.
+type WatchOptions struct {
+	LabelSelector string
+	FieldSelector string
 }
 
 // createRestConfig creates a Kubernetes REST config for the given cluster.
@@ -111,6 +118,27 @@ func (c *Client) getResourceInterface(clusterID string, gvr schema.GroupVersionR
 		return dynClient.Resource(gvr).Namespace(namespace), nil
 	}
 	return dynClient.Resource(gvr), nil
+}
+
+// WatchResources watches Kubernetes resources matching the provided
+// parameters and returns a watch.Interface for consuming events.
+func (c *Client) WatchResources(ctx context.Context, clusterID, kind, namespace string, opts *WatchOptions) (watch.Interface, error) {
+	ri, err := c.getResourceInterfaceByKind(clusterID, kind, namespace)
+	if err != nil {
+		return nil, err
+	}
+
+	listOpts := metav1.ListOptions{}
+	if opts != nil {
+		if opts.LabelSelector != "" {
+			listOpts.LabelSelector = opts.LabelSelector
+		}
+		if opts.FieldSelector != "" {
+			listOpts.FieldSelector = opts.FieldSelector
+		}
+	}
+
+	return ri.Watch(ctx, listOpts)
 }
 
 // getResourceInterfaceByKind resolves the kind to GVR and returns a dynamic resource interface.

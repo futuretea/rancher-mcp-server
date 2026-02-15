@@ -432,6 +432,65 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 			},
 			Handler: nodeAnalysisHandler,
 		},
+		{
+			Tool: mcp.Tool{
+				Name:        "kubernetes_watch_diff",
+				Description: "Watch Kubernetes resources and return git-style diffs for each interval, similar to the Linux 'watch' command.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "kind"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+						},
+						"kind": map[string]any{
+							"type":        "string",
+							"description": "Resource kind (e.g., pod, deployment, service, or dotted resource.group form)",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name (optional, empty for all namespaces or cluster-scoped resources)",
+							"default":     "",
+						},
+						"labelSelector": map[string]any{
+							"type":        "string",
+							"description": "Label selector for filtering (e.g., 'app=nginx,env=prod')",
+							"default":     "",
+						},
+						"fieldSelector": map[string]any{
+							"type":        "string",
+							"description": "Field selector for filtering",
+							"default":     "",
+						},
+						"ignoreStatus": map[string]any{
+							"type":        "boolean",
+							"description": "Ignore changes under the status field when computing diffs (similar to --no-status)",
+							"default":     false,
+						},
+						"ignoreMeta": map[string]any{
+							"type":        "boolean",
+							"description": "Ignore non-essential metadata differences (similar to --no-meta)",
+							"default":     false,
+						},
+						"intervalSeconds": map[string]any{
+							"type":        "integer",
+							"description": "Interval in seconds between evaluations, like the Linux 'watch' command",
+							"default":     10,
+						},
+						"iterations": map[string]any{
+							"type":        "integer",
+							"description": "Number of times to re-evaluate and diff before returning. Use a small number to avoid very large outputs.",
+							"default":     6,
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: watchDiffHandler,
+		},
 	}
 
 	// Add write operations if not in read-only mode

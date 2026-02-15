@@ -611,3 +611,211 @@ func (c *Client) DescribeResource(ctx context.Context, clusterID, kind, namespac
 
 	return result, nil
 }
+
+// APIResourceInfo contains information about a Kubernetes API resource type.
+type APIResourceInfo struct {
+	Name         string
+	SingularName string
+	Namespaced   bool
+	Kind         string
+	Group        string
+	Version      string
+	Verbs        []string
+}
+
+// GVR returns the GroupVersionResource for this API resource.
+func (r *APIResourceInfo) GVR() schema.GroupVersionResource {
+	return schema.GroupVersionResource{
+		Group:    r.Group,
+		Version:  r.Version,
+		Resource: r.Name,
+	}
+}
+
+// ListAPIResources discovers all API resources available in the cluster.
+// It returns a list of resource types that can be used to fetch all resources.
+func (c *Client) ListAPIResources(ctx context.Context, clusterID string) ([]APIResourceInfo, error) {
+	clientset, err := c.getClientset(clusterID)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	// Get all API groups
+	groups, err := clientset.Discovery().ServerGroups()
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover API groups: %w", err)
+	}
+
+	var allResources []APIResourceInfo
+
+	// Add core API resources (group: "")
+	coreResources, err := clientset.Discovery().ServerResourcesForGroupVersion("v1")
+	if err != nil {
+		return nil, fmt.Errorf("failed to discover core API resources: %w", err)
+	}
+
+	for _, r := range coreResources.APIResources {
+		// Skip sub-resources (e.g., pods/log)
+		if strings.Contains(r.Name, "/") {
+			continue
+		}
+		allResources = append(allResources, APIResourceInfo{
+			Name:         r.Name,
+			SingularName: r.SingularName,
+			Namespaced:   r.Namespaced,
+			Kind:         r.Kind,
+			Group:        "",
+			Version:      "v1",
+			Verbs:        r.Verbs,
+		})
+	}
+
+	// Add resources from each API group
+	for _, g := range groups.Groups {
+		groupVersion := g.PreferredVersion.GroupVersion
+		resources, err := clientset.Discovery().ServerResourcesForGroupVersion(groupVersion)
+		if err != nil {
+			// Log and continue - some groups might not be accessible
+			continue
+		}
+
+		gv, _ := schema.ParseGroupVersion(groupVersion)
+
+		for _, r := range resources.APIResources {
+			// Skip sub-resources
+			if strings.Contains(r.Name, "/") {
+				continue
+			}
+			allResources = append(allResources, APIResourceInfo{
+				Name:         r.Name,
+				SingularName: r.SingularName,
+				Namespaced:   r.Namespaced,
+				Kind:         r.Kind,
+				Group:        gv.Group,
+				Version:      gv.Version,
+				Verbs:          r.Verbs,
+			})
+		}
+	}
+
+	return allResources, nil
+}
+
+// GetAllResources retrieves all resources across all (or specified) resource types.
+// Similar to ketall, it fetches resources that "kubectl get all" doesn't show.
+func (c *Client) GetAllResources(ctx context.Context, clusterID string, opts *GetAllOptions) (*AllResourcesResult, error) {
+	if opts == nil {
+		opts = &GetAllOptions{}
+	}
+
+	// Discover all API resources
+	apiResources, err := c.ListAPIResources(ctx, clusterID)
+	if err != nil {
+		return nil, err
+	}
+
+	result := &AllResourcesResult{
+		Items: make([]AllResourceItem, 0),
+	}
+
+	// Filter and fetch resources for each resource type
+	for _, ar := range apiResources {
+		// Skip if not listable
+		if !hasVerb(ar.Verbs, "list") {
+			continue
+		}
+
+		// Skip events by default (they are noisy)
+		if opts.ExcludeEvents && ar.Name == "events" {
+			continue
+		}
+
+		// Apply namespace scope filter
+		if opts.Scope != "" {
+			isNamespaced := ar.Namespaced
+			switch opts.Scope {
+			case "namespaced":
+				if !isNamespaced {
+					continue
+				}
+			case "cluster":
+				if isNamespaced {
+					continue
+				}
+			}
+		}
+
+		// Apply namespace filter
+		namespace := opts.Namespace
+		if ar.Namespaced && namespace == "" {
+			namespace = "" // All namespaces for namespaced resources
+		}
+		if !ar.Namespaced && namespace != "" {
+			// Cluster-scoped resources don't have namespace
+			namespace = ""
+		}
+
+		// Get the resource interface
+		gvr := ar.GVR()
+		ri, err := c.getResourceInterface(clusterID, gvr, namespace)
+		if err != nil {
+			// Log and continue
+			continue
+		}
+
+		// List resources
+		listOpts := metav1.ListOptions{
+			Limit: opts.Limit,
+		}
+		list, err := ri.List(ctx, listOpts)
+		if err != nil {
+			// Log and continue - some resources might not be accessible
+			continue
+		}
+
+		// Add to result
+		for _, item := range list.Items {
+			result.Items = append(result.Items, AllResourceItem{
+				Name:       item.GetName(),
+				Namespace:  item.GetNamespace(),
+				Kind:       ar.Kind,
+				APIVersion: item.GetAPIVersion(),
+				Resource:   &item,
+			})
+		}
+	}
+
+	return result, nil
+}
+
+// hasVerb checks if a verb is in the list of verbs.
+func hasVerb(verbs []string, verb string) bool {
+	for _, v := range verbs {
+		if v == verb {
+			return true
+		}
+	}
+	return false
+}
+
+// GetAllOptions contains options for GetAllResources.
+type GetAllOptions struct {
+	Namespace     string
+	ExcludeEvents bool
+	Scope         string // "namespaced", "cluster", or "" (all)
+	Limit         int64
+}
+
+// AllResourceItem represents a single resource found by GetAllResources.
+type AllResourceItem struct {
+	Name       string
+	Namespace  string
+	Kind       string
+	APIVersion string
+	Resource   *unstructured.Unstructured
+}
+
+// AllResourcesResult contains all resources retrieved by GetAllResources.
+type AllResourcesResult struct {
+	Items []AllResourceItem
+}

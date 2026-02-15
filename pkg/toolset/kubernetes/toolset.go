@@ -138,6 +138,68 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 		},
 		{
 			Tool: mcp.Tool{
+				Name:        "kubernetes_get_all",
+				Description: "Get really all Kubernetes resources in the cluster (inspired by ketall). Unlike 'kubectl get all', this shows all resource types including ConfigMaps, Secrets, RBAC resources, CRDs, and other resources that are normally hidden. Supports filtering by namespace, scope, and creation time.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Filter by namespace (optional, empty for all namespaces)",
+							"default":     "",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Filter by resource name (partial match, client-side)",
+							"default":     "",
+						},
+						"labelSelector": map[string]any{
+							"type":        "string",
+							"description": "Label selector for filtering (e.g., 'app=nginx,env=prod')",
+							"default":     "",
+						},
+						"excludeEvents": map[string]any{
+							"type":        "boolean",
+							"description": "Exclude events from output (default true, as events are often noisy)",
+							"default":     true,
+						},
+						"scope": map[string]any{
+							"type":        "string",
+							"description": "Filter by scope: 'namespaced' for namespaced resources only, 'cluster' for cluster-scoped resources only, or empty for all",
+							"enum":        []string{"", "namespaced", "cluster"},
+							"default":     "",
+						},
+						"since": map[string]any{
+							"type":        "string",
+							"description": "Only show resources created since this duration (e.g., '1h30m', '2d', '1w')",
+							"default":     "",
+						},
+						"limit": map[string]any{
+							"type":        "integer",
+							"description": "Limit number of resources per API call (0 for no limit)",
+							"default":     0,
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json, table, or yaml",
+							"enum":        []string{"json", "table", "yaml"},
+							"default":     "table",
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: getAllHandler,
+		},
+		{
+			Tool: mcp.Tool{
 				Name:        "kubernetes_logs",
 				Description: "Get logs from a pod or specific container. Supports tail lines, time range filtering, keyword search, and multi-pod log aggregation via label selector. Use 'name' for single pod logs, or 'labelSelector' to aggregate logs from multiple pods (e.g., all pods of a deployment).",
 				InputSchema: mcp.ToolInputSchema{

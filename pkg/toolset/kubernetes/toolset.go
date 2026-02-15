@@ -368,6 +368,40 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 			},
 			Handler: depHandler,
 		},
+		{
+			Tool: mcp.Tool{
+				Name:        "kubernetes_rollout_history",
+				Description: "Get rollout history for a Deployment, including revision versions and change causes. Similar to 'kubectl rollout history deployment'.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "namespace", "name"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Deployment name",
+						},
+						"format": map[string]any{
+							"type":        "string",
+							"description": "Output format: json or table",
+							"enum":        []string{"json", "table"},
+							"default":     "table",
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: rolloutHistoryHandler,
+		},
 	}
 
 	// Add write operations if not in read-only mode

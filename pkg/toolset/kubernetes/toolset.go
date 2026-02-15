@@ -434,6 +434,81 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 		},
 		{
 			Tool: mcp.Tool{
+				Name:        "kubernetes_diff",
+				Description: "Compare two Kubernetes resources (e.g., two deployments). Returns a git-style diff showing differences between the specified resources. Can compare resources across different clusters and namespaces.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"kind", "left", "right"},
+					Properties: map[string]any{
+						"kind": map[string]any{
+							"type":        "string",
+							"description": "Resource kind (e.g., deployment, daemonset, statefulset)",
+						},
+						"apiVersion": map[string]any{
+							"type":        "string",
+							"description": "API version (e.g., apps/v1)",
+							"default":     "",
+						},
+						"left": map[string]any{
+							"type":        "object",
+							"description": "Left side of the comparison",
+							"properties": map[string]any{
+								"cluster": map[string]any{
+									"type":        "string",
+									"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+								},
+								"namespace": map[string]any{
+									"type":        "string",
+									"description": "Namespace name",
+									"default":     "default",
+								},
+								"name": map[string]any{
+									"type":        "string",
+									"description": "Resource name",
+								},
+							},
+							"required": []string{"cluster", "name"},
+						},
+						"right": map[string]any{
+							"type":        "object",
+							"description": "Right side of the comparison",
+							"properties": map[string]any{
+								"cluster": map[string]any{
+									"type":        "string",
+									"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+								},
+								"namespace": map[string]any{
+									"type":        "string",
+									"description": "Namespace name",
+									"default":     "default",
+								},
+								"name": map[string]any{
+									"type":        "string",
+									"description": "Resource name",
+								},
+							},
+							"required": []string{"cluster", "name"},
+						},
+						"ignoreStatus": map[string]any{
+							"type":        "boolean",
+							"description": "Ignore changes under the status field when computing diffs",
+							"default":     false,
+						},
+						"ignoreMeta": map[string]any{
+							"type":        "boolean",
+							"description": "Ignore non-essential metadata differences (managedFields, resourceVersion, uid, etc.)",
+							"default":     true,
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: diffHandler,
+		},
+		{
+			Tool: mcp.Tool{
 				Name:        "kubernetes_watch_diff",
 				Description: "Watch Kubernetes resources and return git-style diffs for each interval, similar to the Linux 'watch' command.",
 				InputSchema: mcp.ToolInputSchema{
@@ -490,6 +565,40 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				ReadOnlyHint: handler.BoolPtr(true),
 			},
 			Handler: watchDiffHandler,
+		},
+		{
+			Tool: mcp.Tool{
+				Name:        "kubernetes_diff",
+				Description: "Compare two Kubernetes resource versions and show the differences as a git-style diff. Useful for comparing current vs desired state, or before/after changes.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"resource1", "resource2"},
+					Properties: map[string]any{
+						"resource1": map[string]any{
+							"type":        "string",
+							"description": "First resource version as JSON string (the 'before' or 'old' version). Use kubernetes_get to retrieve the resource.",
+						},
+						"resource2": map[string]any{
+							"type":        "string",
+							"description": "Second resource version as JSON string (the 'after' or 'new' version). Use kubernetes_get to retrieve the resource.",
+						},
+						"ignoreStatus": map[string]any{
+							"type":        "boolean",
+							"description": "Ignore changes under the status field when computing diffs",
+							"default":     false,
+						},
+						"ignoreMeta": map[string]any{
+							"type":        "boolean",
+							"description": "Ignore non-essential metadata differences (managedFields, resourceVersion, etc.)",
+							"default":     false,
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint: handler.BoolPtr(true),
+			},
+			Handler: diffHandler,
 		},
 	}
 

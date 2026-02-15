@@ -746,8 +746,8 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 						},
 						"sortBy": map[string]any{
 							"type":        "string",
-							"description": "Sort by field: cpu.util, mem.util, cpu.request, mem.request, cpu.limit, mem.limit, cpu.util.percentage, mem.util.percentage, name",
-							"enum":        []string{"", "cpu.util", "mem.util", "cpu.request", "mem.request", "cpu.limit", "mem.limit", "cpu.util.percentage", "mem.util.percentage", "cpu.request.percentage", "mem.request.percentage", "cpu.limit.percentage", "mem.limit.percentage", "name"},
+							"description": "Sort by field: cpu.util, mem.util, cpu.request, mem.request, cpu.limit, mem.limit, cpu.util.percentage, mem.util.percentage, pod.count, name",
+							"enum":        []string{"", "cpu.util", "mem.util", "cpu.request", "mem.request", "cpu.limit", "mem.limit", "cpu.util.percentage", "mem.util.percentage", "cpu.request.percentage", "mem.request.percentage", "cpu.limit.percentage", "mem.limit.percentage", "pod.count", "name"},
 							"default":     "",
 						},
 						"format": map[string]any{

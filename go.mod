@@ -1,6 +1,6 @@
 module github.com/futuretea/rancher-mcp-server
 
-go 1.24.1
+go 1.26.0
 
 require (
 	github.com/mark3labs/mcp-go v0.41.1

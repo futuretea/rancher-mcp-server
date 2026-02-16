@@ -270,6 +270,17 @@ func (s *Server) GetEnabledTools() []string {
 	return s.enabledTools
 }
 
+// IsHealthy returns true if the server and its clients are properly initialized
+func (s *Server) IsHealthy() bool {
+	// Check if Norman client is properly configured (if Rancher config is provided)
+	if s.configuration.HasRancherConfig() {
+		if s.normanClient == nil {
+			return false
+		}
+	}
+	return true
+}
+
 // Close cleans up the server resources
 func (s *Server) Close() {
 	logging.Info("Closing MCP server")

@@ -37,7 +37,13 @@ func Serve(ctx context.Context, mcpServer *mcp.Server, staticConfig *config.Stat
 	mux.Handle(sseMessageEndpoint, sseServer)
 	mux.Handle(mcpEndpoint, streamableHttpServer)
 	mux.HandleFunc(healthEndpoint, func(w http.ResponseWriter, r *http.Request) {
-		w.WriteHeader(http.StatusOK)
+		if mcpServer.IsHealthy() {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("healthy"))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("unhealthy: Rancher client initialization failed"))
+		}
 	})
 
 	ctx, cancel := context.WithCancel(ctx)

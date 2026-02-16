@@ -571,7 +571,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 		},
 		{
 			Tool: mcp.Tool{
-				Name:        "kubernetes_watch_diff",
+				Name:        "kubernetes_watch",
 				Description: "Watch Kubernetes resources and return git-style diffs for each interval, similar to the Linux 'watch' command.",
 				InputSchema: mcp.ToolInputSchema{
 					Type:     "object",

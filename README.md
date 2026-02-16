@@ -24,6 +24,9 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
   - Analyze node health and resource usage
   - Inspect pods with parent workload, metrics, and logs
   - Show dependency/dependent trees for any resource (inspired by kube-lineage)
+  - **Get all resources** (inspired by [ketall](https://github.com/corneliusweig/ketall)): List all Kubernetes resources including ConfigMaps, Secrets, RBAC, CRDs
+  - **Compare resource versions** (kubernetes_diff): Show git-style diffs between two resource versions
+  - **Watch resource changes** (kubernetes_watch): Monitor resources and return git-style diffs at regular intervals
   - **Resource capacity overview** (inspired by [kube-capacity](https://github.com/robscott/kube-capacity)): Show cluster resource capacity, requests, limits, and utilization
 - **Rancher Resources via Norman API**: List clusters and projects
 - **Security Controls**:
@@ -526,7 +529,108 @@ Analyze node health and resource usage. Shows node capacity, allocatable resourc
 </details>
 
 <details>
-<summary>kubernetes_watch_diff</summary>
+<summary>kubernetes_describe</summary>
+
+Describe a Kubernetes resource with its related events. Similar to `kubectl describe`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, node) |
+| `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
+| `name` | string | Yes | Resource name |
+| `format` | string | No | Output format: json, yaml (default: json) |
+| `showSensitiveData` | boolean | No | Show sensitive data values (e.g., Secret data). Default: false. Only takes effect when global `--show-sensitive-data` is enabled. When global setting is disabled, data is always masked with `***` |
+
+</details>
+
+<details>
+<summary>kubernetes_diff</summary>
+
+Compare two Kubernetes resource versions and show the differences as a git-style diff. Useful for comparing current vs desired state, or before/after changes.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `resource1` | string | Yes | First resource version as JSON string (the 'before' or 'old' version). Use kubernetes_get to retrieve the resource. |
+| `resource2` | string | Yes | Second resource version as JSON string (the 'after' or 'new' version). Use kubernetes_get to retrieve the resource. |
+| `ignoreStatus` | boolean | No | Ignore changes under the status field when computing diffs (default: false) |
+| `ignoreMeta` | boolean | No | Ignore non-essential metadata differences like managedFields, resourceVersion, etc. (default: false) |
+
+**Examples:**
+
+```json
+// Compare two versions of the same deployment
+// First, get the current resource
+{
+  "cluster": "c-abc123",
+  "kind": "deployment",
+  "namespace": "default",
+  "name": "nginx"
+}
+// Then compare with previous version (from rollout history)
+{
+  "resource1": "<previous-revision-json>",
+  "resource2": "<current-revision-json>",
+  "ignoreMeta": true
+}
+```
+
+</details>
+
+<details>
+<summary>kubernetes_get_all</summary>
+
+Get really all Kubernetes resources in the cluster (inspired by [ketall](https://github.com/corneliusweig/ketall)). Unlike `kubectl get all`, this shows all resource types including ConfigMaps, Secrets, RBAC resources, CRDs, and other resources that are normally hidden.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `namespace` | string | No | Filter by namespace (optional, empty for all namespaces) |
+| `name` | string | No | Filter by resource name (partial match, client-side) |
+| `labelSelector` | string | No | Label selector for filtering (e.g., "app=nginx,env=prod") |
+| `excludeEvents` | boolean | No | Exclude events from output (default: true, as events are often noisy) |
+| `scope` | string | No | Filter by scope: 'namespaced' for namespaced resources only, 'cluster' for cluster-scoped resources only, or empty for all |
+| `since` | string | No | Only show resources created since this duration (e.g., '1h30m', '2d', '1w') |
+| `limit` | integer | No | Limit number of resources per API call (0 for no limit, default: 0) |
+| `format` | string | No | Output format: json, table, yaml (default: table) |
+
+**Examples:**
+
+```json
+// Get all resources in the cluster
+{
+  "cluster": "c-abc123"
+}
+
+// Get all resources in a specific namespace
+{
+  "cluster": "c-abc123",
+  "namespace": "production"
+}
+
+// Get only cluster-scoped resources
+{
+  "cluster": "c-abc123",
+  "scope": "cluster"
+}
+
+// Get resources created in the last 24 hours
+{
+  "cluster": "c-abc123",
+  "since": "24h"
+}
+
+// Get all resources with specific labels
+{
+  "cluster": "c-abc123",
+  "labelSelector": "app=nginx,env=prod"
+}
+```
+
+</details>
+
+<details>
+<summary>kubernetes_watch</summary>
 
 Watch Kubernetes resources and return git-style diffs of changes at regular intervals, similar to the Linux `watch` command.
 
@@ -546,21 +650,37 @@ Watch Kubernetes resources and return git-style diffs of changes at regular inte
 - Each iteration compares the current resource state with the previous iteration and only emits diffs when there are changes.
 - The tool returns the concatenated diffs for all iterations in a single response.
 
-</details>
+**Examples:**
 
-<details>
-<summary>kubernetes_describe</summary>
+```json
+// Watch pods in a namespace for changes
+{
+  "cluster": "c-abc123",
+  "kind": "pod",
+  "namespace": "production",
+  "intervalSeconds": 5,
+  "iterations": 3
+}
 
-Describe a Kubernetes resource with its related events. Similar to `kubectl describe`.
+// Watch deployments and ignore status changes
+{
+  "cluster": "c-abc123",
+  "kind": "deployment",
+  "namespace": "default",
+  "ignoreStatus": true,
+  "intervalSeconds": 10,
+  "iterations": 6
+}
 
-| Parameter | Type | Required | Description |
-|-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
-| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, node) |
-| `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
-| `name` | string | Yes | Resource name |
-| `format` | string | No | Output format: json, yaml (default: json) |
-| `showSensitiveData` | boolean | No | Show sensitive data values (e.g., Secret data). Default: false. Only takes effect when global `--show-sensitive-data` is enabled. When global setting is disabled, data is always masked with `***` |
+// Watch resources by label selector
+{
+  "cluster": "c-abc123",
+  "kind": "pod",
+  "labelSelector": "app=nginx",
+  "intervalSeconds": 5,
+  "iterations": 12
+}
+```
 
 </details>
 

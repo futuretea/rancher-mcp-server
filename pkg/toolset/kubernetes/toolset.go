@@ -5,7 +5,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
 // Toolset implements the Kubernetes toolset using Steve API
@@ -76,7 +76,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: getHandler,
 		},
@@ -132,7 +132,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: listHandler,
 		},
@@ -194,7 +194,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: getAllHandler,
 		},
@@ -257,7 +257,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: logsHandler,
 		},
@@ -285,7 +285,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: inspectPodHandler,
 		},
@@ -325,7 +325,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: describeHandler,
 		},
@@ -376,7 +376,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: eventsHandler,
 		},
@@ -426,7 +426,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: depHandler,
 		},
@@ -460,7 +460,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: rolloutHistoryHandler,
 		},
@@ -490,7 +490,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: nodeAnalysisHandler,
 		},
@@ -565,7 +565,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: diffHandler,
 		},
@@ -624,7 +624,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: watchDiffHandler,
 		},
@@ -658,7 +658,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: diffHandler,
 		},
@@ -760,7 +760,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: capacityHandler,
 		},
@@ -789,7 +789,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 					},
 				},
 				Annotations: toolset.ToolAnnotations{
-					ReadOnlyHint: handler.BoolPtr(false),
+					ReadOnlyHint: paramutil.BoolPtr(false),
 				},
 				Handler: createHandler,
 			},
@@ -826,7 +826,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 					},
 				},
 				Annotations: toolset.ToolAnnotations{
-					ReadOnlyHint: handler.BoolPtr(false),
+					ReadOnlyHint: paramutil.BoolPtr(false),
 				},
 				Handler: patchHandler,
 			},
@@ -863,8 +863,8 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 					},
 				},
 				Annotations: toolset.ToolAnnotations{
-					ReadOnlyHint:    handler.BoolPtr(false),
-					DestructiveHint: handler.BoolPtr(true),
+					ReadOnlyHint:    paramutil.BoolPtr(false),
+					DestructiveHint: paramutil.BoolPtr(true),
 				},
 				Handler: deleteHandler,
 			})

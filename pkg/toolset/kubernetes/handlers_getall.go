@@ -9,31 +9,31 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"gopkg.in/yaml.v3"
 )
 
 // getAllHandler handles the kubernetes_get_all tool (inspired by ketall)
-func getAllHandler(client interface{}, params map[string]interface{}) (string, error) {
+func getAllHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
 
 	// Extract optional parameters
-	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
-	format := handler.ExtractFormat(params)
-	nameFilter := handler.ExtractOptionalString(params, handler.ParamName)
-	labelSelector := handler.ExtractOptionalString(params, handler.ParamLabelSelector)
-	excludeEvents := handler.ExtractBool(params, "excludeEvents", true)
-	scope := handler.ExtractOptionalString(params, "scope")
-	since := handler.ExtractOptionalString(params, "since")
-	limit := handler.ExtractInt64(params, handler.ParamLimit, 0)
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	format := paramutil.ExtractFormat(params)
+	nameFilter := paramutil.ExtractOptionalString(params, paramutil.ParamName)
+	labelSelector := paramutil.ExtractOptionalString(params, paramutil.ParamLabelSelector)
+	excludeEvents := paramutil.ExtractBool(params, "excludeEvents", true)
+	scope := paramutil.ExtractOptionalString(params, "scope")
+	since := paramutil.ExtractOptionalString(params, "since")
+	limit := paramutil.ExtractInt64(params, paramutil.ParamLimit, 0)
 
 	// Validate scope parameter
 	if scope != "" && scope != "namespaced" && scope != "cluster" {
@@ -50,8 +50,6 @@ func getAllHandler(client interface{}, params map[string]interface{}) (string, e
 		t := time.Now().Add(-duration)
 		sinceTime = &t
 	}
-
-	ctx := context.Background()
 
 	// Use the Steve client's GetAllResources method
 	opts := &steve.GetAllOptions{
@@ -156,9 +154,9 @@ func matchesLabelSelector(labels map[string]string, selector string) bool {
 // formatAllResources formats the all resources result in the requested format.
 func formatAllResources(items []steve.AllResourceItem, format string) (string, error) {
 	switch format {
-	case handler.FormatTable:
+	case paramutil.FormatTable:
 		return formatAllResourcesAsTable(items), nil
-	case handler.FormatYAML:
+	case paramutil.FormatYAML:
 		return formatAllResourcesAsYAML(items)
 	default: // json
 		return formatAllResourcesAsJSON(items)

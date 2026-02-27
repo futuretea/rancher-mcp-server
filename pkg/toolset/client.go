@@ -3,7 +3,7 @@ package toolset
 import (
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
 // CombinedClient holds both Norman and Steve clients.
@@ -18,7 +18,7 @@ func ValidateNormanClient(client interface{}) (*norman.Client, error) {
 	// Check if it's a CombinedClient first
 	if combined, ok := client.(*CombinedClient); ok {
 		if combined.Norman == nil {
-			return nil, handler.ErrRancherNotConfigured
+			return nil, paramutil.ErrRancherNotConfigured
 		}
 		return combined.Norman, nil
 	}
@@ -26,7 +26,7 @@ func ValidateNormanClient(client interface{}) (*norman.Client, error) {
 	// Legacy: direct Norman client
 	normanClient, ok := client.(*norman.Client)
 	if !ok || normanClient == nil {
-		return nil, handler.ErrRancherNotConfigured
+		return nil, paramutil.ErrRancherNotConfigured
 	}
 	return normanClient, nil
 }
@@ -37,7 +37,7 @@ func ValidateSteveClient(client interface{}) (*steve.Client, error) {
 	// Check if it's a CombinedClient first
 	if combined, ok := client.(*CombinedClient); ok {
 		if combined.Steve == nil {
-			return nil, handler.ErrSteveNotConfigured
+			return nil, paramutil.ErrSteveNotConfigured
 		}
 		return combined.Steve, nil
 	}
@@ -45,7 +45,7 @@ func ValidateSteveClient(client interface{}) (*steve.Client, error) {
 	// Direct Steve client
 	steveClient, ok := client.(*steve.Client)
 	if !ok || steveClient == nil {
-		return nil, handler.ErrSteveNotConfigured
+		return nil, paramutil.ErrSteveNotConfigured
 	}
 	return steveClient, nil
 }

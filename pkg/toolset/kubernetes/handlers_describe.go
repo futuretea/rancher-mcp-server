@@ -9,46 +9,45 @@ import (
 	"time"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 )
 
 // describeHandler handles the kubernetes_describe tool
-func describeHandler(client interface{}, params map[string]interface{}) (string, error) {
+func describeHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	kind, err := handler.ExtractRequiredString(params, handler.ParamKind)
+	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
 	if err != nil {
 		return "", err
 	}
-	name, err := handler.ExtractRequiredString(params, handler.ParamName)
+	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
 	if err != nil {
 		return "", err
 	}
-	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
-	format := handler.ExtractFormat(params)
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	format := paramutil.ExtractFormat(params)
 
-	ctx := context.Background()
 	result, err := steveClient.DescribeResource(ctx, cluster, kind, namespace, name)
 	if err != nil {
 		return "", fmt.Errorf("failed to describe resource: %w", err)
 	}
 
 	// Mask sensitive data (e.g., Secret data) unless showSensitiveData is true
-	if sensitiveFilter := handler.NewSensitiveDataFilterFromParams(params); sensitiveFilter != nil {
+	if sensitiveFilter := paramutil.NewSensitiveDataFilterFromParams(params); sensitiveFilter != nil {
 		result.Resource = sensitiveFilter.Filter(result.Resource)
 	}
 
 	switch format {
-	case handler.FormatYAML:
+	case paramutil.FormatYAML:
 		data, err := yaml.Marshal(result)
 		if err != nil {
 			return "", fmt.Errorf("failed to format as YAML: %w", err)
@@ -60,24 +59,23 @@ func describeHandler(client interface{}, params map[string]interface{}) (string,
 }
 
 // eventsHandler handles the kubernetes_events tool
-func eventsHandler(client interface{}, params map[string]interface{}) (string, error) {
+func eventsHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
-	nameFilter := handler.ExtractOptionalString(params, handler.ParamName)
-	kindFilter := handler.ExtractOptionalString(params, handler.ParamKind)
-	limit := handler.ExtractInt64(params, handler.ParamLimit, 50)
-	page := handler.ExtractInt64(params, handler.ParamPage, 1)
-	format := handler.ExtractOptionalStringWithDefault(params, handler.ParamFormat, handler.FormatTable)
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	nameFilter := paramutil.ExtractOptionalString(params, paramutil.ParamName)
+	kindFilter := paramutil.ExtractOptionalString(params, paramutil.ParamKind)
+	limit := paramutil.ExtractInt64(params, paramutil.ParamLimit, 50)
+	page := paramutil.ExtractInt64(params, paramutil.ParamPage, 1)
+	format := paramutil.ExtractOptionalStringWithDefault(params, paramutil.ParamFormat, paramutil.FormatTable)
 
-	ctx := context.Background()
 	events, err := steveClient.GetEvents(ctx, cluster, namespace, nameFilter, kindFilter)
 	if err != nil {
 		return "", fmt.Errorf("failed to get events: %w", err)
@@ -85,20 +83,20 @@ func eventsHandler(client interface{}, params map[string]interface{}) (string, e
 
 	sortEventsByTime(events)
 
-	events, _ = handler.ApplyPagination(events, limit, page)
+	events, _ = paramutil.ApplyPagination(events, limit, page)
 
 	if len(events) == 0 {
 		return "No events found", nil
 	}
 
 	switch format {
-	case handler.FormatYAML:
+	case paramutil.FormatYAML:
 		data, err := yaml.Marshal(events)
 		if err != nil {
 			return "", fmt.Errorf("failed to format as YAML: %w", err)
 		}
 		return string(data), nil
-	case handler.FormatTable:
+	case paramutil.FormatTable:
 		return formatEventsAsTable(events), nil
 	default: // json
 		data, err := json.MarshalIndent(events, "", "  ")

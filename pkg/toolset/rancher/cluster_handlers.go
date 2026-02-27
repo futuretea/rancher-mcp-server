@@ -7,7 +7,7 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
 // clusterToMap converts a cluster to a map with full resource details.
@@ -30,23 +30,23 @@ func clusterToMap(c norman.Cluster) map[string]string {
 }
 
 // clusterListHandler handles the cluster_list tool
-func clusterListHandler(client interface{}, params map[string]interface{}) (string, error) {
+func clusterListHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	normanClient, err := toolset.ValidateNormanClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	format, err := handler.ExtractAndValidateFormat(params)
+	format, err := paramutil.ExtractAndValidateFormat(params)
 	if err != nil {
 		return "", err
 	}
 
 	// Extract query and pagination parameters
-	nameFilter := handler.ExtractOptionalString(params, handler.ParamName)
-	limit := handler.ExtractInt64(params, handler.ParamLimit, 100)
-	page := handler.ExtractInt64(params, handler.ParamPage, 1)
+	nameFilter := paramutil.ExtractOptionalString(params, paramutil.ParamName)
+	limit := paramutil.ExtractInt64(params, paramutil.ParamLimit, 100)
+	page := paramutil.ExtractInt64(params, paramutil.ParamPage, 1)
 
-	clusters, err := normanClient.ListClusters(context.Background())
+	clusters, err := normanClient.ListClusters(ctx)
 	if err != nil {
 		return "", fmt.Errorf("failed to list clusters: %w", err)
 	}
@@ -55,14 +55,14 @@ func clusterListHandler(client interface{}, params map[string]interface{}) (stri
 	filtered := filterClustersByName(clusters, nameFilter)
 
 	// Apply pagination
-	paginated, _ := handler.ApplyPagination(filtered, limit, page)
+	paginated, _ := paramutil.ApplyPagination(filtered, limit, page)
 
 	clusterMaps := make([]map[string]string, len(paginated))
 	for i, c := range paginated {
 		clusterMaps[i] = clusterToMap(c)
 	}
 
-	return handler.FormatOutput(clusterMaps, format, []string{"id", "name", "state", "provider", "version", "nodes", "cpu", "ram", "pods"}, nil)
+	return paramutil.FormatOutput(clusterMaps, format, []string{"id", "name", "state", "provider", "version", "nodes", "cpu", "ram", "pods"}, nil)
 }
 
 // filterClustersByName filters clusters by name (partial match, case-insensitive).

@@ -4,7 +4,7 @@ import (
 	"github.com/mark3labs/mcp-go/mcp"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
 // Toolset implements the Rancher-specific toolset
@@ -57,7 +57,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: clusterListHandler,
 		},
@@ -98,7 +98,7 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: handler.BoolPtr(true),
+				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
 			Handler: projectListHandler,
 		},

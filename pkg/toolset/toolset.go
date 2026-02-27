@@ -1,6 +1,8 @@
 package toolset
 
 import (
+	"context"
+
 	"github.com/mark3labs/mcp-go/mcp"
 )
 
@@ -45,4 +47,4 @@ type ServerTool struct {
 }
 
 // ToolHandler is the function signature for handling tool calls.
-type ToolHandler func(client interface{}, params map[string]interface{}) (string, error)
+type ToolHandler func(ctx context.Context, client interface{}, params map[string]interface{}) (string, error)

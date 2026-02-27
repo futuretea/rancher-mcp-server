@@ -3,15 +3,15 @@ package toolset
 import (
 	"testing"
 
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
 func TestToolAnnotations(t *testing.T) {
 	annotations := ToolAnnotations{
-		ReadOnlyHint:       handler.BoolPtr(true),
-		DestructiveHint:    handler.BoolPtr(false),
-		RequiresRancher:    handler.BoolPtr(true),
-		RequiresKubernetes: handler.BoolPtr(false),
+		ReadOnlyHint:       paramutil.BoolPtr(true),
+		DestructiveHint:    paramutil.BoolPtr(false),
+		RequiresRancher:    paramutil.BoolPtr(true),
+		RequiresKubernetes: paramutil.BoolPtr(false),
 	}
 
 	if *annotations.ReadOnlyHint != true {

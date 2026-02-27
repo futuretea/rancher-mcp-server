@@ -7,7 +7,7 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
 // fetchProjects retrieves projects based on optional cluster filter.
@@ -40,31 +40,30 @@ func projectToMap(p norman.Project) map[string]string {
 		"name":        p.Name,
 		"cluster":     p.ClusterID,
 		"state":       p.State,
-		"created":     handler.FormatTime(p.Created),
+		"created":     paramutil.FormatTime(p.Created),
 		"description": p.Description,
 	}
 }
 
 // projectListHandler handles the project_list tool.
 // Supports fuzzy matching for cluster identifier.
-func projectListHandler(client interface{}, params map[string]interface{}) (string, error) {
+func projectListHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	normanClient, err := toolset.ValidateNormanClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	format, err := handler.ExtractAndValidateFormat(params)
+	format, err := paramutil.ExtractAndValidateFormat(params)
 	if err != nil {
 		return "", err
 	}
 
 	// Extract query and pagination parameters
-	nameFilter := handler.ExtractOptionalString(params, handler.ParamName)
-	limit := handler.ExtractInt64(params, handler.ParamLimit, 100)
-	page := handler.ExtractInt64(params, handler.ParamPage, 1)
+	nameFilter := paramutil.ExtractOptionalString(params, paramutil.ParamName)
+	limit := paramutil.ExtractInt64(params, paramutil.ParamLimit, 100)
+	page := paramutil.ExtractInt64(params, paramutil.ParamPage, 1)
 
-	ctx := context.Background()
-	clusterID, _ := handler.ResolveOptionalCluster(ctx, normanClient, params)
+	clusterID, _ := paramutil.ResolveOptionalCluster(ctx, normanClient, params)
 
 	allProjects, err := fetchProjects(ctx, normanClient, clusterID)
 	if err != nil {
@@ -75,14 +74,14 @@ func projectListHandler(client interface{}, params map[string]interface{}) (stri
 	filtered := filterProjectsByName(allProjects, nameFilter)
 
 	// Apply pagination
-	paginated, _ := handler.ApplyPagination(filtered, limit, page)
+	paginated, _ := paramutil.ApplyPagination(filtered, limit, page)
 
 	projectMaps := make([]map[string]string, len(paginated))
 	for i, p := range paginated {
 		projectMaps[i] = projectToMap(p)
 	}
 
-	return handler.FormatOutput(projectMaps, format, []string{"id", "name", "cluster", "state", "created", "description"}, nil)
+	return paramutil.FormatOutput(projectMaps, format, []string{"id", "name", "cluster", "state", "created", "description"}, nil)
 }
 
 // filterProjectsByName filters projects by name (partial match, case-insensitive).

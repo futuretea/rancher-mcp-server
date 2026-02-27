@@ -9,7 +9,7 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
 // LogEntry represents a single log line with its timestamp
@@ -21,30 +21,28 @@ type LogEntry struct {
 }
 
 // logsHandler handles the kubernetes_logs tool
-func logsHandler(client interface{}, params map[string]interface{}) (string, error) {
+func logsHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	namespace, err := handler.ExtractRequiredString(params, handler.ParamNamespace)
+	namespace, err := paramutil.ExtractRequiredString(params, paramutil.ParamNamespace)
 	if err != nil {
 		return "", err
 	}
-	name := handler.ExtractOptionalString(params, handler.ParamName)
-	labelSelector := handler.ExtractOptionalString(params, handler.ParamLabelSelector)
-	container := handler.ExtractOptionalString(params, handler.ParamContainer)
-	tailLines := handler.ExtractInt64(params, handler.ParamTailLines, 100)
-	sinceSeconds := handler.ExtractOptionalInt64(params, handler.ParamSinceSeconds)
-	timestamps := handler.ExtractBool(params, handler.ParamTimestamps, false)
-	previous := handler.ExtractBool(params, handler.ParamPrevious, false)
-	keyword := handler.ExtractOptionalString(params, handler.ParamKeyword)
-
-	ctx := context.Background()
+	name := paramutil.ExtractOptionalString(params, paramutil.ParamName)
+	labelSelector := paramutil.ExtractOptionalString(params, paramutil.ParamLabelSelector)
+	container := paramutil.ExtractOptionalString(params, paramutil.ParamContainer)
+	tailLines := paramutil.ExtractInt64(params, paramutil.ParamTailLines, 100)
+	sinceSeconds := paramutil.ExtractOptionalInt64(params, paramutil.ParamSinceSeconds)
+	timestamps := paramutil.ExtractBool(params, paramutil.ParamTimestamps, false)
+	previous := paramutil.ExtractBool(params, paramutil.ParamPrevious, false)
+	keyword := paramutil.ExtractOptionalString(params, paramutil.ParamKeyword)
 
 	// If labelSelector is provided, get logs from multiple pods
 	if labelSelector != "" {
@@ -239,19 +237,19 @@ func filterLogsByKeyword(logs, keyword string) string {
 // Kubernetes log format: 2024-01-15T10:30:00.123456789Z log message
 // Returns the timestamp and the remaining log content.
 func parseLogTimestamp(line string) (time.Time, string) {
-	if len(line) < 30 {
+	if len(line) < RFC3339NanoLen {
 		return time.Time{}, line
 	}
 	// Try to parse ISO 8601 timestamp at the beginning of the line
-	timestampStr := line[:30]
+	timestampStr := line[:RFC3339NanoLen]
 	if t, err := time.Parse(time.RFC3339Nano, timestampStr); err == nil {
-		return t, line[31:]
+		return t, line[RFC3339NanoLen+1:]
 	}
 	// Try without nanoseconds
-	if len(line) >= 20 {
-		timestampStr = line[:20]
+	if len(line) >= RFC3339Len {
+		timestampStr = line[:RFC3339Len]
 		if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-			return t, line[21:]
+			return t, line[RFC3339Len+1:]
 		}
 	}
 	return time.Time{}, line
@@ -326,26 +324,25 @@ func sortMultiPodLogsByTime(results []steve.MultiPodLogResult, timestamps bool) 
 }
 
 // inspectPodHandler handles the kubernetes_inspect_pod tool
-func inspectPodHandler(client interface{}, params map[string]interface{}) (string, error) {
+func inspectPodHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	namespace, err := handler.ExtractRequiredString(params, handler.ParamNamespace)
+	namespace, err := paramutil.ExtractRequiredString(params, paramutil.ParamNamespace)
 	if err != nil {
 		return "", err
 	}
-	name, err := handler.ExtractRequiredString(params, handler.ParamName)
+	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
 	if err != nil {
 		return "", err
 	}
 
-	ctx := context.Background()
 	result, err := steveClient.InspectPod(ctx, cluster, namespace, name)
 	if err != nil {
 		return "", fmt.Errorf("failed to inspect pod: %w", err)

@@ -171,7 +171,7 @@ func (s *Server) configureTool(tool toolset.ServerTool) toolset.ServerTool {
 	return toolset.ServerTool{
 		Tool:        tool.Tool,
 		Annotations: tool.Annotations,
-		Handler: func(client interface{}, params map[string]interface{}) (string, error) {
+		Handler: func(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 			// Inject default output format if not specified
 			if _, hasOutput := params["output"]; !hasOutput && s.configuration.ListOutput != "" {
 				params["output"] = s.configuration.ListOutput
@@ -195,7 +195,7 @@ func (s *Server) configureTool(tool toolset.ServerTool) toolset.ServerTool {
 				params["showSensitiveData"] = false
 			}
 
-			return tool.Handler(client, params)
+			return tool.Handler(ctx, client, params)
 		},
 	}
 }
@@ -220,7 +220,7 @@ func (s *Server) registerTool(tool toolset.ServerTool) error {
 			}
 		}
 
-		result, err := tool.Handler(s.combinedClient, params)
+		result, err := tool.Handler(ctx, s.combinedClient, params)
 		return NewTextResult(result, err), nil
 	})
 

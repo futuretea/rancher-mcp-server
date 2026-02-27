@@ -8,42 +8,41 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"gopkg.in/yaml.v3"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // getHandler handles the kubernetes_get tool
-func getHandler(client interface{}, params map[string]interface{}) (string, error) {
+func getHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	kind, err := handler.ExtractRequiredString(params, handler.ParamKind)
+	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
 	if err != nil {
 		return "", err
 	}
-	name, err := handler.ExtractRequiredString(params, handler.ParamName)
+	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
 	if err != nil {
 		return "", err
 	}
-	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
-	format := handler.ExtractFormat(params)
-	filter := handler.NewResourceFilterFromParams(params)
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	format := paramutil.ExtractFormat(params)
+	filter := paramutil.NewResourceFilterFromParams(params)
 
-	ctx := context.Background()
 	resource, err := steveClient.GetResource(ctx, cluster, kind, namespace, name)
 	if err != nil {
 		return "", fmt.Errorf("failed to get resource: %w", err)
 	}
 
 	// Mask sensitive data (e.g., Secret data) unless showSensitiveData is true
-	if sensitiveFilter := handler.NewSensitiveDataFilterFromParams(params); sensitiveFilter != nil {
+	if sensitiveFilter := paramutil.NewSensitiveDataFilterFromParams(params); sensitiveFilter != nil {
 		resource = sensitiveFilter.Filter(resource)
 	}
 
@@ -51,29 +50,28 @@ func getHandler(client interface{}, params map[string]interface{}) (string, erro
 }
 
 // listHandler handles the kubernetes_list tool
-func listHandler(client interface{}, params map[string]interface{}) (string, error) {
+func listHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	kind, err := handler.ExtractRequiredString(params, handler.ParamKind)
+	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
 	if err != nil {
 		return "", err
 	}
-	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
-	nameFilter := handler.ExtractOptionalString(params, handler.ParamName)
-	labelSelector := handler.ExtractOptionalString(params, handler.ParamLabelSelector)
-	limit := handler.ExtractInt64(params, handler.ParamLimit, 100)
-	page := handler.ExtractInt64(params, handler.ParamPage, 1)
-	format := handler.ExtractFormat(params)
-	filter := handler.NewResourceFilterFromParams(params)
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	nameFilter := paramutil.ExtractOptionalString(params, paramutil.ParamName)
+	labelSelector := paramutil.ExtractOptionalString(params, paramutil.ParamLabelSelector)
+	limit := paramutil.ExtractInt64(params, paramutil.ParamLimit, DefaultLimit)
+	page := paramutil.ExtractInt64(params, paramutil.ParamPage, DefaultPage)
+	format := paramutil.ExtractFormat(params)
+	filter := paramutil.NewResourceFilterFromParams(params)
 
-	ctx := context.Background()
 	// Server-side: labelSelector (no limit here to allow client-side pagination)
 	opts := &steve.ListOptions{
 		LabelSelector: labelSelector,
@@ -93,7 +91,7 @@ func listHandler(client interface{}, params map[string]interface{}) (string, err
 	list = paginateResourceList(list, limit, page)
 
 	// Mask sensitive data (e.g., Secret data) unless showSensitiveData is true
-	if sensitiveFilter := handler.NewSensitiveDataFilterFromParams(params); sensitiveFilter != nil {
+	if sensitiveFilter := paramutil.NewSensitiveDataFilterFromParams(params); sensitiveFilter != nil {
 		list = sensitiveFilter.FilterList(list)
 	}
 
@@ -101,10 +99,10 @@ func listHandler(client interface{}, params map[string]interface{}) (string, err
 }
 
 // createHandler handles the kubernetes_create tool
-func createHandler(client interface{}, params map[string]interface{}) (string, error) {
+func createHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	// Check read-only mode
 	if readOnly, ok := params["readOnly"].(bool); ok && readOnly {
-		return "", handler.ErrReadOnlyMode
+		return "", paramutil.ErrReadOnlyMode
 	}
 
 	steveClient, err := toolset.ValidateSteveClient(client)
@@ -112,15 +110,15 @@ func createHandler(client interface{}, params map[string]interface{}) (string, e
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	resourceJSON, err := handler.ExtractRequiredString(params, handler.ParamResource)
+	resourceJSON, err := paramutil.ExtractRequiredString(params, paramutil.ParamResource)
 	if err != nil {
 		return "", err
 	}
-	filter := handler.NewResourceFilterFromParams(params)
+	filter := paramutil.NewResourceFilterFromParams(params)
 
 	// Parse the resource JSON
 	var resource unstructured.Unstructured
@@ -128,20 +126,19 @@ func createHandler(client interface{}, params map[string]interface{}) (string, e
 		return "", fmt.Errorf("failed to parse resource JSON: %w", err)
 	}
 
-	ctx := context.Background()
 	created, err := steveClient.CreateResource(ctx, cluster, &resource)
 	if err != nil {
 		return "", fmt.Errorf("failed to create resource: %w", err)
 	}
 
-	return formatResource(created, handler.FormatJSON, filter)
+	return formatResource(created, paramutil.FormatJSON, filter)
 }
 
 // patchHandler handles the kubernetes_patch tool
-func patchHandler(client interface{}, params map[string]interface{}) (string, error) {
+func patchHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	// Check read-only mode
 	if readOnly, ok := params["readOnly"].(bool); ok && readOnly {
-		return "", handler.ErrReadOnlyMode
+		return "", paramutil.ErrReadOnlyMode
 	}
 
 	steveClient, err := toolset.ValidateSteveClient(client)
@@ -149,43 +146,42 @@ func patchHandler(client interface{}, params map[string]interface{}) (string, er
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	kind, err := handler.ExtractRequiredString(params, handler.ParamKind)
+	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
 	if err != nil {
 		return "", err
 	}
-	name, err := handler.ExtractRequiredString(params, handler.ParamName)
+	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
 	if err != nil {
 		return "", err
 	}
-	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
-	patchStr, err := handler.ExtractRequiredString(params, handler.ParamPatch)
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	patchStr, err := paramutil.ExtractRequiredString(params, paramutil.ParamPatch)
 	if err != nil {
 		return "", err
 	}
-	filter := handler.NewResourceFilterFromParams(params)
+	filter := paramutil.NewResourceFilterFromParams(params)
 
-	ctx := context.Background()
 	patched, err := steveClient.PatchResource(ctx, cluster, kind, namespace, name, []byte(patchStr))
 	if err != nil {
 		return "", fmt.Errorf("failed to patch resource: %w", err)
 	}
 
-	return formatResource(patched, handler.FormatJSON, filter)
+	return formatResource(patched, paramutil.FormatJSON, filter)
 }
 
 // deleteHandler handles the kubernetes_delete tool
-func deleteHandler(client interface{}, params map[string]interface{}) (string, error) {
+func deleteHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	// Check read-only mode
 	if readOnly, ok := params["readOnly"].(bool); ok && readOnly {
-		return "", handler.ErrReadOnlyMode
+		return "", paramutil.ErrReadOnlyMode
 	}
 	// Check destructive operations
 	if disableDestructive, ok := params["disableDestructive"].(bool); ok && disableDestructive {
-		return "", handler.ErrDestructiveDisabled
+		return "", paramutil.ErrDestructiveDisabled
 	}
 
 	steveClient, err := toolset.ValidateSteveClient(client)
@@ -193,21 +189,20 @@ func deleteHandler(client interface{}, params map[string]interface{}) (string, e
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	kind, err := handler.ExtractRequiredString(params, handler.ParamKind)
+	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
 	if err != nil {
 		return "", err
 	}
-	name, err := handler.ExtractRequiredString(params, handler.ParamName)
+	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
 	if err != nil {
 		return "", err
 	}
-	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
 
-	ctx := context.Background()
 	if err := steveClient.DeleteResource(ctx, cluster, kind, namespace, name); err != nil {
 		return "", fmt.Errorf("failed to delete resource: %w", err)
 	}
@@ -216,14 +211,14 @@ func deleteHandler(client interface{}, params map[string]interface{}) (string, e
 }
 
 // formatResource formats a single resource as JSON or YAML
-func formatResource(resource *unstructured.Unstructured, format string, filter *handler.ResourceFilter) (string, error) {
+func formatResource(resource *unstructured.Unstructured, format string, filter *paramutil.ResourceFilter) (string, error) {
 	// Apply filter if configured
 	if filter != nil {
 		resource = filter.Filter(resource)
 	}
 
 	switch format {
-	case handler.FormatYAML:
+	case paramutil.FormatYAML:
 		data, err := yaml.Marshal(resource.Object)
 		if err != nil {
 			return "", fmt.Errorf("failed to format as YAML: %w", err)
@@ -239,20 +234,20 @@ func formatResource(resource *unstructured.Unstructured, format string, filter *
 }
 
 // formatResourceList formats a resource list as JSON, YAML, or table
-func formatResourceList(list *unstructured.UnstructuredList, format string, filter *handler.ResourceFilter) (string, error) {
+func formatResourceList(list *unstructured.UnstructuredList, format string, filter *paramutil.ResourceFilter) (string, error) {
 	// Apply filter if configured
 	if filter != nil {
 		list = filter.FilterList(list)
 	}
 
 	switch format {
-	case handler.FormatYAML:
+	case paramutil.FormatYAML:
 		data, err := yaml.Marshal(list.Items)
 		if err != nil {
 			return "", fmt.Errorf("failed to format as YAML: %w", err)
 		}
 		return string(data), nil
-	case handler.FormatTable:
+	case paramutil.FormatTable:
 		return formatAsTable(list), nil
 	default: // json
 		data, err := json.MarshalIndent(list.Items, "", "  ")
@@ -280,7 +275,7 @@ func formatAsTable(list *unstructured.UnstructuredList) string {
 		if namespace == "" {
 			namespace = "-"
 		}
-		fmt.Fprintf(&b, "%-40s %-20s %-15s\n", truncate(item.GetName(), 40), truncate(namespace, 20), truncate(item.GetKind(), 15))
+		fmt.Fprintf(&b, "%-40s %-20s %-15s\n", truncate(item.GetName(), DefaultNameTruncateLen), truncate(namespace, DefaultNSTruncateLen), truncate(item.GetKind(), DefaultKindTruncateLen))
 	}
 
 	return b.String()

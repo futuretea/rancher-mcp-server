@@ -9,44 +9,43 @@ import (
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/dep"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // depHandler handles the kubernetes_dep tool
-func depHandler(client interface{}, params map[string]interface{}) (string, error) {
+func depHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	kind, err := handler.ExtractRequiredString(params, handler.ParamKind)
+	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
 	if err != nil {
 		return "", err
 	}
-	name, err := handler.ExtractRequiredString(params, handler.ParamName)
+	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
 	if err != nil {
 		return "", err
 	}
-	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
-	direction := handler.ExtractOptionalStringWithDefault(params, handler.ParamDirection, "dependents")
-	maxDepth := int(handler.ExtractInt64(params, handler.ParamDepth, 10))
-	format := handler.ExtractOptionalStringWithDefault(params, handler.ParamFormat, "tree")
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	direction := paramutil.ExtractOptionalStringWithDefault(params, paramutil.ParamDirection, "dependents")
+	maxDepth := int(paramutil.ExtractInt64(params, paramutil.ParamDepth, DefaultMaxDepth))
+	format := paramutil.ExtractOptionalStringWithDefault(params, paramutil.ParamFormat, "tree")
 
 	if direction != "dependents" && direction != "dependencies" {
-		return "", fmt.Errorf("%w: direction must be 'dependents' or 'dependencies'", handler.ErrMissingParameter)
+		return "", fmt.Errorf("%w: direction must be 'dependents' or 'dependencies'", paramutil.ErrMissingParameter)
 	}
-	if maxDepth < 1 || maxDepth > 20 {
-		maxDepth = 10
+	if maxDepth < MinDepth || maxDepth > MaxDepth {
+		maxDepth = DefaultMaxDepth
 	}
 
-	ctx := context.Background()
 	result, err := dep.Resolve(ctx, steveClient, cluster, kind, namespace, name, direction, maxDepth)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve dependencies: %w", err)
@@ -84,23 +83,21 @@ type NodePodInfo struct {
 }
 
 // nodeAnalysisHandler handles the kubernetes_node_analysis tool
-func nodeAnalysisHandler(client interface{}, params map[string]interface{}) (string, error) {
+func nodeAnalysisHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	name, err := handler.ExtractRequiredString(params, handler.ParamName)
+	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
 	if err != nil {
 		return "", err
 	}
-	format := handler.ExtractFormat(params)
-
-	ctx := context.Background()
+	format := paramutil.ExtractFormat(params)
 
 	// Get node details
 	node, err := steveClient.GetResource(ctx, cluster, "node", "", name)
@@ -235,7 +232,7 @@ func nodeAnalysisHandler(client interface{}, params map[string]interface{}) (str
 
 	// Format output
 	switch format {
-	case handler.FormatYAML:
+	case paramutil.FormatYAML:
 		data, err := yaml.Marshal(result)
 		if err != nil {
 			return "", fmt.Errorf("failed to format as YAML: %w", err)
@@ -273,28 +270,28 @@ func parseResourceQuantity(q string) int64 {
 		if err != nil {
 			return 0
 		}
-		return val * 1024
+		return val * BytesPerKi
 	}
 	if strings.HasSuffix(q, "Mi") {
 		val, err := parseNumeric(q[:len(q)-2])
 		if err != nil {
 			return 0
 		}
-		return val * 1024 * 1024
+		return val * BytesPerMi
 	}
 	if strings.HasSuffix(q, "Gi") {
 		val, err := parseNumeric(q[:len(q)-2])
 		if err != nil {
 			return 0
 		}
-		return val * 1024 * 1024 * 1024
+		return val * BytesPerGi
 	}
 	if strings.HasSuffix(q, "Ti") {
 		val, err := parseNumeric(q[:len(q)-2])
 		if err != nil {
 			return 0
 		}
-		return val * 1024 * 1024 * 1024 * 1024
+		return val * BytesPerTi
 	}
 
 	// Handle decimal memory units
@@ -303,21 +300,21 @@ func parseResourceQuantity(q string) int64 {
 		if err != nil {
 			return 0
 		}
-		return val * 1000
+		return val * DecimalKilo
 	}
 	if strings.HasSuffix(q, "M") {
 		val, err := parseNumeric(q[:len(q)-1])
 		if err != nil {
 			return 0
 		}
-		return val * 1000 * 1000
+		return val * DecimalMega
 	}
 	if strings.HasSuffix(q, "G") {
 		val, err := parseNumeric(q[:len(q)-1])
 		if err != nil {
 			return 0
 		}
-		return val * 1000 * 1000 * 1000
+		return val * DecimalGiga
 	}
 
 	// Plain number
@@ -338,21 +335,21 @@ func parseNumeric(s string) (int64, error) {
 // formatResourceQuantity formats a numeric resource quantity back to a human-readable string.
 func formatResourceQuantity(val int64, resourceType string) string {
 	if resourceType == "cpu" {
-		if val >= 1000 {
-			return fmt.Sprintf("%dm (%dc)", val, val/1000)
+		if val >= MilliCPUBase {
+			return fmt.Sprintf("%dm (%dc)", val, val/MilliCPUBase)
 		}
 		return fmt.Sprintf("%dm", val)
 	}
 
 	// Memory
-	if val >= 1024*1024*1024 {
-		return fmt.Sprintf("%dGi (%d bytes)", val/(1024*1024*1024), val)
+	if val >= BytesPerGi {
+		return fmt.Sprintf("%dGi (%d bytes)", val/BytesPerGi, val)
 	}
-	if val >= 1024*1024 {
-		return fmt.Sprintf("%dMi (%d bytes)", val/(1024*1024), val)
+	if val >= BytesPerMi {
+		return fmt.Sprintf("%dMi (%d bytes)", val/BytesPerMi, val)
 	}
-	if val >= 1024 {
-		return fmt.Sprintf("%dKi (%d bytes)", val/1024, val)
+	if val >= BytesPerKi {
+		return fmt.Sprintf("%dKi (%d bytes)", val/BytesPerKi, val)
 	}
 	return fmt.Sprintf("%d bytes", val)
 }

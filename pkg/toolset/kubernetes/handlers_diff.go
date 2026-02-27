@@ -1,29 +1,30 @@
 package kubernetes
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"github.com/futuretea/rancher-mcp-server/pkg/watchdiff"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // diffHandler handles the kubernetes_diff tool.
 // It compares two Kubernetes resource versions and shows the differences as a git-style diff.
-func diffHandler(client interface{}, params map[string]interface{}) (string, error) {
+func diffHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	// Extract required parameters
-	resource1JSON, err := handler.ExtractRequiredString(params, "resource1")
+	resource1JSON, err := paramutil.ExtractRequiredString(params, "resource1")
 	if err != nil {
 		return "", err
 	}
-	resource2JSON, err := handler.ExtractRequiredString(params, "resource2")
+	resource2JSON, err := paramutil.ExtractRequiredString(params, "resource2")
 	if err != nil {
 		return "", err
 	}
 
-	ignoreStatus := handler.ExtractBool(params, "ignoreStatus", false)
-	ignoreMeta := handler.ExtractBool(params, "ignoreMeta", false)
+	ignoreStatus := paramutil.ExtractBool(params, "ignoreStatus", false)
+	ignoreMeta := paramutil.ExtractBool(params, "ignoreMeta", false)
 
 	// Parse resource1
 	var resource1 unstructured.Unstructured

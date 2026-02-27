@@ -9,7 +9,7 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/handler"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"github.com/futuretea/rancher-mcp-server/pkg/watchdiff"
 )
 
@@ -17,44 +17,42 @@ import (
 // It behaves similarly to the Linux `watch` command: it repeatedly
 // evaluates the current state of matching resources at a configurable
 // interval and returns the concatenated diffs from all iterations.
-func watchDiffHandler(client interface{}, params map[string]interface{}) (string, error) {
+func watchDiffHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
 
-	cluster, err := handler.ExtractRequiredString(params, handler.ParamCluster)
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
 	}
-	kind, err := handler.ExtractRequiredString(params, handler.ParamKind)
+	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
 	if err != nil {
 		return "", err
 	}
-	namespace := handler.ExtractOptionalString(params, handler.ParamNamespace)
-	labelSelector := handler.ExtractOptionalString(params, handler.ParamLabelSelector)
-	fieldSelector := handler.ExtractOptionalString(params, handler.ParamFieldSelector)
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	labelSelector := paramutil.ExtractOptionalString(params, paramutil.ParamLabelSelector)
+	fieldSelector := paramutil.ExtractOptionalString(params, paramutil.ParamFieldSelector)
 
-	ignoreStatus := handler.ExtractBool(params, "ignoreStatus", false)
-	ignoreMeta := handler.ExtractBool(params, "ignoreMeta", false)
+	ignoreStatus := paramutil.ExtractBool(params, "ignoreStatus", false)
+	ignoreMeta := paramutil.ExtractBool(params, "ignoreMeta", false)
 
-	intervalSeconds := handler.ExtractInt64(params, handler.ParamIntervalSeconds, 10)
-	if intervalSeconds < 1 {
-		intervalSeconds = 1
+	intervalSeconds := paramutil.ExtractInt64(params, paramutil.ParamIntervalSeconds, DefaultIntervalSeconds)
+	if intervalSeconds < MinIntervalSeconds {
+		intervalSeconds = MinIntervalSeconds
 	}
-	if intervalSeconds > 600 {
-		intervalSeconds = 600
-	}
-
-	iterations := handler.ExtractInt64(params, handler.ParamIterations, 6)
-	if iterations < 1 {
-		iterations = 1
-	}
-	if iterations > 100 {
-		iterations = 100
+	if intervalSeconds > MaxIntervalSeconds {
+		intervalSeconds = MaxIntervalSeconds
 	}
 
-	ctx := context.Background()
+	iterations := paramutil.ExtractInt64(params, paramutil.ParamIterations, DefaultIterations)
+	if iterations < MinIterations {
+		iterations = MinIterations
+	}
+	if iterations > MaxIterations {
+		iterations = MaxIterations
+	}
 
 	differ := watchdiff.NewDiffer(true)
 	differ.SetIgnoreStatus(ignoreStatus)

@@ -39,6 +39,10 @@ const (
 	// Watch/diff tool parameters
 	ParamIntervalSeconds = "intervalSeconds"
 	ParamIterations      = "iterations"
+	// Container file operation parameters
+	ParamFilePath    = "filePath"
+	ParamContent     = "content"
+	ParamMaxFileSize = "maxFileSize"
 )
 
 // Error definitions

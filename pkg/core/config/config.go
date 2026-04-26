@@ -29,6 +29,11 @@ type StaticConfig struct {
 	DisableDestructive bool `mapstructure:"disable_destructive"`
 	ShowSensitiveData  bool `mapstructure:"show_sensitive_data"`
 
+	// Container file operation configuration
+	EnableContainerFileUpload   bool   `mapstructure:"enable_container_file_upload"`
+	EnableContainerFileDownload bool   `mapstructure:"enable_container_file_download"`
+	MaxFileSize                 string `mapstructure:"max_file_size"`
+
 	// Output configuration
 	ListOutput    string   `mapstructure:"list_output"`
 	OutputFilters []string `mapstructure:"output_filters"`

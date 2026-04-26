@@ -42,4 +42,7 @@ const (
 	DefaultMaxDepth = 10
 	MinDepth        = 1
 	MaxDepth        = 20
+
+	// Container file operation defaults
+	DefaultMaxFileSize = "10Mi"
 )

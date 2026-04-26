@@ -127,6 +127,14 @@ func (s *Server) registerTools() error {
 	for _, ts := range enabledToolsets {
 		tools := ts.GetTools(combinedClient)
 		for _, tool := range tools {
+			// Check config-flag-based gating for file operation tools
+			if tool.Tool.Name == "kubernetes_upload_file" && !s.configuration.EnableContainerFileUpload {
+				continue
+			}
+			if tool.Tool.Name == "kubernetes_download_file" && !s.configuration.EnableContainerFileDownload {
+				continue
+			}
+
 			// Check if tool is enabled/disabled by configuration
 			if s.shouldEnableTool(tool.Tool.Name) {
 				// Create a configured tool handler that uses server configuration
@@ -188,6 +196,13 @@ func (s *Server) configureTool(tool toolset.ServerTool) toolset.ServerTool {
 			// Inject output filters for resource cleanup
 			if len(s.configuration.OutputFilters) > 0 {
 				params["outputFilters"] = s.configuration.OutputFilters
+			}
+
+			// Inject maxFileSize for container file operations
+			if s.configuration.MaxFileSize != "" {
+				params["maxFileSize"] = s.configuration.MaxFileSize
+			} else {
+				params["maxFileSize"] = kubernetes.DefaultMaxFileSize
 			}
 
 			// Admin policy: if show_sensitive_data is disabled, force mask regardless of per-call param

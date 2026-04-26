@@ -764,6 +764,44 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 			},
 			Handler: capacityHandler,
 		},
+		{
+			Tool: mcp.Tool{
+				Name:        "kubernetes_download_file",
+				Description: "Download a file from a container in a pod. Returns the file content as base64-encoded string with metadata. Requires the container to have 'tar' installed. Files are limited by the configured max file size.",
+				InputSchema: mcp.ToolInputSchema{
+					Type:     "object",
+					Required: []string{"cluster", "namespace", "name", "filePath"},
+					Properties: map[string]any{
+						"cluster": map[string]any{
+							"type":        "string",
+							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+						},
+						"namespace": map[string]any{
+							"type":        "string",
+							"description": "Namespace name",
+						},
+						"name": map[string]any{
+							"type":        "string",
+							"description": "Pod name",
+						},
+						"container": map[string]any{
+							"type":        "string",
+							"description": "Container name (optional, defaults to first container)",
+							"default":     "",
+						},
+						"filePath": map[string]any{
+							"type":        "string",
+							"description": "Absolute path of the file to download from the container",
+						},
+					},
+				},
+			},
+			Annotations: toolset.ToolAnnotations{
+				ReadOnlyHint:       paramutil.BoolPtr(true),
+				RequiresKubernetes: paramutil.BoolPtr(true),
+			},
+			Handler: handleDownloadFile,
+		},
 	}
 
 	// Add write operations if not in read-only mode
@@ -829,6 +867,49 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 					ReadOnlyHint: paramutil.BoolPtr(false),
 				},
 				Handler: patchHandler,
+			},
+			toolset.ServerTool{
+				Tool: mcp.Tool{
+					Name:        "kubernetes_upload_file",
+					Description: "Upload a file to a container in a pod. Accepts base64-encoded file content. Requires the container to have 'tar' installed. Files are limited by the configured max file size.",
+					InputSchema: mcp.ToolInputSchema{
+						Type:     "object",
+						Required: []string{"cluster", "namespace", "name", "filePath", "content"},
+						Properties: map[string]any{
+							"cluster": map[string]any{
+								"type":        "string",
+								"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+							},
+							"namespace": map[string]any{
+								"type":        "string",
+								"description": "Namespace name",
+							},
+							"name": map[string]any{
+								"type":        "string",
+								"description": "Pod name",
+							},
+							"container": map[string]any{
+								"type":        "string",
+								"description": "Container name (optional, defaults to first container)",
+								"default":     "",
+							},
+							"filePath": map[string]any{
+								"type":        "string",
+								"description": "Absolute destination path for the file in the container",
+							},
+							"content": map[string]any{
+								"type":        "string",
+								"description": "Base64-encoded file content to upload",
+							},
+						},
+					},
+				},
+				Annotations: toolset.ToolAnnotations{
+					ReadOnlyHint:       paramutil.BoolPtr(false),
+					DestructiveHint:    paramutil.BoolPtr(false),
+					RequiresKubernetes: paramutil.BoolPtr(true),
+				},
+				Handler: handleUploadFile,
 			},
 		)
 

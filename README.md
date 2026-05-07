@@ -37,6 +37,8 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
     - When enabled: Per-tool `showSensitiveData` parameter controls visibility
     - Applies to: Kubernetes Secret `data` and `stringData` fields
     - Affects tools: `kubernetes_get`, `kubernetes_list`, `kubernetes_describe`
+  - `enable_container_exec`: Explicit opt-in for pod command execution (default: `false`, also requires `read_only=false`)
+  - `enable_container_file_upload` / `enable_container_file_download`: Explicit opt-in for container file transfer tools
 - **Output Formats**: Table, YAML, and JSON
 - **Output Filters**: Remove verbose fields like `managedFields` from responses
 - **Pagination**: Limit and page parameters for list operations
@@ -109,6 +111,9 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--read-only` | Disable write operations | `true` |
 | `--disable-destructive` | Disable delete operations | `false` |
 | `--show-sensitive-data` | Global admin flag to allow sensitive data visibility | `false` |
+| `--enable-container-exec` | Enable pod command execution tool; requires `--read-only=false` | `false` |
+| `--enable-container-file-upload` | Enable container file upload tool | `false` |
+| `--enable-container-file-download` | Enable container file download tool | `false` |
 | `--list-output` | Output format (json, table, yaml) | `json` |
 | `--output-filters` | Fields to remove from output | `metadata.managedFields` |
 | `--toolsets` | Toolsets to enable | `kubernetes,rancher` |
@@ -133,6 +138,12 @@ rancher_token: your-bearer-token
 
 read_only: true  # default: true
 disable_destructive: false
+
+# High-risk container operations are disabled by default.
+# enable_container_exec requires read_only: false.
+enable_container_exec: false
+enable_container_file_upload: false
+enable_container_file_download: false
 
 # Sensitive Data Control:
 # Global administrator setting that controls whether sensitive data can be shown.
@@ -166,6 +177,7 @@ RANCHER_MCP_RANCHER_SERVER_URL=https://rancher.example.com
 RANCHER_MCP_RANCHER_TOKEN=your-token
 RANCHER_MCP_READ_ONLY=true
 RANCHER_MCP_SHOW_SENSITIVE_DATA=false  # Global admin control for sensitive data
+RANCHER_MCP_ENABLE_CONTAINER_EXEC=false
 ```
 
 ### HTTP/SSE Mode
@@ -276,6 +288,22 @@ RANCHER_MCP_SHOW_SENSITIVE_DATA=false
 ```
 
 Tools are organized into toolsets. Use `--toolsets` to enable specific sets or `--enabled-tools`/`--disabled-tools` for fine-grained control.
+
+### High-Risk Container Operations
+
+Container exec and file mutation tools are disabled by default. To expose `kubernetes_exec`, administrators must set `read_only: false` and enable `enable_container_exec`. The tool accepts only an argv-style command array and does not support stdin or TTY sessions.
+
+```json
+{
+  "cluster": "c-abc123",
+  "namespace": "default",
+  "name": "api-7f8d8",
+  "container": "api",
+  "command": ["printenv", "HOSTNAME"]
+}
+```
+
+The response is JSON with `exitCode`, `stdout`, and `stderr`. A non-zero command exit is returned as a structured result; validation and transport failures are returned as tool errors.
 
 ### Toolsets
 

@@ -127,11 +127,14 @@ func (s *Server) registerTools() error {
 	for _, ts := range enabledToolsets {
 		tools := ts.GetTools(combinedClient)
 		for _, tool := range tools {
-			// Check config-flag-based gating for file operation tools
+			// Check config-flag-based gating for high-risk container operation tools.
 			if tool.Tool.Name == "kubernetes_upload_file" && !s.configuration.EnableContainerFileUpload {
 				continue
 			}
 			if tool.Tool.Name == "kubernetes_download_file" && !s.configuration.EnableContainerFileDownload {
+				continue
+			}
+			if tool.Tool.Name == "kubernetes_exec" && !s.configuration.EnableContainerExec {
 				continue
 			}
 

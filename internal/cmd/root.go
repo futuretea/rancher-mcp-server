@@ -40,6 +40,10 @@ func bindFlags(cmd *cobra.Command) {
 		"read_only":           "read-only",
 		"disable_destructive": "disable-destructive",
 		"show_sensitive_data": "show-sensitive-data",
+		// Container operation configuration
+		"enable_container_exec":          "enable-container-exec",
+		"enable_container_file_upload":   "enable-container-file-upload",
+		"enable_container_file_download": "enable-container-file-download",
 		// Output configuration
 		"list_output":    "list-output",
 		"output_filters": "output-filters",
@@ -100,6 +104,9 @@ for network access.`,
 	cmd.Flags().Bool("read-only", true, "Run in read-only mode")
 	cmd.Flags().Bool("disable-destructive", false, "Disable destructive operations")
 	cmd.Flags().Bool("show-sensitive-data", false, "Allow showing sensitive data (e.g., Secret values)")
+	cmd.Flags().Bool("enable-container-exec", false, "Enable pod command execution tool (disabled by default; requires read-only=false)")
+	cmd.Flags().Bool("enable-container-file-upload", false, "Enable container file upload tool")
+	cmd.Flags().Bool("enable-container-file-download", false, "Enable container file download tool")
 
 	// Output configuration flags
 	cmd.Flags().String("list-output", "json", "Output format for list operations (json, table, yaml)")

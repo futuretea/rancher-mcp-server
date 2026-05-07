@@ -32,6 +32,7 @@ type StaticConfig struct {
 	// Container file operation configuration
 	EnableContainerFileUpload   bool   `mapstructure:"enable_container_file_upload"`
 	EnableContainerFileDownload bool   `mapstructure:"enable_container_file_download"`
+	EnableContainerExec         bool   `mapstructure:"enable_container_exec"`
 	MaxFileSize                 string `mapstructure:"max_file_size"`
 
 	// Output configuration

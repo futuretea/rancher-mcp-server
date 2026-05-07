@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/futuretea/rancher-mcp-server/pkg/core/config"
+	"github.com/mark3labs/mcp-go/mcp"
 )
 
 func TestNewServer(t *testing.T) {
@@ -356,5 +356,86 @@ func TestFileToolsDownloadOnlyEnabled(t *testing.T) {
 	}
 	if !hasDownload {
 		t.Error("kubernetes_download_file should be enabled")
+	}
+}
+
+// TestExecToolFlagExcluded tests that the exec tool is excluded when config flag is false.
+func TestExecToolFlagExcluded(t *testing.T) {
+	cfg := &config.StaticConfig{
+		RancherServerURL:    "https://rancher.example.com",
+		RancherAccessKey:    "test-key",
+		RancherSecretKey:    "test-secret",
+		EnableContainerExec: false,
+	}
+	mcpConfig := Configuration{StaticConfig: cfg}
+
+	server, err := NewServer(mcpConfig)
+	if err != nil {
+		if server == nil {
+			t.Fatal("Server should be created even with fake credentials")
+		}
+		return
+	}
+
+	for _, toolName := range server.GetEnabledTools() {
+		if toolName == "kubernetes_exec" {
+			t.Error("kubernetes_exec should be excluded when EnableContainerExec is false")
+		}
+	}
+}
+
+// TestExecToolFlagIncluded tests that the exec tool is included when explicitly enabled.
+func TestExecToolFlagIncluded(t *testing.T) {
+	cfg := &config.StaticConfig{
+		RancherServerURL:    "https://rancher.example.com",
+		RancherAccessKey:    "test-key",
+		RancherSecretKey:    "test-secret",
+		EnableContainerExec: true,
+		ReadOnly:            false,
+	}
+	mcpConfig := Configuration{StaticConfig: cfg}
+
+	server, err := NewServer(mcpConfig)
+	if err != nil {
+		if server == nil {
+			t.Fatal("Server should be created even with fake credentials")
+		}
+		return
+	}
+
+	hasExec := false
+	for _, toolName := range server.GetEnabledTools() {
+		if toolName == "kubernetes_exec" {
+			hasExec = true
+		}
+	}
+	if !hasExec {
+		t.Error("kubernetes_exec should be included when EnableContainerExec is true and ReadOnly is false")
+	}
+}
+
+// TestExecToolReadOnlyExcluded tests that read-only mode suppresses the exec tool even when the flag is enabled.
+func TestExecToolReadOnlyExcluded(t *testing.T) {
+	cfg := &config.StaticConfig{
+		RancherServerURL:    "https://rancher.example.com",
+		RancherAccessKey:    "test-key",
+		RancherSecretKey:    "test-secret",
+		EnableContainerExec: true,
+		ReadOnly:            true,
+	}
+	mcpConfig := Configuration{StaticConfig: cfg}
+
+	server, err := NewServer(mcpConfig)
+	if err != nil {
+		if server == nil {
+			t.Fatal("Server should be created even with fake credentials")
+		}
+		return
+	}
+
+	for _, toolName := range server.GetEnabledTools() {
+		if toolName == "kubernetes_exec" {
+			t.Error("kubernetes_exec should be excluded in read-only mode")
+		}
 	}
 }

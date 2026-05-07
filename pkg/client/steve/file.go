@@ -12,6 +12,7 @@ import (
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/util/httpstream"
 	"k8s.io/client-go/kubernetes/scheme"
 	"k8s.io/client-go/tools/remotecommand"
 )
@@ -45,9 +46,17 @@ func (c *Client) ExecInPod(ctx context.Context, clusterID, namespace, podName, c
 			TTY:       false,
 		}, parameterCodec)
 
-	executor, err := remotecommand.NewSPDYExecutor(restConfig, "POST", req.URL())
+	spdyExecutor, err := remotecommand.NewSPDYExecutor(restConfig, "POST", req.URL())
 	if err != nil {
 		return nil, nil, fmt.Errorf("create SPDY executor: %w", err)
+	}
+	websocketExecutor, err := remotecommand.NewWebSocketExecutor(restConfig, "GET", req.URL().String())
+	if err != nil {
+		return nil, nil, fmt.Errorf("create WebSocket executor: %w", err)
+	}
+	executor, err := remotecommand.NewFallbackExecutor(websocketExecutor, spdyExecutor, httpstream.IsUpgradeFailure)
+	if err != nil {
+		return nil, nil, fmt.Errorf("create fallback executor: %w", err)
 	}
 
 	var stdoutBuf, stderrBuf bytes.Buffer

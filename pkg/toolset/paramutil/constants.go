@@ -43,6 +43,8 @@ const (
 	ParamFilePath    = "filePath"
 	ParamContent     = "content"
 	ParamMaxFileSize = "maxFileSize"
+	// Container exec operation parameters
+	ParamCommand = "command"
 )
 
 // Error definitions

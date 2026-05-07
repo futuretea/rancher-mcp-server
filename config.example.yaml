@@ -42,6 +42,10 @@ read_only: true  # Read-only mode (default: true)
 disable_destructive: false  # Disable destructive operations
 show_sensitive_data: false  # Allow showing sensitive data (e.g., Secret values). Default: false
 
+# Enable pod command execution tool (disabled by default for security)
+# WARNING: Allows running arbitrary commands in containers. Requires read_only: false.
+enable_container_exec: false
+
 # Enable container file upload tool (disabled by default for security)
 # WARNING: Allows writing files to containers. Only enable in trusted environments.
 enable_container_file_upload: false

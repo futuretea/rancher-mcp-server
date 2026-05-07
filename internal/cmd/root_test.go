@@ -124,6 +124,11 @@ func TestHTTPMode(t *testing.T) {
 	if rancherURLFlag == nil {
 		t.Error("Command should have a rancher-server-url flag")
 	}
+
+	execFlag := cmd.Flags().Lookup("enable-container-exec")
+	if execFlag == nil {
+		t.Error("Command should have an enable-container-exec flag")
+	}
 }
 
 func TestInvalidArguments(t *testing.T) {

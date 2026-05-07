@@ -26,7 +26,7 @@ func depHandler(ctx context.Context, client interface{}, params map[string]inter
 	if err != nil {
 		return "", err
 	}
-	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
+	kind, err := extractResourceKind(params)
 	if err != nil {
 		return "", err
 	}

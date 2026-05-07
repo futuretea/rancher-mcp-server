@@ -449,7 +449,8 @@ Show all dependencies or dependents of any Kubernetes resource as a tree. Covers
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
-| `kind` | string | Yes | Resource kind (e.g., deployment, pod, service, ingress, node) |
+| `kind` | string | Yes | Resource kind (e.g., deployment, pod, service, ingress, node, App) |
+| `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
 | `name` | string | Yes | Resource name |
 | `direction` | string | No | Traversal direction: `dependents` (default) or `dependencies` |
@@ -466,7 +467,8 @@ Get a Kubernetes resource by kind, namespace, and name.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
-| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service) |
+| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, App) |
+| `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
 | `name` | string | Yes | Resource name |
 | `format` | string | No | Output format: json, yaml (default: json) |
@@ -482,7 +484,8 @@ List Kubernetes resources by kind.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
-| `kind` | string | Yes | Resource kind |
+| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, App) |
+| `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (empty = all namespaces) |
 | `name` | string | No | Filter by name (partial match) |
 | `labelSelector` | string | No | Label selector (e.g., "app=nginx,env=prod") |
@@ -490,6 +493,17 @@ List Kubernetes resources by kind.
 | `page` | integer | No | Page number, starting from 1 (default: 1) |
 | `format` | string | No | Output format: json, table, yaml (default: json) |
 | `showSensitiveData` | boolean | No | Show sensitive data values (e.g., Secret data). Default: false. Only takes effect when global `--show-sensitive-data` is enabled. When global setting is disabled, data is always masked with `***` |
+
+CRDs can use their manifest identity directly:
+
+```json
+{
+  "cluster": "c-abc123",
+  "apiVersion": "catalog.cattle.io/v1",
+  "kind": "App",
+  "namespace": "cattle-system"
+}
+```
 
 </details>
 
@@ -564,7 +578,8 @@ Describe a Kubernetes resource with its related events. Similar to `kubectl desc
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
-| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, node) |
+| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, node, App) |
+| `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
 | `name` | string | Yes | Resource name |
 | `format` | string | No | Output format: json, yaml (default: json) |
@@ -665,7 +680,8 @@ Watch Kubernetes resources and return git-style diffs of changes at regular inte
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
-| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, or dotted `resource.group` form) |
+| `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, App) |
+| `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (empty = all namespaces or cluster-scoped resources) |
 | `labelSelector` | string | No | Label selector (e.g., "app=nginx,env=prod") |
 | `fieldSelector` | string | No | Field selector for filtering resources |
@@ -750,6 +766,7 @@ Patch a resource using JSON Patch (RFC 6902). Disabled when `read_only=true`.
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
 | `kind` | string | Yes | Resource kind |
+| `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped) |
 | `name` | string | Yes | Resource name |
 | `patch` | string | Yes | JSON Patch array, e.g., `[{"op":"replace","path":"/spec/replicas","value":3}]` |
@@ -765,6 +782,7 @@ Delete a Kubernetes resource. Disabled when `read_only=true` or `disable_destruc
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
 | `kind` | string | Yes | Resource kind |
+| `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped) |
 | `name` | string | Yes | Resource name |
 

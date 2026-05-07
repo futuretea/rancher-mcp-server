@@ -24,7 +24,7 @@ func getHandler(ctx context.Context, client interface{}, params map[string]inter
 	if err != nil {
 		return "", err
 	}
-	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
+	kind, err := extractResourceKind(params)
 	if err != nil {
 		return "", err
 	}
@@ -60,7 +60,7 @@ func listHandler(ctx context.Context, client interface{}, params map[string]inte
 	if err != nil {
 		return "", err
 	}
-	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
+	kind, err := extractResourceKind(params)
 	if err != nil {
 		return "", err
 	}
@@ -150,7 +150,7 @@ func patchHandler(ctx context.Context, client interface{}, params map[string]int
 	if err != nil {
 		return "", err
 	}
-	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
+	kind, err := extractResourceKind(params)
 	if err != nil {
 		return "", err
 	}
@@ -193,7 +193,7 @@ func deleteHandler(ctx context.Context, client interface{}, params map[string]in
 	if err != nil {
 		return "", err
 	}
-	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
+	kind, err := extractResourceKind(params)
 	if err != nil {
 		return "", err
 	}
@@ -208,6 +208,15 @@ func deleteHandler(ctx context.Context, client interface{}, params map[string]in
 	}
 
 	return fmt.Sprintf("Successfully deleted %s/%s in namespace %s", kind, name, namespace), nil
+}
+
+func extractResourceKind(params map[string]interface{}) (string, error) {
+	kind, err := paramutil.ExtractRequiredString(params, paramutil.ParamKind)
+	if err != nil {
+		return "", err
+	}
+	apiVersion := paramutil.ExtractOptionalString(params, paramutil.ParamAPIVersion)
+	return steve.KindWithAPIVersion(apiVersion, kind), nil
 }
 
 // formatResource formats a single resource as JSON or YAML

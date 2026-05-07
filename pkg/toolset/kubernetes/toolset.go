@@ -26,6 +26,12 @@ var showSensitiveDataProperty = map[string]any{
 	"default":     false,
 }
 
+var apiVersionProperty = map[string]any{
+	"type":        "string",
+	"description": "Kubernetes API version for CRDs or ambiguous kinds, e.g. catalog.cattle.io/v1. Optional for built-in resources.",
+	"default":     "",
+}
+
 // GetName returns the name of the toolset
 func (t *Toolset) GetName() string {
 	return "kubernetes"
@@ -54,8 +60,9 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 						},
 						"kind": map[string]any{
 							"type":        "string",
-							"description": "Resource kind (e.g., pod, deployment, service, configmap, secret, ingress, etc.)",
+							"description": "Resource kind (e.g., pod, deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
 						},
+						"apiVersion": apiVersionProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name (optional for cluster-scoped resources)",
@@ -94,8 +101,9 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 						},
 						"kind": map[string]any{
 							"type":        "string",
-							"description": "Resource kind (e.g., pod, deployment, service, configmap, secret, ingress, etc.)",
+							"description": "Resource kind (e.g., pod, deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
 						},
+						"apiVersion": apiVersionProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name (optional, empty for all namespaces or cluster-scoped resources)",
@@ -303,8 +311,9 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 						},
 						"kind": map[string]any{
 							"type":        "string",
-							"description": "Resource kind (e.g., pod, deployment, service, node, etc.)",
+							"description": "Resource kind (e.g., pod, deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
 						},
+						"apiVersion": apiVersionProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name (optional for cluster-scoped resources)",
@@ -394,8 +403,9 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 						},
 						"kind": map[string]any{
 							"type":        "string",
-							"description": "Resource kind (e.g., deployment, pod, service, ingress, node, etc.)",
+							"description": "Resource kind (e.g., deployment, pod, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
 						},
+						"apiVersion": apiVersionProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name (optional for cluster-scoped resources)",
@@ -583,8 +593,9 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 						},
 						"kind": map[string]any{
 							"type":        "string",
-							"description": "Resource kind (e.g., pod, deployment, service, or dotted resource.group form)",
+							"description": "Resource kind (e.g., pod, deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
 						},
+						"apiVersion": apiVersionProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name (optional, empty for all namespaces or cluster-scoped resources)",
@@ -845,8 +856,9 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 							},
 							"kind": map[string]any{
 								"type":        "string",
-								"description": "Resource kind (e.g., deployment, service)",
+								"description": "Resource kind (e.g., deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
 							},
+							"apiVersion": apiVersionProperty,
 							"namespace": map[string]any{
 								"type":        "string",
 								"description": "Namespace name (optional for cluster-scoped resources)",
@@ -972,8 +984,9 @@ func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
 							},
 							"kind": map[string]any{
 								"type":        "string",
-								"description": "Resource kind (e.g., deployment, service)",
+								"description": "Resource kind (e.g., deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
 							},
+							"apiVersion": apiVersionProperty,
 							"namespace": map[string]any{
 								"type":        "string",
 								"description": "Namespace name (optional for cluster-scoped resources)",

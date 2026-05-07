@@ -25,6 +25,7 @@ const (
 	ParamKeyword      = "keyword"
 	// Kubernetes toolset parameters
 	ParamKind          = "kind"
+	ParamAPIVersion    = "apiVersion"
 	ParamLabelSelector = "labelSelector"
 	ParamLimit         = "limit"
 	ParamResource      = "resource"

@@ -64,3 +64,9 @@ tmp/
 temp/
 
 third-party-projects/
+.auto-runs/
+.claude/
+.qoder/
+.trae/
+enhancements/
+vendor/

@@ -11,6 +11,17 @@ const (
 	DefaultLimit = 50
 )
 
+// ClampLimit clamps a user-provided limit to valid bounds.
+func ClampLimit(limit int) int {
+	if limit <= 0 {
+		return DefaultLimit
+	}
+	if limit > MaxItems {
+		return MaxItems
+	}
+	return limit
+}
+
 // --- Top (kubernetes_top) ---
 
 // TopParams holds parameters for top analysis
@@ -67,15 +78,16 @@ type WorkloadResult struct {
 
 // WorkloadItem holds a single workload entry
 type WorkloadItem struct {
-	Name        string `json:"name"`
-	Namespace   string `json:"namespace"`
-	Kind        string `json:"kind"`
-	Ready       int32  `json:"ready"`
-	Desired     int32  `json:"desired"`
-	Unavailable int32  `json:"unavailable"`
-	Updated     int32  `json:"updated"`
-	Age         string `json:"age"`
-	Status      string `json:"status"`
+	Name        string    `json:"name"`
+	Namespace   string    `json:"namespace"`
+	Kind        string    `json:"kind"`
+	Ready       int32     `json:"ready"`
+	Desired     int32     `json:"desired"`
+	Unavailable int32     `json:"unavailable"`
+	Updated     int32     `json:"updated"`
+	Age         string    `json:"age"`
+	Status      string    `json:"status"`
+	CreatedAt   time.Time `json:"-"` // for accurate age sorting
 }
 
 // --- Resource Summary (kubernetes_resource_summary) ---

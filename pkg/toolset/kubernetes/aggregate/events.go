@@ -8,7 +8,6 @@ import (
 	"time"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
-	corev1 "k8s.io/api/core/v1"
 )
 
 // EventAnalyzer performs event summary analysis
@@ -33,20 +32,15 @@ func (a *EventAnalyzer) Analyze(ctx context.Context, p EventParams) (*EventResul
 		sinceThreshold = time.Now().Add(-d)
 	}
 
-	// Get events
-	// kind filter is applied to involvedObject.kind
-	var kindFilter string
-	if p.Kind != "" {
-		kindFilter = p.Kind
-	}
-
-	events, err := a.client.GetEvents(ctx, p.Cluster, p.Namespace, "", kindFilter)
+	// Get events; kind filter is applied to involvedObject.kind
+	events, err := a.client.GetEvents(ctx, p.Cluster, p.Namespace, "", p.Kind)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get events: %w", err)
 	}
 
 	// Group by (reason, kind, namespace)
-	groups := make(map[string]*EventItem)
+	type groupKey struct{ reason, kind, ns string }
+	groups := make(map[groupKey]*EventItem)
 	for _, event := range events {
 		// Filter by type
 		if p.Type != "" && event.Type != p.Type {
@@ -59,24 +53,25 @@ func (a *EventAnalyzer) Analyze(ctx context.Context, p EventParams) (*EventResul
 			if lastTime.IsZero() {
 				lastTime = event.EventTime.Time
 			}
-			if lastTime.Before(sinceThreshold) {
+			if !lastTime.IsZero() && lastTime.Before(sinceThreshold) {
 				continue
 			}
 		}
 
-		reason := event.Reason
-		kind := event.InvolvedObject.Kind
-		ns := event.InvolvedObject.Namespace
-		if ns == "" {
-			ns = event.Namespace
+		key := groupKey{
+			reason: event.Reason,
+			kind:   event.InvolvedObject.Kind,
+			ns:     event.InvolvedObject.Namespace,
+		}
+		if key.ns == "" {
+			key.ns = event.Namespace
 		}
 
-		key := reason + "|" + kind + "|" + ns
 		if _, ok := groups[key]; !ok {
 			groups[key] = &EventItem{
-				Reason:    reason,
-				Kind:      kind,
-				Namespace: ns,
+				Reason:    key.reason,
+				Kind:      key.kind,
+				Namespace: key.ns,
 			}
 		}
 
@@ -88,7 +83,7 @@ func (a *EventAnalyzer) Analyze(ctx context.Context, p EventParams) (*EventResul
 		if lastTime.IsZero() {
 			lastTime = event.EventTime.Time
 		}
-		if lastTime.After(item.LastSeen) {
+		if !lastTime.IsZero() && lastTime.After(item.LastSeen) {
 			item.LastSeen = lastTime
 		}
 	}
@@ -100,28 +95,16 @@ func (a *EventAnalyzer) Analyze(ctx context.Context, p EventParams) (*EventResul
 	}
 
 	total := len(items)
-	truncated := false
 
 	// Sort
 	if p.SortBy != "" {
 		sortEventItems(items, p.SortBy)
 	}
 
-	// Truncate if exceeds max
-	if len(items) > MaxItems {
-		items = items[:MaxItems]
-		truncated = true
-	}
-
-	// Apply limit
-	limit := p.Limit
-	if limit <= 0 {
-		limit = DefaultLimit
-	}
-	if limit > MaxItems {
-		limit = MaxItems
-	}
-	if len(items) > limit {
+	// Truncate to limit (capped at MaxItems)
+	limit := ClampLimit(p.Limit)
+	truncated := len(items) > limit
+	if truncated {
 		items = items[:limit]
 	}
 
@@ -149,5 +132,3 @@ func sortEventItems(items []EventItem, sortBy string) {
 	})
 }
 
-// Ensure corev1 import is used (GetEvents returns []corev1.Event)
-var _ corev1.Event

@@ -30,7 +30,7 @@ func TestDeriveWorkloadStatus(t *testing.T) {
 		{
 			name: "scaled_to_zero",
 			item: WorkloadItem{Ready: 0, Desired: 0, Unavailable: 0},
-			want: "Degraded",
+			want: "ScaledToZero",
 		},
 	}
 
@@ -130,6 +130,25 @@ func TestSortWorkloadItems_ByName(t *testing.T) {
 	sortWorkloadItems(items, "name")
 	if items[0].Name != "dep-a" {
 		t.Errorf("expected first item to be dep-a, got %s", items[0].Name)
+	}
+}
+
+func TestCalcRatio(t *testing.T) {
+	tests := []struct {
+		part, total int32
+		want        float64
+	}{
+		{5, 10, 0.5},
+		{0, 10, 0},
+		{5, 0, 0},
+		{0, 0, 0},
+		{10, 10, 1},
+	}
+	for _, tt := range tests {
+		got := calcRatio(tt.part, tt.total)
+		if got != tt.want {
+			t.Errorf("calcRatio(%d, %d) = %f, want %f", tt.part, tt.total, got, tt.want)
+		}
 	}
 }
 

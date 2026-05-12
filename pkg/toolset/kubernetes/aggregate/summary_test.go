@@ -92,6 +92,15 @@ func TestAggregatePodResources_NoResources(t *testing.T) {
 	if item.CPUReq != 0 {
 		t.Errorf("expected CPUReq 0, got %d", item.CPUReq)
 	}
+	if item.CPULimit != 0 {
+		t.Errorf("expected CPULimit 0, got %d", item.CPULimit)
+	}
+	if item.MemReq != 0 {
+		t.Errorf("expected MemReq 0, got %d", item.MemReq)
+	}
+	if item.MemLimit != 0 {
+		t.Errorf("expected MemLimit 0, got %d", item.MemLimit)
+	}
 }
 
 func TestSortSummaryItems_ByCPURequest(t *testing.T) {

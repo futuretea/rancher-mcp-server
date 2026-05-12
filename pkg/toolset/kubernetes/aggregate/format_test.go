@@ -132,6 +132,30 @@ func TestFormatResult_UnsupportedTableType(t *testing.T) {
 	}
 }
 
+func TestFormatResult_EmptyResults(t *testing.T) {
+	tests := []struct {
+		name   string
+		result interface{}
+		want   string
+	}{
+		{"top", &TopResult{Items: []TopItem{}}, "No resources found"},
+		{"workload", &WorkloadResult{Items: []WorkloadItem{}}, "No workloads found"},
+		{"summary", &SummaryResult{Items: []SummaryItem{}}, "No resources found"},
+		{"event", &EventResult{Items: []EventItem{}}, "No events found"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			out, err := FormatResult(tt.result, "table")
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+			if !strings.Contains(out, tt.want) {
+				t.Errorf("expected %q in output, got %q", tt.want, out)
+			}
+		})
+	}
+}
+
 func TestFormatCPU(t *testing.T) {
 	tests := []struct {
 		val  int64

@@ -71,4 +71,10 @@ func TestSortEventItems_ByName(t *testing.T) {
 	if items[0].Reason != "Event-A" {
 		t.Errorf("expected first item to be Event-A, got %s", items[0].Reason)
 	}
+	if items[1].Reason != "Event-B" {
+		t.Errorf("expected second item to be Event-B, got %s", items[1].Reason)
+	}
+	if items[2].Reason != "Event-C" {
+		t.Errorf("expected third item to be Event-C, got %s", items[2].Reason)
+	}
 }

@@ -26,12 +26,10 @@ func (a *WorkloadAnalyzer) Analyze(ctx context.Context, p WorkloadParams) (*Work
 
 	kind := strings.ToLower(p.Kind)
 	if kind == "" || kind == "all" {
-		// List all workload kinds
 		for _, k := range []string{"deployment", "statefulset", "daemonset"} {
 			items, err := a.listWorkload(ctx, p.Cluster, p.Namespace, k, p.LabelSelector)
 			if err != nil {
-				// Log and continue - some kinds might not be available
-				continue
+				return nil, err
 			}
 			allItems = append(allItems, items...)
 		}
@@ -44,28 +42,16 @@ func (a *WorkloadAnalyzer) Analyze(ctx context.Context, p WorkloadParams) (*Work
 	}
 
 	total := len(allItems)
-	truncated := false
 
 	// Sort
 	if p.SortBy != "" {
 		sortWorkloadItems(allItems, p.SortBy)
 	}
 
-	// Truncate if exceeds max
-	if len(allItems) > MaxItems {
-		allItems = allItems[:MaxItems]
-		truncated = true
-	}
-
-	// Apply limit
-	limit := p.Limit
-	if limit <= 0 {
-		limit = DefaultLimit
-	}
-	if limit > MaxItems {
-		limit = MaxItems
-	}
-	if len(allItems) > limit {
+	// Truncate to limit (capped at MaxItems)
+	limit := ClampLimit(p.Limit)
+	truncated := len(allItems) > limit
+	if truncated {
 		allItems = allItems[:limit]
 	}
 
@@ -122,6 +108,7 @@ func extractWorkloadItem(obj unstructured.Unstructured, kind string) WorkloadIte
 	// Extract age from creation timestamp
 	creationTime := obj.GetCreationTimestamp()
 	if !creationTime.IsZero() {
+		item.CreatedAt = creationTime.Time
 		item.Age = formatAge(creationTime.Time)
 	}
 
@@ -130,10 +117,13 @@ func extractWorkloadItem(obj unstructured.Unstructured, kind string) WorkloadIte
 
 // deriveWorkloadStatus derives the workload status based on replica counts
 func deriveWorkloadStatus(item WorkloadItem) string {
+	if item.Desired == 0 {
+		return "ScaledToZero"
+	}
 	if item.Unavailable > 0 {
 		return "Progressing"
 	}
-	if item.Ready == item.Desired && item.Desired > 0 {
+	if item.Ready == item.Desired {
 		return "Healthy"
 	}
 	return "Degraded"
@@ -151,9 +141,7 @@ func sortWorkloadItems(items []WorkloadItem, sortBy string) {
 			rb := calcRatio(b.Ready, b.Desired)
 			return ra < rb // Lower ready ratio first (worst first)
 		case "age":
-			// We only have formatted age string, can't sort by it precisely
-			// Fall through to name
-			return strings.ToLower(a.Name) < strings.ToLower(b.Name)
+			return a.CreatedAt.After(b.CreatedAt)
 		case "name":
 			return strings.ToLower(a.Name) < strings.ToLower(b.Name)
 		default:

@@ -55,7 +55,7 @@ func (a *TopAnalyzer) analyzePods(ctx context.Context, p TopParams) (*TopResult,
 	// Fetch pod metrics if needed for utilization sorting
 	metricsMap := make(map[string]*podMetrics)
 	var warning string
-	if needsPodMetrics(p.SortBy) {
+	if needsMetrics(p.SortBy) {
 		m, w := a.fetchPodMetrics(ctx, p.Cluster, p.Namespace)
 		metricsMap = m
 		warning = w
@@ -80,7 +80,7 @@ func (a *TopAnalyzer) analyzeNodes(ctx context.Context, p TopParams) (*TopResult
 	// Fetch node metrics if needed
 	metricsMap := make(map[string]*nodeMetrics)
 	var warning string
-	if needsNodeMetrics(p.SortBy) {
+	if needsMetrics(p.SortBy) {
 		m, w := a.fetchNodeMetrics(ctx, p.Cluster)
 		metricsMap = m
 		warning = w
@@ -269,28 +269,16 @@ func extractNodeTopItem(node unstructured.Unstructured, metricsMap map[string]*n
 // buildResult sorts, truncates, and builds the final TopResult
 func (a *TopAnalyzer) buildResult(items []TopItem, p TopParams, warning string) (*TopResult, error) {
 	total := len(items)
-	truncated := false
 
 	// Sort
 	if p.SortBy != "" {
 		sortTopItems(items, p.Kind, p.SortBy)
 	}
 
-	// Truncate if exceeds max
-	if len(items) > MaxItems {
-		items = items[:MaxItems]
-		truncated = true
-	}
-
-	// Apply limit
-	limit := p.Limit
-	if limit <= 0 {
-		limit = DefaultLimit
-	}
-	if limit > MaxItems {
-		limit = MaxItems
-	}
-	if len(items) > limit {
+	// Truncate to limit (capped at MaxItems)
+	limit := ClampLimit(p.Limit)
+	truncated := len(items) > limit
+	if truncated {
 		items = items[:limit]
 	}
 
@@ -302,18 +290,9 @@ func (a *TopAnalyzer) buildResult(items []TopItem, p TopParams, warning string) 
 	}, nil
 }
 
-// needsPodMetrics returns true if the sortBy requires pod metrics data
-func needsPodMetrics(sortBy string) bool {
-	switch sortBy {
-	case "cpu.util", "mem.util", "cpu.util.percentage", "mem.util.percentage":
-		return true
-	default:
-		return false
-	}
-}
-
-// needsNodeMetrics returns true if the sortBy requires node metrics data
-func needsNodeMetrics(sortBy string) bool {
+// needsMetrics returns true if the sortBy requires metrics-server data.
+// Used for both pod and node top analysis.
+func needsMetrics(sortBy string) bool {
 	switch sortBy {
 	case "cpu.util", "mem.util", "cpu.util.percentage", "mem.util.percentage":
 		return true
@@ -340,14 +319,8 @@ func sortTopItems(items []TopItem, kind, sortBy string) {
 		case "mem.limit", "memory.limit":
 			return a.MemLimit > b.MemLimit
 		case "cpu.util.percentage":
-			if strings.ToLower(kind) == "node" {
-				return calcPercentage(a.CPUUtil, a.CPUReq) > calcPercentage(b.CPUUtil, b.CPUReq)
-			}
 			return calcPercentage(a.CPUUtil, a.CPUReq) > calcPercentage(b.CPUUtil, b.CPUReq)
 		case "mem.util.percentage", "memory.util.percentage":
-			if strings.ToLower(kind) == "node" {
-				return calcPercentage(a.MemUtil, a.MemReq) > calcPercentage(b.MemUtil, b.MemReq)
-			}
 			return calcPercentage(a.MemUtil, a.MemReq) > calcPercentage(b.MemUtil, b.MemReq)
 		case "restart.count":
 			return a.Restarts > b.Restarts
@@ -371,21 +344,29 @@ func calcPercentage(value, total int64) float64 {
 	return float64(value) / float64(total) * 100
 }
 
-// resourceQuantityToMilli parses a resource quantity string and returns millivalue
+// resourceQuantityToMilli parses a resource quantity string and returns millivalue.
+// Returns 0 for empty or unparseable input instead of panicking.
 func resourceQuantityToMilli(q string) int64 {
 	if q == "" {
 		return 0
 	}
-	qty := resource.MustParse(q)
+	qty, err := resource.ParseQuantity(q)
+	if err != nil {
+		return 0
+	}
 	return qty.MilliValue()
 }
 
-// resourceQuantityToBytes parses a resource quantity string and returns bytes
+// resourceQuantityToBytes parses a resource quantity string and returns bytes.
+// Returns 0 for empty or unparseable input instead of panicking.
 func resourceQuantityToBytes(q string) int64 {
 	if q == "" {
 		return 0
 	}
-	qty := resource.MustParse(q)
+	qty, err := resource.ParseQuantity(q)
+	if err != nil {
+		return 0
+	}
 	return qty.Value()
 }
 

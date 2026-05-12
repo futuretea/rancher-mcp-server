@@ -111,6 +111,9 @@ func TestExtractPodTopItem(t *testing.T) {
 	if item.MemReq != 256*1024*1024 {
 		t.Errorf("expected MemReq 256Mi, got %d", item.MemReq)
 	}
+	if item.MemLimit != 512*1024*1024 {
+		t.Errorf("expected MemLimit 512Mi, got %d", item.MemLimit)
+	}
 	if item.Restarts != 3 {
 		t.Errorf("expected Restarts 3, got %d", item.Restarts)
 	}
@@ -213,5 +216,80 @@ func TestResourceQuantityToBytes(t *testing.T) {
 	}
 	if got := resourceQuantityToBytes(""); got != 0 {
 		t.Errorf("resourceQuantityToBytes('') = %d, want 0", got)
+	}
+}
+
+func TestResourceQuantityToMilli_Invalid(t *testing.T) {
+	if got := resourceQuantityToMilli("invalid"); got != 0 {
+		t.Errorf("resourceQuantityToMilli('invalid') = %d, want 0", got)
+	}
+}
+
+func TestResourceQuantityToMilli_Negative(t *testing.T) {
+	if got := resourceQuantityToMilli("-1"); got != -1000 {
+		t.Errorf("resourceQuantityToMilli('-1') = %d, want -1000", got)
+	}
+}
+
+func TestResourceQuantityToBytes_Invalid(t *testing.T) {
+	if got := resourceQuantityToBytes("not-a-size"); got != 0 {
+		t.Errorf("resourceQuantityToBytes('not-a-size') = %d, want 0", got)
+	}
+}
+
+func TestExtractRestartCount(t *testing.T) {
+	tests := []struct {
+		input map[string]interface{}
+		want  int32
+	}{
+		{map[string]interface{}{"restartCount": int64(5)}, 5},
+		{map[string]interface{}{"restartCount": int32(5)}, 5},
+		{map[string]interface{}{"restartCount": int(5)}, 5},
+		{map[string]interface{}{"restartCount": float64(5)}, 5},
+		{map[string]interface{}{"restartCount": float32(5)}, 5},
+		{map[string]interface{}{"restartCount": "unexpected"}, 0},
+		{map[string]interface{}{}, 0},
+	}
+	for _, tt := range tests {
+		got := extractRestartCount(tt.input)
+		if got != tt.want {
+			t.Errorf("extractRestartCount(%v) = %d, want %d", tt.input, got, tt.want)
+		}
+	}
+}
+
+func TestNeedsMetrics(t *testing.T) {
+	metricSorts := []string{"cpu.util", "mem.util", "cpu.util.percentage", "mem.util.percentage"}
+	for _, s := range metricSorts {
+		if !needsMetrics(s) {
+			t.Errorf("needsMetrics(%q) = false, want true", s)
+		}
+	}
+	nonMetricSorts := []string{"", "cpu.request", "mem.request", "name", "restart.count"}
+	for _, s := range nonMetricSorts {
+		if needsMetrics(s) {
+			t.Errorf("needsMetrics(%q) = true, want false", s)
+		}
+	}
+}
+
+func TestClampLimit(t *testing.T) {
+	tests := []struct {
+		input int
+		want  int
+	}{
+		{-10, DefaultLimit},
+		{0, DefaultLimit},
+		{1, 1},
+		{DefaultLimit, DefaultLimit},
+		{MaxItems, MaxItems},
+		{MaxItems + 1, MaxItems},
+		{1000, MaxItems},
+	}
+	for _, tt := range tests {
+		got := ClampLimit(tt.input)
+		if got != tt.want {
+			t.Errorf("ClampLimit(%d) = %d, want %d", tt.input, got, tt.want)
+		}
 	}
 }

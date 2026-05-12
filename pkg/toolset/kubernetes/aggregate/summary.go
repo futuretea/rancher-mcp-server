@@ -42,8 +42,6 @@ func (a *SummaryAnalyzer) Analyze(ctx context.Context, p SummaryParams) (*Summar
 	for _, pod := range pods.Items {
 		var groupKey string
 		switch groupBy {
-		case "namespace":
-			groupKey = pod.GetNamespace()
 		case "label":
 			labels := pod.GetLabels()
 			if p.GroupByKey == "" {
@@ -71,28 +69,16 @@ func (a *SummaryAnalyzer) Analyze(ctx context.Context, p SummaryParams) (*Summar
 	}
 
 	total := len(items)
-	truncated := false
 
 	// Sort
 	if p.SortBy != "" {
 		sortSummaryItems(items, p.SortBy)
 	}
 
-	// Truncate if exceeds max
-	if len(items) > MaxItems {
-		items = items[:MaxItems]
-		truncated = true
-	}
-
-	// Apply limit
-	limit := p.Limit
-	if limit <= 0 {
-		limit = DefaultLimit
-	}
-	if limit > MaxItems {
-		limit = MaxItems
-	}
-	if len(items) > limit {
+	// Truncate to limit (capped at MaxItems)
+	limit := ClampLimit(p.Limit)
+	truncated := len(items) > limit
+	if truncated {
 		items = items[:limit]
 	}
 

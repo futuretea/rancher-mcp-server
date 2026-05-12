@@ -28,6 +28,10 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
   - **Compare resource versions** (kubernetes_diff): Show git-style diffs between two resource versions
   - **Watch resource changes** (kubernetes_watch): Monitor resources and return git-style diffs at regular intervals
   - **Resource capacity overview** (inspired by [kube-capacity](https://github.com/robscott/kube-capacity)): Show cluster resource capacity, requests, limits, and utilization
+  - **Resource top ranking** (`kubernetes_top`): Rank pods or nodes by CPU/memory usage, requests, limits, or restart count
+  - **Workload health summary** (`kubernetes_workload_health`): Health overview for Deployments, StatefulSets, and DaemonSets with ready/desired ratios and status derivation
+  - **Resource summary by group** (`kubernetes_resource_summary`): Aggregate pod resources by namespace or label key with totals for requests/limits
+  - **Event pattern analysis** (`kubernetes_event_summary`): Group and rank events by reason, kind, and frequency to identify recurring issues
 - **Rancher Resources via Norman API**: List clusters and projects
 - **Security Controls**:
   - `read_only`: Disables create, patch, and delete operations
@@ -436,6 +440,164 @@ Show Kubernetes cluster resource capacity, requests, limits, and utilization. Si
 {
   "cluster": "c-abc123",
   "sortBy": "cpu.util.percentage"
+}
+```
+
+</details>
+
+<details>
+<summary>kubernetes_top</summary>
+
+Rank pods or nodes by resource usage, requests, limits, or restart count. Supports metrics-server utilization data with fallback to requests/limits when metrics are unavailable.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `kind` | string | No | Resource kind to rank: `pod` or `node` (default: `pod`) |
+| `namespace` | string | No | Namespace (empty = all namespaces) |
+| `labelSelector` | string | No | Label selector for filtering (e.g., "app=nginx,env=prod") |
+| `sortBy` | string | No | Sort by field. Pods: `cpu.util`, `mem.util`, `cpu.request`, `mem.request`, `cpu.limit`, `mem.limit`, `restart.count`. Nodes: `cpu.util`, `mem.util`, `cpu.util.percentage`, `mem.util.percentage`, `pod.count` |
+| `limit` | integer | No | Maximum results to return (default: 50, max: 500) |
+| `format` | string | No | Output format: `json`, `table`, `yaml` (default: `table`) |
+
+**Examples:**
+
+```json
+// Top pods by CPU utilization
+{
+  "cluster": "c-abc123",
+  "kind": "pod",
+  "sortBy": "cpu.util",
+  "limit": 20
+}
+
+// Top pods by restart count across a namespace
+{
+  "cluster": "c-abc123",
+  "kind": "pod",
+  "namespace": "production",
+  "sortBy": "restart.count",
+  "limit": 10
+}
+
+// Top nodes by memory utilization percentage
+{
+  "cluster": "c-abc123",
+  "kind": "node",
+  "sortBy": "mem.util.percentage",
+  "limit": 10
+}
+```
+
+</details>
+
+<details>
+<summary>kubernetes_workload_health</summary>
+
+Get a health summary for Deployments, StatefulSets, and DaemonSets. Shows ready vs desired replicas, unavailable count, update progress, and derived status.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `namespace` | string | No | Namespace (empty = all namespaces) |
+| `kind` | string | No | Workload kind: `deployment`, `statefulset`, `daemonset`, or `all` (default: `all`) |
+| `labelSelector` | string | No | Label selector for filtering |
+| `sortBy` | string | No | Sort by: `unready.count`, `ready.ratio`, `name` |
+| `limit` | integer | No | Maximum results (default: 50, max: 500) |
+| `format` | string | No | Output format: `json`, `table`, `yaml` (default: `table`) |
+
+**Examples:**
+
+```json
+// All workloads sorted by unready count
+{
+  "cluster": "c-abc123",
+  "sortBy": "unready.count"
+}
+
+// Deployment health in a namespace
+{
+  "cluster": "c-abc123",
+  "namespace": "production",
+  "kind": "deployment",
+  "sortBy": "ready.ratio"
+}
+```
+
+</details>
+
+<details>
+<summary>kubernetes_resource_summary</summary>
+
+Aggregate pod/container resources by namespace or label key. Returns total requests, limits, and pod counts per group.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `namespace` | string | No | Namespace filter (empty = all namespaces) |
+| `labelSelector` | string | No | Label selector for filtering pods |
+| `groupBy` | string | No | Group by: `namespace` or `label` (default: `namespace`) |
+| `groupByKey` | string | No | Label key to group by (required when `groupBy=label`) |
+| `sortBy` | string | No | Sort by: `cpu.request`, `mem.request`, `cpu.limit`, `mem.limit`, `pod.count`, `name` |
+| `limit` | integer | No | Maximum results (default: 50, max: 500) |
+| `format` | string | No | Output format: `json`, `table`, `yaml` (default: `table`) |
+
+**Examples:**
+
+```json
+// Resource summary by namespace
+{
+  "cluster": "c-abc123",
+  "groupBy": "namespace",
+  "sortBy": "cpu.request"
+}
+
+// Resource summary by app label in production
+{
+  "cluster": "c-abc123",
+  "namespace": "production",
+  "groupBy": "label",
+  "groupByKey": "app",
+  "sortBy": "cpu.request"
+}
+```
+
+</details>
+
+<details>
+<summary>kubernetes_event_summary</summary>
+
+Group and rank Kubernetes events by reason, kind, and frequency. Useful for identifying recurring issues and patterns.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `namespace` | string | No | Namespace (empty = all namespaces) |
+| `kind` | string | No | Filter by involved object kind (e.g., Pod, Deployment, Node) |
+| `type` | string | No | Filter by event type: `Warning` or `Normal` |
+| `since` | string | No | Only include events newer than this duration (e.g., "1h30m", "2h") |
+| `sortBy` | string | No | Sort by: `count`, `lastSeen`, `name` |
+| `limit` | integer | No | Maximum results (default: 50, max: 500) |
+| `format` | string | No | Output format: `json`, `table`, `yaml` (default: `table`) |
+
+**Examples:**
+
+```json
+// Top warning events in the last hour
+{
+  "cluster": "c-abc123",
+  "type": "Warning",
+  "since": "1h",
+  "sortBy": "count",
+  "limit": 10
+}
+
+// Recent events for a specific kind
+{
+  "cluster": "c-abc123",
+  "kind": "Pod",
+  "since": "30m",
+  "sortBy": "lastSeen"
 }
 ```
 

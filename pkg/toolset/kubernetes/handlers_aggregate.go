@@ -25,13 +25,8 @@ func topHandler(ctx context.Context, client interface{}, params map[string]inter
 	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
 	labelSelector := paramutil.ExtractOptionalString(params, paramutil.ParamLabelSelector)
 	sortBy := extractStringParam(params, "sortBy", "")
-	limit := extractIntParam(params, paramutil.ParamLimit, aggregate.DefaultLimit)
+	limit := aggregate.ClampLimit(extractIntParam(params, paramutil.ParamLimit, aggregate.DefaultLimit))
 	format := paramutil.ExtractOptionalStringWithDefault(params, paramutil.ParamFormat, paramutil.FormatTable)
-
-	// Validate limit
-	if limit > aggregate.MaxItems {
-		limit = aggregate.MaxItems
-	}
 
 	analyzer := aggregate.NewTopAnalyzer(steveClient)
 	result, err := analyzer.Analyze(ctx, aggregate.TopParams{
@@ -66,12 +61,8 @@ func workloadHealthHandler(ctx context.Context, client interface{}, params map[s
 	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
 	labelSelector := paramutil.ExtractOptionalString(params, paramutil.ParamLabelSelector)
 	sortBy := extractStringParam(params, "sortBy", "")
-	limit := extractIntParam(params, paramutil.ParamLimit, aggregate.DefaultLimit)
+	limit := aggregate.ClampLimit(extractIntParam(params, paramutil.ParamLimit, aggregate.DefaultLimit))
 	format := paramutil.ExtractFormat(params)
-
-	if limit > aggregate.MaxItems {
-		limit = aggregate.MaxItems
-	}
 
 	analyzer := aggregate.NewWorkloadAnalyzer(steveClient)
 	result, err := analyzer.Analyze(ctx, aggregate.WorkloadParams{
@@ -107,12 +98,8 @@ func resourceSummaryHandler(ctx context.Context, client interface{}, params map[
 	groupBy := extractStringParam(params, "groupBy", "namespace")
 	groupByKey := extractStringParam(params, "groupByKey", "")
 	sortBy := extractStringParam(params, "sortBy", "")
-	limit := extractIntParam(params, paramutil.ParamLimit, aggregate.DefaultLimit)
+	limit := aggregate.ClampLimit(extractIntParam(params, paramutil.ParamLimit, aggregate.DefaultLimit))
 	format := paramutil.ExtractFormat(params)
-
-	if limit > aggregate.MaxItems {
-		limit = aggregate.MaxItems
-	}
 
 	analyzer := aggregate.NewSummaryAnalyzer(steveClient)
 	result, err := analyzer.Analyze(ctx, aggregate.SummaryParams{
@@ -149,12 +136,8 @@ func eventSummaryHandler(ctx context.Context, client interface{}, params map[str
 	eventType := extractStringParam(params, "type", "")
 	since := extractStringParam(params, "since", "")
 	sortBy := extractStringParam(params, "sortBy", "")
-	limit := extractIntParam(params, paramutil.ParamLimit, aggregate.DefaultLimit)
+	limit := aggregate.ClampLimit(extractIntParam(params, paramutil.ParamLimit, aggregate.DefaultLimit))
 	format := paramutil.ExtractFormat(params)
-
-	if limit > aggregate.MaxItems {
-		limit = aggregate.MaxItems
-	}
 
 	analyzer := aggregate.NewEventAnalyzer(steveClient)
 	result, err := analyzer.Analyze(ctx, aggregate.EventParams{

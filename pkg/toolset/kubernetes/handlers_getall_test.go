@@ -1,8 +1,13 @@
 package kubernetes
 
 import (
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func TestMatchesLabelSelector(t *testing.T) {
@@ -55,6 +60,87 @@ func TestMatchesLabelSelector(t *testing.T) {
 			t.Fatal("expected no match with nil labels")
 		}
 	})
+}
+
+func TestFormatAllResources(t *testing.T) {
+	items := []steve.AllResourceItem{
+		{Name: "pod-1", Namespace: "default", Kind: "Pod", APIVersion: "v1"},
+		{Name: "node-1", Namespace: "", Kind: "Node", APIVersion: "v1"},
+	}
+
+	t.Run("json", func(t *testing.T) {
+		out, err := formatAllResources(items, "json")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "\"name\"") {
+			t.Error("expected JSON output")
+		}
+	})
+
+	t.Run("yaml", func(t *testing.T) {
+		out, err := formatAllResources(items, "yaml")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "name:") {
+			t.Error("expected YAML output")
+		}
+	})
+
+	t.Run("table", func(t *testing.T) {
+		out, err := formatAllResources(items, "table")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "NAME") {
+			t.Error("expected table header")
+		}
+		if !strings.Contains(out, "pod-1") {
+			t.Error("expected pod-1 in table")
+		}
+	})
+
+	t.Run("table with namespace shows dash", func(t *testing.T) {
+		out, err := formatAllResources(items, "table")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "-") {
+			t.Error("expected - for empty namespace")
+		}
+	})
+}
+
+func TestFormatAllResources_Empty(t *testing.T) {
+	out, err := formatAllResources(nil, "table")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if out != "No resources found" {
+		t.Errorf("expected 'No resources found', got %q", out)
+	}
+}
+
+func TestFormatAllResources_JSON_WithResource(t *testing.T) {
+	items := []steve.AllResourceItem{
+		{
+			Name: "pod-1", Namespace: "default", Kind: "Pod", APIVersion: "v1",
+			Resource: func() *unstructured.Unstructured {
+				u := &unstructured.Unstructured{}
+				u.SetUnstructuredContent(map[string]interface{}{"status": map[string]interface{}{"phase": "Running"}})
+				return u
+			}(),
+		},
+	}
+
+	out, err := formatAllResources(items, "json")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "\"resource\"") {
+		t.Error("expected resource field in JSON")
+	}
 }
 
 func TestParseDuration(t *testing.T) {

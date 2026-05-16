@@ -196,6 +196,30 @@ func TestExtractInt64(t *testing.T) {
 	}
 }
 
+func TestParsePath(t *testing.T) {
+	tests := []struct {
+		path string
+		want []string
+	}{
+		{"", nil},
+		{"metadata.name", []string{"metadata", "name"}},
+		{"metadata.annotations.app", []string{"metadata", "annotations", "app"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := parsePath(tt.path)
+			if len(got) != len(tt.want) {
+				t.Fatalf("parsePath(%q) = %v, want %v", tt.path, got, tt.want)
+			}
+			for i := range got {
+				if got[i] != tt.want[i] {
+					t.Errorf("parsePath(%q)[%d] = %q, want %q", tt.path, i, got[i], tt.want[i])
+				}
+			}
+		})
+	}
+}
+
 func TestFilterFields(t *testing.T) {
 	data := []map[string]string{
 		{"name": "nginx", "namespace": "default", "status": "Running"},

@@ -448,6 +448,59 @@ func TestMatchesNodeSelector(t *testing.T) {
 	})
 }
 
+func TestCalcPercentage(t *testing.T) {
+	if got := calcPercentage(50, 100); got != 50.0 {
+		t.Errorf("expected 50%%, got %f", got)
+	}
+	if got := calcPercentage(0, 100); got != 0.0 {
+		t.Errorf("expected 0%%, got %f", got)
+	}
+	if got := calcPercentage(50, 0); got != 0.0 {
+		t.Errorf("expected 0%% for zero total, got %f", got)
+	}
+	if got := calcPercentage(25, 100); got != 25.0 {
+		t.Errorf("expected 25%%, got %f", got)
+	}
+}
+
+func TestSortNodes(t *testing.T) {
+	nodes := []NodeInfo{
+		{Name: "node-b", CPU: Resource{Requested: 500}, Memory: Resource{Requested: 2048}, PodCount: PodCountInfo{Requested: 10}},
+		{Name: "node-a", CPU: Resource{Requested: 1000}, Memory: Resource{Requested: 1024}, PodCount: PodCountInfo{Requested: 5}},
+		{Name: "node-c", CPU: Resource{Requested: 250}, Memory: Resource{Requested: 4096}, PodCount: PodCountInfo{Requested: 20}},
+	}
+
+	t.Run("sort by cpu.request descending", func(t *testing.T) {
+		SortNodes(nodes, "cpu.request")
+		if nodes[0].Name != "node-a" || nodes[2].Name != "node-c" {
+			t.Errorf("expected [node-a node-b node-c], got [%s %s %s]",
+				nodes[0].Name, nodes[1].Name, nodes[2].Name)
+		}
+	})
+
+	t.Run("sort by pod.count descending", func(t *testing.T) {
+		SortNodes(nodes, "pod.count")
+		if nodes[0].Name != "node-c" {
+			t.Errorf("expected node-c (20 pods) first, got %s", nodes[0].Name)
+		}
+	})
+
+	t.Run("sort by name ascending", func(t *testing.T) {
+		SortNodes(nodes, "name")
+		if nodes[0].Name != "node-a" || nodes[1].Name != "node-b" || nodes[2].Name != "node-c" {
+			t.Errorf("expected alphabetical order, got [%s %s %s]",
+				nodes[0].Name, nodes[1].Name, nodes[2].Name)
+		}
+	})
+
+	t.Run("default sort by name", func(t *testing.T) {
+		SortNodes(nodes, "")
+		if nodes[0].Name != "node-a" {
+			t.Errorf("expected default sort (name), got %s first", nodes[0].Name)
+		}
+	})
+}
+
 func TestMatchesNodeSelector_Nil(t *testing.T) {
 	u := makeUnstructured("Node", "node-1", "", map[string]interface{}{})
 	if !matchesNodeSelector(u, nil) {

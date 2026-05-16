@@ -196,6 +196,65 @@ func TestExtractInt64(t *testing.T) {
 	}
 }
 
+func TestFormatOutput(t *testing.T) {
+	data := []map[string]string{
+		{"name": "nginx", "namespace": "default"},
+	}
+
+	t.Run("json format", func(t *testing.T) {
+		got, err := FormatOutput(data, "json", []string{"name", "namespace"}, nil)
+		if err != nil || got == "" {
+			t.Fatalf("expected JSON output, got err=%v, result=%q", err, got)
+		}
+	})
+
+	t.Run("table format", func(t *testing.T) {
+		got, err := FormatOutput(data, "table", []string{"name", "namespace"}, nil)
+		if err != nil || got == "" {
+			t.Fatalf("expected table output, got err=%v, result=%q", err, got)
+		}
+	})
+
+	t.Run("empty data with json", func(t *testing.T) {
+		got, err := FormatOutput([]map[string]string{}, "json", nil, nil)
+		if err != nil || got == "" {
+			t.Fatalf("expected JSON empty array, got err=%v, result=%q", err, got)
+		}
+	})
+
+	t.Run("invalid format", func(t *testing.T) {
+		_, err := FormatOutput(data, "xml", nil, nil)
+		if err == nil {
+			t.Fatal("expected error for invalid format")
+		}
+	})
+}
+
+func TestFormatSingleResult(t *testing.T) {
+	data := map[string]interface{}{"name": "nginx", "namespace": "default"}
+
+	t.Run("json format", func(t *testing.T) {
+		got, err := FormatSingleResult(data, "json")
+		if err != nil || got == "" {
+			t.Fatalf("expected JSON output, got err=%v, result=%q", err, got)
+		}
+	})
+
+	t.Run("table format requires headers", func(t *testing.T) {
+		_, err := FormatSingleResult(data, "table")
+		if err == nil {
+			t.Fatal("expected error for table without headers")
+		}
+	})
+
+	t.Run("table format with headers", func(t *testing.T) {
+		got, err := FormatSingleResult(data, "table", "name", "namespace")
+		if err != nil || got == "" {
+			t.Fatalf("expected table output, got err=%v, result=%q", err, got)
+		}
+	})
+}
+
 func TestParsePath(t *testing.T) {
 	tests := []struct {
 		path string

@@ -292,8 +292,11 @@ func formatAsTable(list *unstructured.UnstructuredList) string {
 
 // truncate truncates a string to the specified length
 func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
+	if maxLen <= 0 || len(s) <= maxLen {
 		return s
+	}
+	if maxLen <= 3 {
+		return s[:maxLen]
 	}
 	return s[:maxLen-3] + "..."
 }

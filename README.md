@@ -213,82 +213,27 @@ rancher-mcp-server --port 8080 \
 
 ### Sensitive Data Protection
 
-The server provides a two-tier security control for handling sensitive Kubernetes resources (currently Secrets):
+The server uses a two-tier security model for Secret resources:
 
-#### Global Administrator Control
+1. **Global flag** `--show-sensitive-data` (default: `false`): When disabled, all Secret `data` and `stringData` fields are **always masked** with `***`, regardless of per-tool parameters. When enabled, per-tool control is allowed.
+2. **Per-tool parameter** `showSensitiveData` (default: `false`): Only takes effect when the global flag is enabled. Controls visibility per call.
 
-The `--show-sensitive-data` flag (default: `false`) is a global administrator setting that determines whether sensitive data can ever be revealed:
+**Affected tools:** `kubernetes_get`, `kubernetes_list`, `kubernetes_describe`.
 
-- **Disabled (default: `false`)**: All sensitive data is **always masked** with `***`, regardless of per-tool parameters
-  - Secret `data` and `stringData` fields are masked
-  - Provides maximum security by preventing any accidental data exposure
-  - Recommended for production environments
-
-- **Enabled (`true`)**: Allows per-tool `showSensitiveData` parameter to control visibility
-  - Each tool call can choose whether to show or mask sensitive data
-  - Useful for troubleshooting and administrative tasks
-  - Requires explicit per-call parameter to reveal data
-
-#### Per-Tool Parameter Control
-
-When global `--show-sensitive-data` is enabled, tools that access sensitive resources accept a `showSensitiveData` parameter:
-
-- `showSensitiveData: false` (default): Masks sensitive fields with `***`
-- `showSensitiveData: true`: Shows actual values
-
-**Affected Tools:**
-- `kubernetes_get`: Get individual resources including Secrets
-- `kubernetes_list`: List resources including Secrets
-- `kubernetes_describe`: Describe resources with events
-
-**Example Behavior:**
+See [Configuration](#configuration) for setup examples.
 
 ```yaml
-# Global flag disabled (--show-sensitive-data=false)
-# Secret data is ALWAYS masked, regardless of per-tool parameter
+# --show-sensitive-data=false (default): always masked
 apiVersion: v1
 kind: Secret
 data:
-  password: "***"  # Always masked
-  token: "***"     # Always masked
+  password: "***"
 
-# Global flag enabled (--show-sensitive-data=true)
-# Per-tool parameter controls visibility:
-
-# With showSensitiveData: false (default)
+# --show-sensitive-data=true + showSensitiveData: true
 apiVersion: v1
 kind: Secret
 data:
-  password: "***"  # Masked
-  token: "***"     # Masked
-
-# With showSensitiveData: true
-apiVersion: v1
-kind: Secret
-data:
-  password: "<base64-encoded-value>"  # Actual base64 value shown
-  token: "<base64-encoded-value>"     # Actual base64 value shown
-```
-
-**Configuration Examples:**
-
-```shell
-# Maximum security (production recommended)
-rancher-mcp-server --show-sensitive-data=false  # or omit (default)
-
-# Allow administrators to reveal data when needed
-rancher-mcp-server --show-sensitive-data=true
-```
-
-```yaml
-# config.yaml
-show_sensitive_data: false  # Production: always mask
-# show_sensitive_data: true  # Development: allow per-tool control
-```
-
-```shell
-# Environment variable
-RANCHER_MCP_SHOW_SENSITIVE_DATA=false
+  password: "<base64-encoded-value>"
 ```
 
 Tools are organized into toolsets. Use `--toolsets` to enable specific sets or `--enabled-tools`/`--disabled-tools` for fine-grained control.

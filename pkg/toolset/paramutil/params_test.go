@@ -201,6 +201,49 @@ func TestExtractInt64(t *testing.T) {
 	}
 }
 
+func TestFormatWithFields(t *testing.T) {
+	data := []map[string]string{
+		{"name": "nginx", "namespace": "default", "status": "Running"},
+	}
+
+	t.Run("json with fields", func(t *testing.T) {
+		out, err := FormatWithFields(data, []string{"name", "namespace"}, "json")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "\"name\"") || strings.Contains(out, "\"status\"") {
+			t.Error("expected only name, namespace fields in JSON")
+		}
+	})
+
+	t.Run("yaml with fields", func(t *testing.T) {
+		out, err := FormatWithFields(data, []string{"name"}, "yaml")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "name:") {
+			t.Error("expected name field in YAML")
+		}
+	})
+
+	t.Run("table with derived headers", func(t *testing.T) {
+		out, err := FormatWithFields(data, nil, "table")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !strings.Contains(out, "nginx") {
+			t.Error("expected data in table")
+		}
+	})
+
+	t.Run("invalid format", func(t *testing.T) {
+		_, err := FormatWithFields(data, nil, "xml")
+		if err == nil {
+			t.Fatal("expected error for invalid format")
+		}
+	})
+}
+
 func TestFormatOutput(t *testing.T) {
 	data := []map[string]string{
 		{"name": "nginx", "namespace": "default"},

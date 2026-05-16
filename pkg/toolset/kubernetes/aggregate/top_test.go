@@ -186,6 +186,45 @@ func TestExtractNodeTopItem(t *testing.T) {
 	}
 }
 
+func TestTopAnalyzerBuildResult_TruncatesToRequestedLimit(t *testing.T) {
+	items := make([]TopItem, 60)
+	for i := range items {
+		items[i] = TopItem{Name: "pod"}
+	}
+
+	result, err := (&TopAnalyzer{}).buildResult(items, TopParams{Limit: 50}, "")
+	if err != nil {
+		t.Fatalf("buildResult() error = %v", err)
+	}
+	if result.Total != 60 {
+		t.Fatalf("Total = %d, want 60", result.Total)
+	}
+	if len(result.Items) != 50 {
+		t.Fatalf("len(Items) = %d, want 50", len(result.Items))
+	}
+	if !result.Truncated {
+		t.Fatal("Truncated = false, want true")
+	}
+}
+
+func TestTopAnalyzerBuildResult_ClampsLimitToMaxItems(t *testing.T) {
+	items := make([]TopItem, MaxItems+25)
+	for i := range items {
+		items[i] = TopItem{Name: "pod"}
+	}
+
+	result, err := (&TopAnalyzer{}).buildResult(items, TopParams{Limit: MaxItems + 100}, "")
+	if err != nil {
+		t.Fatalf("buildResult() error = %v", err)
+	}
+	if len(result.Items) != MaxItems {
+		t.Fatalf("len(Items) = %d, want %d", len(result.Items), MaxItems)
+	}
+	if !result.Truncated {
+		t.Fatal("Truncated = false, want true")
+	}
+}
+
 func TestCalcPercentage(t *testing.T) {
 	if got := calcPercentage(50, 100); got != 50.0 {
 		t.Errorf("calcPercentage(50, 100) = %f, want 50.0", got)

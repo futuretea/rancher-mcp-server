@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
+	corev1 "k8s.io/api/core/v1"
 )
 
 // EventAnalyzer performs event summary analysis
@@ -38,6 +39,10 @@ func (a *EventAnalyzer) Analyze(ctx context.Context, p EventParams) (*EventResul
 		return nil, fmt.Errorf("failed to get events: %w", err)
 	}
 
+	return summarizeEvents(events, p, sinceThreshold), nil
+}
+
+func summarizeEvents(events []corev1.Event, p EventParams, sinceThreshold time.Time) *EventResult {
 	// Group by (reason, kind, namespace)
 	type groupKey struct{ reason, kind, ns string }
 	groups := make(map[groupKey]*EventItem)
@@ -112,7 +117,7 @@ func (a *EventAnalyzer) Analyze(ctx context.Context, p EventParams) (*EventResul
 		Items:     items,
 		Truncated: truncated,
 		Total:     total,
-	}, nil
+	}
 }
 
 // sortEventItems sorts event items by the specified field

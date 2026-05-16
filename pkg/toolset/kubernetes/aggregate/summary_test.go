@@ -144,3 +144,91 @@ func TestSortSummaryItems_DefaultByName(t *testing.T) {
 		t.Errorf("expected first item to be ns-a, got %s", items[0].Group)
 	}
 }
+
+func TestSummarizePods_GroupByNamespace(t *testing.T) {
+	pods := []unstructured.Unstructured{
+		summaryTestPod("pod-a", "prod", map[string]string{"app": "api"}, "500m", "256Mi"),
+		summaryTestPod("pod-b", "prod", map[string]string{"app": "worker"}, "250m", "128Mi"),
+		summaryTestPod("pod-c", "staging", map[string]string{"app": "api"}, "100m", "64Mi"),
+	}
+
+	result, err := summarizePods(pods, SummaryParams{GroupBy: "namespace", SortBy: "name", Limit: 50})
+	if err != nil {
+		t.Fatalf("summarizePods() error = %v", err)
+	}
+	if result.Total != 2 {
+		t.Fatalf("Total = %d, want 2", result.Total)
+	}
+	if result.Items[0].Group != "prod" || result.Items[0].PodCount != 2 || result.Items[0].CPUReq != 750 {
+		t.Fatalf("prod group = %+v, want podCount=2 cpuReq=750", result.Items[0])
+	}
+	if result.Items[1].Group != "staging" || result.Items[1].PodCount != 1 || result.Items[1].CPUReq != 100 {
+		t.Fatalf("staging group = %+v, want podCount=1 cpuReq=100", result.Items[1])
+	}
+}
+
+func TestSummarizePods_GroupByLabel(t *testing.T) {
+	pods := []unstructured.Unstructured{
+		summaryTestPod("pod-a", "prod", map[string]string{"app": "api"}, "500m", "256Mi"),
+		summaryTestPod("pod-b", "prod", map[string]string{"app": "worker"}, "250m", "128Mi"),
+		summaryTestPod("pod-c", "prod", map[string]string{}, "100m", "64Mi"),
+	}
+
+	result, err := summarizePods(pods, SummaryParams{GroupBy: "label", GroupByKey: "app", SortBy: "name", Limit: 50})
+	if err != nil {
+		t.Fatalf("summarizePods() error = %v", err)
+	}
+	if result.Total != 3 {
+		t.Fatalf("Total = %d, want 3", result.Total)
+	}
+	if result.Items[0].Group != "<none>" {
+		t.Fatalf("first group = %q, want <none>", result.Items[0].Group)
+	}
+	if result.Items[1].Group != "api" || result.Items[1].CPUReq != 500 {
+		t.Fatalf("api group = %+v, want cpuReq=500", result.Items[1])
+	}
+	if result.Items[2].Group != "worker" || result.Items[2].CPUReq != 250 {
+		t.Fatalf("worker group = %+v, want cpuReq=250", result.Items[2])
+	}
+}
+
+func TestSummarizePods_GroupByLabelRequiresKey(t *testing.T) {
+	pods := []unstructured.Unstructured{
+		summaryTestPod("pod-a", "prod", map[string]string{"app": "api"}, "500m", "256Mi"),
+	}
+
+	_, err := summarizePods(pods, SummaryParams{GroupBy: "label"})
+	if err == nil {
+		t.Fatal("summarizePods() error = nil, want groupByKey error")
+	}
+}
+
+func summaryTestPod(name, namespace string, labels map[string]string, cpu, memory string) unstructured.Unstructured {
+	labelValues := make(map[string]interface{}, len(labels))
+	for key, value := range labels {
+		labelValues[key] = value
+	}
+
+	return unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"name":      name,
+				"namespace": namespace,
+				"labels":    labelValues,
+			},
+			"spec": map[string]interface{}{
+				"containers": []interface{}{
+					map[string]interface{}{
+						"name": "container-1",
+						"resources": map[string]interface{}{
+							"requests": map[string]interface{}{
+								"cpu":    cpu,
+								"memory": memory,
+							},
+						},
+					},
+				},
+			},
+		},
+	}
+}

@@ -32,6 +32,10 @@ func (a *SummaryAnalyzer) Analyze(ctx context.Context, p SummaryParams) (*Summar
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
 
+	return summarizePods(pods.Items, p)
+}
+
+func summarizePods(pods []unstructured.Unstructured, p SummaryParams) (*SummaryResult, error) {
 	// Group aggregation
 	groups := make(map[string]*SummaryItem)
 	groupBy := strings.ToLower(p.GroupBy)
@@ -39,14 +43,14 @@ func (a *SummaryAnalyzer) Analyze(ctx context.Context, p SummaryParams) (*Summar
 		groupBy = "namespace"
 	}
 
-	for _, pod := range pods.Items {
+	for _, pod := range pods {
 		var groupKey string
 		switch groupBy {
 		case "label":
-			labels := pod.GetLabels()
 			if p.GroupByKey == "" {
 				return nil, fmt.Errorf("groupByKey is required when groupBy=label")
 			}
+			labels := pod.GetLabels()
 			groupKey = labels[p.GroupByKey]
 			if groupKey == "" {
 				groupKey = "<none>"

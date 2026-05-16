@@ -64,6 +64,7 @@ tmp/
 temp/
 
 third-party-projects/
+.auto-loop/
 .auto-runs/
 .claude/
 .qoder/

@@ -550,6 +550,53 @@ func TestToAnySlice(t *testing.T) {
 	}
 }
 
+func TestFormatResult(t *testing.T) {
+	result := &Result{
+		Nodes:  []NodeInfo{},
+		Cluster: NodeInfo{Name: "*"},
+	}
+
+	t.Run("json format", func(t *testing.T) {
+		got, err := FormatResult(result, "json", false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got == "" {
+			t.Fatal("expected non-empty JSON")
+		}
+	})
+
+	t.Run("yaml format", func(t *testing.T) {
+		got, err := FormatResult(result, "yaml", false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got == "" {
+			t.Fatal("expected non-empty YAML")
+		}
+	})
+
+	t.Run("table format default", func(t *testing.T) {
+		got, err := FormatResult(result, "table", false)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got == "" {
+			t.Fatal("expected non-empty table")
+		}
+	})
+
+	t.Run("unknown format defaults to table", func(t *testing.T) {
+		got, err := FormatResult(result, "", false)
+		if err != nil {
+			t.Fatalf("unexpected error for empty format: %v", err)
+		}
+		if got == "" {
+			t.Fatal("expected non-empty table for default")
+		}
+	})
+}
+
 func TestMatchesNodeSelector_Nil(t *testing.T) {
 	u := makeUnstructured("Node", "node-1", "", map[string]interface{}{})
 	if !matchesNodeSelector(u, nil) {

@@ -501,6 +501,55 @@ func TestSortNodes(t *testing.T) {
 	})
 }
 
+func TestFormatCPU(t *testing.T) {
+	if got := formatCPU(500, false); got != "0.50c" {
+		t.Errorf("expected '0.50c', got %q", got)
+	}
+	if got := formatCPU(500, true); got != "500m" {
+		t.Errorf("expected '500m' for small raw, got %q", got)
+	}
+	if got := formatCPU(2000, true); got != "2.00c" {
+		t.Errorf("expected '2.00c' for large raw, got %q", got)
+	}
+}
+
+func TestFormatMemory(t *testing.T) {
+	if got := formatMemory(1024*1024*1024, false); got != "1.00Gi" {
+		t.Errorf("expected '1.00Gi', got %q", got)
+	}
+	if got := formatMemory(512*1024*1024, true); got != "512Mi" {
+		t.Errorf("expected '512Mi', got %q", got)
+	}
+	if got := formatMemory(128*1024, true); got != "128Ki" {
+		t.Errorf("expected '128Ki', got %q", got)
+	}
+	if got := formatMemory(256, true); got != "256" {
+		t.Errorf("expected '256', got %q", got)
+	}
+}
+
+func TestFormatLabels(t *testing.T) {
+	if got := formatLabels(map[string]string{}); got != "" {
+		t.Errorf("expected empty for nil labels, got %q", got)
+	}
+	if got := formatLabels(map[string]string{"app": "nginx"}); got != "app=nginx" {
+		t.Errorf("expected 'app=nginx', got %q", got)
+	}
+	if got := formatLabels(map[string]string{"key": ""}); got != "key" {
+		t.Errorf("expected 'key' for empty value, got %q", got)
+	}
+}
+
+func TestToAnySlice(t *testing.T) {
+	got := toAnySlice([]string{"a", "b"})
+	if len(got) != 2 || got[0].(string) != "a" || got[1].(string) != "b" {
+		t.Errorf("expected [a b], got %v", got)
+	}
+	if got := toAnySlice(nil); len(got) != 0 {
+		t.Errorf("expected empty for nil, got %v", got)
+	}
+}
+
 func TestMatchesNodeSelector_Nil(t *testing.T) {
 	u := makeUnstructured("Node", "node-1", "", map[string]interface{}{})
 	if !matchesNodeSelector(u, nil) {

@@ -3,6 +3,8 @@ package paramutil
 import (
 	"strings"
 	"testing"
+
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 func TestExtractRequiredString(t *testing.T) {
@@ -331,6 +333,145 @@ func TestParsePath(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestNewResourceFilterFromParams(t *testing.T) {
+	t.Run("no filter param returns nil", func(t *testing.T) {
+		if f := NewResourceFilterFromParams(map[string]interface{}{}); f != nil {
+			t.Fatal("expected nil when no filter param")
+		}
+	})
+
+	t.Run("empty string slice returns nil", func(t *testing.T) {
+		if f := NewResourceFilterFromParams(map[string]interface{}{"outputFilters": []string{}}); f != nil {
+			t.Fatal("expected nil for empty string slice")
+		}
+	})
+
+	t.Run("string slice", func(t *testing.T) {
+		f := NewResourceFilterFromParams(map[string]interface{}{"outputFilters": []string{"metadata.managedFields"}})
+		if f == nil {
+			t.Fatal("expected non-nil filter")
+		}
+	})
+
+	t.Run("interface slice", func(t *testing.T) {
+		f := NewResourceFilterFromParams(map[string]interface{}{"outputFilters": []interface{}{"metadata.managedFields"}})
+		if f == nil {
+			t.Fatal("expected non-nil filter from []interface{}")
+		}
+	})
+
+	t.Run("empty interface slice returns nil", func(t *testing.T) {
+		if f := NewResourceFilterFromParams(map[string]interface{}{"outputFilters": []interface{}{}}); f != nil {
+			t.Fatal("expected nil for empty interface slice")
+		}
+	})
+
+	t.Run("unsupported type returns nil", func(t *testing.T) {
+		if f := NewResourceFilterFromParams(map[string]interface{}{"outputFilters": 42}); f != nil {
+			t.Fatal("expected nil for unsupported type")
+		}
+	})
+}
+
+func TestResourceFilter_Filter(t *testing.T) {
+	t.Run("nil object returns nil", func(t *testing.T) {
+		f := NewResourceFilter([]string{"metadata.managedFields"})
+		if out := f.Filter(nil); out != nil {
+			t.Fatal("expected nil from nil input")
+		}
+	})
+
+	t.Run("empty paths returns same object", func(t *testing.T) {
+		f := NewResourceFilter(nil)
+		u := &unstructured.Unstructured{}
+		u.SetUnstructuredContent(map[string]interface{}{"metadata": map[string]interface{}{"name": "test"}})
+		out := f.Filter(u)
+		if out != u {
+			t.Fatal("expected same object when no paths")
+		}
+	})
+
+	t.Run("removes managed fields", func(t *testing.T) {
+		f := NewResourceFilter([]string{"metadata.managedFields"})
+		u := &unstructured.Unstructured{}
+		u.SetUnstructuredContent(map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"name":          "test-pod",
+				"managedFields": []interface{}{"field-data"},
+			},
+		})
+		out := f.Filter(u)
+		_, found, _ := unstructured.NestedSlice(out.Object, "metadata", "managedFields")
+		if found {
+			t.Fatal("expected managedFields to be removed")
+		}
+		if name, _, _ := unstructured.NestedString(out.Object, "metadata", "name"); name != "test-pod" {
+			t.Errorf("expected name 'test-pod', got %q", name)
+		}
+	})
+
+	t.Run("removes nested annotation", func(t *testing.T) {
+		f := NewResourceFilter([]string{"metadata.annotations.kubectl.kubernetes.io/last-applied-configuration"})
+		u := &unstructured.Unstructured{}
+		u.SetUnstructuredContent(map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"name": "test-pod",
+				"annotations": map[string]interface{}{
+					"other": "value",
+					"kubectl.kubernetes.io/last-applied-configuration": "big-json",
+				},
+			},
+		})
+		out := f.Filter(u)
+		ann, _, _ := unstructured.NestedMap(out.Object, "metadata", "annotations")
+		if _, exists := ann["kubectl.kubernetes.io/last-applied-configuration"]; exists {
+			t.Fatal("expected annotation to be removed")
+		}
+		if ann["other"] != "value" {
+			t.Error("expected other annotation to remain")
+		}
+	})
+}
+
+func TestResourceFilter_FilterList(t *testing.T) {
+	t.Run("nil list returns nil", func(t *testing.T) {
+		f := NewResourceFilter([]string{"metadata.managedFields"})
+		if out := f.FilterList(nil); out != nil {
+			t.Fatal("expected nil from nil input")
+		}
+	})
+
+	t.Run("filters each item", func(t *testing.T) {
+		f := NewResourceFilter([]string{"metadata.managedFields"})
+		u1 := unstructured.Unstructured{Object: map[string]interface{}{
+			"metadata": map[string]interface{}{"name": "pod-1", "managedFields": "data"},
+		}}
+		u2 := unstructured.Unstructured{Object: map[string]interface{}{
+			"metadata": map[string]interface{}{"name": "pod-2", "managedFields": "data"},
+		}}
+		list := &unstructured.UnstructuredList{Items: []unstructured.Unstructured{u1, u2}}
+		out := f.FilterList(list)
+		if len(out.Items) != 2 {
+			t.Fatalf("expected 2 items, got %d", len(out.Items))
+		}
+		for _, item := range out.Items {
+			if _, found, _ := unstructured.NestedString(item.Object, "metadata", "managedFields"); found {
+				t.Errorf("expected managedFields removed from %s", item.GetName())
+			}
+		}
+	})
+}
+
+func TestDefaultFilterPaths(t *testing.T) {
+	paths := DefaultFilterPaths()
+	if len(paths) != 2 {
+		t.Fatalf("expected 2 default paths, got %d", len(paths))
+	}
+	if paths[0] != "metadata.managedFields" {
+		t.Errorf("unexpected first path: %s", paths[0])
 	}
 }
 

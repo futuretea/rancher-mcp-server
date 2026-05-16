@@ -1,3 +1,5 @@
+// Package toolset defines the framework for MCP tool registration, including
+// combined client access, annotations, and tool grouping.
 package toolset
 
 import (

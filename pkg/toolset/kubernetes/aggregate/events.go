@@ -1,3 +1,5 @@
+// Package aggregate provides event pattern analysis, grouping Kubernetes events
+// by reason, kind, and frequency to identify recurring issues.
 package aggregate
 
 import (

@@ -1,3 +1,5 @@
+// Package capacity provides cluster resource capacity analysis, showing
+// requests, limits, and utilization at node, pod, and container granularity.
 package capacity
 
 import (

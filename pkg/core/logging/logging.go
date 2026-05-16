@@ -1,3 +1,5 @@
+// Package logging configures structured logging via zerolog with support for
+// stdio-safe output (when running as an MCP server) and configurable log levels.
 package logging
 
 import (

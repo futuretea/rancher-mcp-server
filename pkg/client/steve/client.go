@@ -1,3 +1,5 @@
+// Package steve provides a client for the Rancher Steve API, which exposes
+// Kubernetes resources through a simplified REST interface.
 package steve
 
 import (

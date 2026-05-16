@@ -1,3 +1,5 @@
+// Package watchdiff provides resource watching with git-style diff output,
+// comparing Kubernetes resource versions over time and reporting changes.
 package watchdiff
 
 import (

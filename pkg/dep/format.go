@@ -1,3 +1,5 @@
+// Package dep analyzes Kubernetes resource dependency trees, traversing
+// OwnerReference chains, label selectors, RBAC bindings, and other relationships.
 package dep
 
 import (

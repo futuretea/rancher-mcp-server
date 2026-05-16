@@ -1,3 +1,5 @@
+// Package config manages the static configuration for the Rancher MCP Server,
+// supporting CLI flags, environment variables, and config files.
 package config
 
 import (

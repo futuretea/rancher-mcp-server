@@ -1,3 +1,5 @@
+// Package mcp manages the MCP server instance, tool registration, and
+// configuration-driven tool filtering (read-only, destructive, sensitive data).
 package mcp
 
 import (

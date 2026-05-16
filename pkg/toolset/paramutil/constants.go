@@ -1,3 +1,5 @@
+// Package paramutil provides shared parameter extraction, format constants,
+// and validation helpers used across MCP tool handlers.
 package paramutil
 
 import "errors"

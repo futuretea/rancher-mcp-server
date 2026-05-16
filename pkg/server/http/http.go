@@ -1,3 +1,5 @@
+// Package http provides the HTTP server for the MCP Server, supporting
+// Streamable HTTP, SSE, and health check endpoints.
 package http
 
 import (

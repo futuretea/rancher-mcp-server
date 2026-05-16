@@ -1,3 +1,4 @@
+// Package fake provides an in-memory fake Steve client for testing.
 package fake
 
 import (

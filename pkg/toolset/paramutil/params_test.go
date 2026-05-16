@@ -1,6 +1,9 @@
 package paramutil
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestExtractRequiredString(t *testing.T) {
 	t.Run("valid string", func(t *testing.T) {
@@ -253,6 +256,58 @@ func TestFormatSingleResult(t *testing.T) {
 			t.Fatalf("expected table output, got err=%v, result=%q", err, got)
 		}
 	})
+}
+
+func TestExtractOptionalInt64(t *testing.T) {
+	params := map[string]interface{}{
+		"asFloat": float64(42),
+		"asInt64": int64(100),
+		"asInt":   200,
+	}
+
+	if v := ExtractOptionalInt64(params, "asFloat"); v == nil || *v != 42 {
+		t.Errorf("expected 42 from float64, got %v", v)
+	}
+	if v := ExtractOptionalInt64(params, "asInt64"); v == nil || *v != 100 {
+		t.Errorf("expected 100 from int64, got %v", v)
+	}
+	if v := ExtractOptionalInt64(params, "asInt"); v == nil || *v != 200 {
+		t.Errorf("expected 200 from int, got %v", v)
+	}
+	if v := ExtractOptionalInt64(params, "missing"); v != nil {
+		t.Errorf("expected nil for missing, got %v", v)
+	}
+	if v := ExtractOptionalInt64(params, "notANumber"); v != nil {
+		t.Errorf("expected nil for non-number, got %v", v)
+	}
+}
+
+func TestExtractAndValidateFormat(t *testing.T) {
+	v, err := ExtractAndValidateFormat(map[string]interface{}{})
+	if err != nil || v != FormatJSON {
+		t.Fatalf("expected json by default, got %q err=%v", v, err)
+	}
+
+	v, err = ExtractAndValidateFormat(map[string]interface{}{"format": "yaml"})
+	if err != nil || v != "yaml" {
+		t.Fatalf("expected yaml, got %q err=%v", v, err)
+	}
+
+	_, err = ExtractAndValidateFormat(map[string]interface{}{"format": "xml"})
+	if err == nil {
+		t.Fatal("expected error for invalid format")
+	}
+}
+
+func TestFormatAsYAML(t *testing.T) {
+	data := map[string]string{"name": "test", "namespace": "default"}
+	out, err := FormatAsYAML(data)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "name:") || !strings.Contains(out, "test") {
+		t.Errorf("expected YAML output, got %q", out)
+	}
 }
 
 func TestParsePath(t *testing.T) {

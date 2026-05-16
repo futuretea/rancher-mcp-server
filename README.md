@@ -983,13 +983,40 @@ List Rancher projects.
 
 ## Development <a id="development"></a>
 
+### Prerequisites
+
+- Go 1.26.0+
+- Access to a Rancher server (for integration testing)
+
 ### Build
 
 ```shell
 make build
 ```
 
-### Run with mcp-inspector
+### Test
+
+```shell
+make test
+```
+
+### Lint
+
+```shell
+make lint        # Run golangci-lint
+make format      # Auto-format code
+```
+
+### Run Locally
+
+```shell
+make build
+./rancher-mcp-server \
+  --rancher-server-url https://your-rancher-server.com \
+  --rancher-token your-token
+```
+
+### Debug with MCP Inspector
 
 ```shell
 npx @modelcontextprotocol/inspector@latest $(pwd)/rancher-mcp-server
@@ -997,7 +1024,7 @@ npx @modelcontextprotocol/inspector@latest $(pwd)/rancher-mcp-server
 
 ## Contributing
 
-Open an issue or pull request on GitHub with the motivation, test evidence, and any compatibility notes for the change.
+See [CONTRIBUTING.md](CONTRIBUTING.md) for development setup, project structure, and pull request guidelines.
 
 ## Support
 

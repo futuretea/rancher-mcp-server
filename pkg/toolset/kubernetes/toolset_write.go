@@ -20,10 +20,7 @@ func (t *Toolset) appendWriteTools(tools []toolset.ServerTool) []toolset.ServerT
 						Type:     "object",
 						Required: []string{"cluster", "resource"},
 						Properties: map[string]any{
-							"cluster": map[string]any{
-								"type":        "string",
-								"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-							},
+							"cluster": clusterIDProperty,
 							"resource": map[string]any{
 								"type":        "string",
 								"description": "Resource manifest as JSON string (must include apiVersion, kind, metadata, and spec)",
@@ -44,10 +41,7 @@ func (t *Toolset) appendWriteTools(tools []toolset.ServerTool) []toolset.ServerT
 						Type:     "object",
 						Required: []string{"cluster", "kind", "name", "patch"},
 						Properties: map[string]any{
-							"cluster": map[string]any{
-								"type":        "string",
-								"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-							},
+							"cluster": clusterIDProperty,
 							"kind": map[string]any{
 								"type":        "string",
 								"description": "Resource kind (e.g., deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
@@ -82,10 +76,7 @@ func (t *Toolset) appendWriteTools(tools []toolset.ServerTool) []toolset.ServerT
 						Type:     "object",
 						Required: []string{"cluster", "namespace", "name", "command"},
 						Properties: map[string]any{
-							"cluster": map[string]any{
-								"type":        "string",
-								"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-							},
+							"cluster": clusterIDProperty,
 							"namespace": map[string]any{
 								"type":        "string",
 								"description": "Namespace name",
@@ -125,10 +116,7 @@ func (t *Toolset) appendWriteTools(tools []toolset.ServerTool) []toolset.ServerT
 						Type:     "object",
 						Required: []string{"cluster", "namespace", "name", "filePath", "content"},
 						Properties: map[string]any{
-							"cluster": map[string]any{
-								"type":        "string",
-								"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-							},
+							"cluster": clusterIDProperty,
 							"namespace": map[string]any{
 								"type":        "string",
 								"description": "Namespace name",
@@ -171,10 +159,7 @@ func (t *Toolset) appendWriteTools(tools []toolset.ServerTool) []toolset.ServerT
 						Type:     "object",
 						Required: []string{"cluster", "kind", "name"},
 						Properties: map[string]any{
-							"cluster": map[string]any{
-								"type":        "string",
-								"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-							},
+							"cluster": clusterIDProperty,
 							"kind": map[string]any{
 								"type":        "string",
 								"description": "Resource kind (e.g., deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",

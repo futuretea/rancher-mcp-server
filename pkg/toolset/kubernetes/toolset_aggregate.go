@@ -18,10 +18,7 @@ func aggregateTools() []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"kind": map[string]any{
 							"type":        "string",
 							"description": "Resource kind to rank: 'pod' or 'node'",
@@ -71,10 +68,7 @@ func aggregateTools() []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name (optional, empty for all namespaces)",
@@ -124,10 +118,7 @@ func aggregateTools() []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name (optional, empty for all namespaces)",
@@ -182,10 +173,7 @@ func aggregateTools() []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name (optional, empty for all namespaces)",

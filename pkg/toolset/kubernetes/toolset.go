@@ -32,6 +32,11 @@ var apiVersionProperty = map[string]any{
 	"default":     "",
 }
 
+var clusterIDProperty = map[string]any{
+	"type":        "string",
+	"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+}
+
 // GetName returns the name of the toolset
 func (t *Toolset) GetName() string {
 	return "kubernetes"
@@ -54,10 +59,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "kind", "name"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"kind": map[string]any{
 							"type":        "string",
 							"description": "Resource kind (e.g., pod, deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
@@ -95,10 +97,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "kind"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"kind": map[string]any{
 							"type":        "string",
 							"description": "Resource kind (e.g., pod, deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
@@ -152,10 +151,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Filter by namespace (optional, empty for all namespaces)",
@@ -214,10 +210,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "namespace"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name",
@@ -277,10 +270,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "namespace", "name"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name",
@@ -305,10 +295,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "kind", "name"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"kind": map[string]any{
 							"type":        "string",
 							"description": "Resource kind (e.g., pod, deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
@@ -346,10 +333,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name (optional, empty for all namespaces)",
@@ -397,10 +381,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "kind", "name"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"kind": map[string]any{
 							"type":        "string",
 							"description": "Resource kind (e.g., deployment, pod, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
@@ -448,10 +429,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "namespace", "name"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name",
@@ -482,10 +460,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "name"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"name": map[string]any{
 							"type":        "string",
 							"description": "Node name",
@@ -525,10 +500,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 							"type":        "object",
 							"description": "Left side of the comparison",
 							"properties": map[string]any{
-								"cluster": map[string]any{
-									"type":        "string",
-									"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-								},
+								"cluster": clusterIDProperty,
 								"namespace": map[string]any{
 									"type":        "string",
 									"description": "Namespace name",
@@ -545,10 +517,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 							"type":        "object",
 							"description": "Right side of the comparison",
 							"properties": map[string]any{
-								"cluster": map[string]any{
-									"type":        "string",
-									"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-								},
+								"cluster": clusterIDProperty,
 								"namespace": map[string]any{
 									"type":        "string",
 									"description": "Namespace name",
@@ -587,10 +556,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "kind"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"kind": map[string]any{
 							"type":        "string",
 							"description": "Resource kind (e.g., pod, deployment, service, App). For CRDs, pass the manifest kind and optionally apiVersion.",
@@ -681,10 +647,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"pods": map[string]any{
 							"type":        "boolean",
 							"description": "Include individual pod resources in the output",
@@ -786,10 +749,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 					Type:     "object",
 					Required: []string{"cluster", "namespace", "name", "filePath"},
 					Properties: map[string]any{
-						"cluster": map[string]any{
-							"type":        "string",
-							"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
-						},
+						"cluster": clusterIDProperty,
 						"namespace": map[string]any{
 							"type":        "string",
 							"description": "Namespace name",

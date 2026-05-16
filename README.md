@@ -118,6 +118,7 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--enable-container-exec` | Enable pod command execution tool; requires `--read-only=false` | `false` |
 | `--enable-container-file-upload` | Enable container file upload tool | `false` |
 | `--enable-container-file-download` | Enable container file download tool | `false` |
+| `--max-file-size` | Max file size for container file operations | `10Mi` |
 | `--list-output` | Output format (json, table, yaml) | `json` |
 | `--output-filters` | Fields to remove from output | `metadata.managedFields` |
 | `--toolsets` | Toolsets to enable | `kubernetes,rancher` |

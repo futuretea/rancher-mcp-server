@@ -552,7 +552,7 @@ func TestToAnySlice(t *testing.T) {
 
 func TestFormatResult(t *testing.T) {
 	result := &Result{
-		Nodes:  []NodeInfo{},
+		Nodes:   []NodeInfo{},
 		Cluster: NodeInfo{Name: "*"},
 	}
 

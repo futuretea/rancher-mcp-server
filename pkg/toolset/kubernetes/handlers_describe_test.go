@@ -45,7 +45,7 @@ func TestSortEventsByTime(t *testing.T) {
 	now := time.Now()
 	events := []corev1.Event{
 		{LastTimestamp: metav1.NewTime(now.Add(-2 * time.Hour))}, // oldest
-		{LastTimestamp: metav1.NewTime(now)},                      // newest
+		{LastTimestamp: metav1.NewTime(now)},                     // newest
 		{LastTimestamp: metav1.NewTime(now.Add(-1 * time.Hour))}, // middle
 	}
 

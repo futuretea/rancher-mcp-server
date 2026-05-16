@@ -124,4 +124,46 @@ func TestAreSlicesEqual(t *testing.T) {
 			t.Fatal("expected nested slices equal")
 		}
 	})
+
+	t.Run("nested map type mismatch", func(t *testing.T) {
+		a := []interface{}{map[string]interface{}{"name": "nginx"}}
+		b := []interface{}{"not-a-map"}
+		if areSlicesEqual(a, b) {
+			t.Fatal("expected not equal (nested type mismatch)")
+		}
+	})
+
+	t.Run("nested slices in slices", func(t *testing.T) {
+		a := []interface{}{[]interface{}{"a", "b"}}
+		b := []interface{}{[]interface{}{"a", "b"}}
+		if !areSlicesEqual(a, b) {
+			t.Fatal("expected nested slices equal")
+		}
+	})
+
+	t.Run("nested slice type mismatch", func(t *testing.T) {
+		a := []interface{}{[]interface{}{"a"}}
+		b := []interface{}{"not-a-slice"}
+		if areSlicesEqual(a, b) {
+			t.Fatal("expected not equal (nested slice type mismatch)")
+		}
+	})
+}
+
+func TestAreObjectsEqual_AdditionalEdges(t *testing.T) {
+	t.Run("nested slices in objects", func(t *testing.T) {
+		a := map[string]interface{}{"items": []interface{}{"a", "b"}}
+		b := map[string]interface{}{"items": []interface{}{"a", "b"}}
+		if !areObjectsEqual(a, b) {
+			t.Fatal("expected equal with nested slices")
+		}
+	})
+
+	t.Run("object with slice type mismatch", func(t *testing.T) {
+		a := map[string]interface{}{"items": []interface{}{"a"}}
+		b := map[string]interface{}{"items": "not-a-slice"}
+		if areObjectsEqual(a, b) {
+			t.Fatal("expected not equal (object slice type mismatch)")
+		}
+	})
 }

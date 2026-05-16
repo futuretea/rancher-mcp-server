@@ -781,5 +781,5 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 	// Add write operations (see toolset_write.go)
 	tools = t.appendWriteTools(tools)
 
-		return tools
+	return tools
 }

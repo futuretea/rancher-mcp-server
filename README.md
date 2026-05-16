@@ -346,100 +346,40 @@ Show Kubernetes cluster resource capacity, requests, limits, and utilization. Si
 **Examples:**
 
 ```json
-// Basic node overview
-{
-  "cluster": "c-abc123"
-}
-
-// Include pods detail
-{
-  "cluster": "c-abc123",
-  "pods": true
-}
-
-// Include utilization metrics (requires metrics-server)
+// Basic node overview with utilization
 {
   "cluster": "c-abc123",
   "util": true
 }
 
-// Full detail with utilization
+// Include pod and container detail, sorted by CPU utilization
 {
   "cluster": "c-abc123",
   "pods": true,
-  "util": true
-}
-
-// Filter by namespace
-{
-  "cluster": "c-abc123",
-  "namespace": "production"
-}
-
-// Sort by CPU utilization
-{
-  "cluster": "c-abc123",
+  "containers": true,
+  "util": true,
   "sortBy": "cpu.util"
 }
 
-// Filter by node labels (show only worker nodes)
+// Filter by namespace and show pod counts
 {
   "cluster": "c-abc123",
-  "nodeLabelSelector": "node-role.kubernetes.io/worker=true"
-}
-
-// Include container-level details
-{
-  "cluster": "c-abc123",
-  "containers": true
-}
-
-// Show pod counts per node
-{
-  "cluster": "c-abc123",
+  "namespace": "production",
   "podCount": true
 }
 
-// Show node labels in output
+// Filter by node and namespace labels
 {
   "cluster": "c-abc123",
-  "showLabels": true
-}
-
-// Hide request columns (show only limits)
-{
-  "cluster": "c-abc123",
-  "hideRequests": true
-}
-
-// Filter by namespace labels
-{
-  "cluster": "c-abc123",
+  "nodeLabelSelector": "node-role.kubernetes.io/worker=true",
   "namespaceLabelSelector": "env=production"
 }
 
-// Filter by node taints (include nodes with specific taint)
+// Filter by taints (include or exclude)
 {
   "cluster": "c-abc123",
-  "nodeTaints": "dedicated=special:NoSchedule"
-}
-
-// Exclude nodes with specific taint
-{
-  "cluster": "c-abc123",
-  "nodeTaints": "dedicated=special:NoSchedule-"
-}
-
-// Exclude all tainted nodes
-{
-  "cluster": "c-abc123",
-  "noTaint": true
-}
-
-// Sort by CPU utilization percentage
-{
-  "cluster": "c-abc123",
-  "sortBy": "cpu.util.percentage"
+  "nodeTaints": "dedicated=special:NoSchedule",
+  "noTaint": false
 }
 ```
 

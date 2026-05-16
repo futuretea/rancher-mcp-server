@@ -14,11 +14,11 @@ import (
 
 // TopAnalyzer performs top-ranking analysis for pods or nodes
 type TopAnalyzer struct {
-	client *steve.Client
+	client steve.ResourceReader
 }
 
 // NewTopAnalyzer creates a new top analyzer
-func NewTopAnalyzer(client *steve.Client) *TopAnalyzer {
+func NewTopAnalyzer(client steve.ResourceReader) *TopAnalyzer {
 	return &TopAnalyzer{client: client}
 }
 

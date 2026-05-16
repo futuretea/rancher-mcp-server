@@ -12,11 +12,11 @@ import (
 
 // WorkloadAnalyzer performs workload health analysis
 type WorkloadAnalyzer struct {
-	client *steve.Client
+	client steve.ResourceReader
 }
 
 // NewWorkloadAnalyzer creates a new workload analyzer
-func NewWorkloadAnalyzer(client *steve.Client) *WorkloadAnalyzer {
+func NewWorkloadAnalyzer(client steve.ResourceReader) *WorkloadAnalyzer {
 	return &WorkloadAnalyzer{client: client}
 }
 

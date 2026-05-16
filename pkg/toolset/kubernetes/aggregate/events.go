@@ -13,11 +13,11 @@ import (
 
 // EventAnalyzer performs event summary analysis
 type EventAnalyzer struct {
-	client *steve.Client
+	client steve.ResourceReader
 }
 
 // NewEventAnalyzer creates a new event analyzer
-func NewEventAnalyzer(client *steve.Client) *EventAnalyzer {
+func NewEventAnalyzer(client steve.ResourceReader) *EventAnalyzer {
 	return &EventAnalyzer{client: client}
 }
 

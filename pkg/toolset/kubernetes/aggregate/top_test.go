@@ -1,7 +1,10 @@
 package aggregate
 
 import (
+	"context"
 	"testing"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve/fake"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -57,6 +60,63 @@ func TestSortTopItems_DefaultName(t *testing.T) {
 	sortTopItems(items, "")
 	if items[0].Name != "pod-a" {
 		t.Errorf("expected first item to be pod-a, got %s", items[0].Name)
+	}
+}
+
+func TestSortTopItems_ByCPULimit(t *testing.T) {
+	items := []TopItem{
+		{Name: "pod-a", CPULimit: 100},
+		{Name: "pod-b", CPULimit: 500},
+	}
+	sortTopItems(items, "cpu.limit")
+	if items[0].Name != "pod-b" {
+		t.Errorf("expected pod-b first by cpu.limit, got %s", items[0].Name)
+	}
+}
+
+func TestSortTopItems_ByMemoryLimit(t *testing.T) {
+	items := []TopItem{
+		{Name: "pod-a", MemLimit: 1024},
+		{Name: "pod-b", MemLimit: 4096},
+	}
+	sortTopItems(items, "memory.limit")
+	if items[0].Name != "pod-b" {
+		t.Errorf("expected pod-b first by memory.limit, got %s", items[0].Name)
+	}
+}
+
+func TestSortTopItems_ByCPUUtilPct(t *testing.T) {
+	items := []TopItem{
+		{Name: "pod-a", CPUReq: 1000, CPUUtil: 200}, // 20%
+		{Name: "pod-b", CPUReq: 1000, CPUUtil: 800}, // 80%
+	}
+	sortTopItems(items, "cpu.util.percentage")
+	if items[0].Name != "pod-b" {
+		t.Errorf("expected pod-b first by cpu.util.percentage (80%% > 20%%), got %s", items[0].Name)
+	}
+}
+
+func TestSortTopItems_ByName(t *testing.T) {
+	items := []TopItem{
+		{Name: "pod-c"},
+		{Name: "pod-a"},
+		{Name: "pod-b"},
+	}
+	sortTopItems(items, "name")
+	if items[0].Name != "pod-a" {
+		t.Errorf("expected pod-a first by name, got %s", items[0].Name)
+	}
+}
+
+func TestSortTopItems_PodCount(t *testing.T) {
+	// pod.count falls through to name sort
+	items := []TopItem{
+		{Name: "pod-b"},
+		{Name: "pod-a"},
+	}
+	sortTopItems(items, "pod.count")
+	if items[0].Name != "pod-a" {
+		t.Errorf("expected pod-a first (name fallback), got %s", items[0].Name)
 	}
 }
 
@@ -331,4 +391,152 @@ func TestClampLimit(t *testing.T) {
 			t.Errorf("ClampLimit(%d) = %d, want %d", tt.input, got, tt.want)
 		}
 	}
+}
+
+func TestTopAnalyzer_Analyze_Pods(t *testing.T) {
+	c := fake.NewClient()
+	addTopPodResource(c, "pod-a", "default", "500m", "256Mi")
+	addTopPodResource(c, "pod-b", "default", "1", "512Mi")
+	addTopPodResource(c, "pod-c", "kube-system", "100m", "128Mi")
+
+	a := NewTopAnalyzer(c)
+	result, err := a.Analyze(context.Background(), TopParams{
+		Cluster:   "test-cluster",
+		Kind:      "pod",
+		Namespace: "default",
+		SortBy:    "cpu.request",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	if result.Total != 2 {
+		t.Fatalf("expected 2 pods in default ns, got %d", result.Total)
+	}
+	if result.Items[0].Name != "pod-b" {
+		t.Errorf("expected pod-b (1 cpu) first by cpu.request, got %s", result.Items[0].Name)
+	}
+	if result.Items[0].CPUReq != 1000 {
+		t.Errorf("expected CPUReq 1000 for pod-b, got %d", result.Items[0].CPUReq)
+	}
+}
+
+func TestTopAnalyzer_Analyze_Nodes(t *testing.T) {
+	c := fake.NewClient()
+	addTopNodeResource(c, "node-a", "4", "16Gi", "3800m", "15Gi")
+	addTopNodeResource(c, "node-b", "8", "32Gi", "7800m", "31Gi")
+
+	a := NewTopAnalyzer(c)
+	result, err := a.Analyze(context.Background(), TopParams{
+		Cluster: "test-cluster",
+		Kind:    "node",
+		SortBy:  "cpu.request",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	if result.Total != 2 {
+		t.Fatalf("expected 2 nodes, got %d", result.Total)
+	}
+	if result.Items[0].Name != "node-b" {
+		t.Errorf("expected node-b (8 cpu) first, got %s", result.Items[0].Name)
+	}
+}
+
+func TestTopAnalyzer_Analyze_DefaultKind(t *testing.T) {
+	c := fake.NewClient()
+	addTopPodResource(c, "pod-1", "default", "500m", "256Mi")
+
+	a := NewTopAnalyzer(c)
+	result, err := a.Analyze(context.Background(), TopParams{
+		Cluster: "test-cluster",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("expected 1 pod (default kind), got %d", result.Total)
+	}
+}
+
+func TestTopAnalyzer_Analyze_UnsupportedKind(t *testing.T) {
+	c := fake.NewClient()
+	a := NewTopAnalyzer(c)
+	_, err := a.Analyze(context.Background(), TopParams{
+		Cluster: "test-cluster",
+		Kind:    "service",
+	})
+	if err == nil {
+		t.Fatal("expected error for unsupported kind")
+	}
+}
+
+func TestTopAnalyzer_Analyze_LabelSelector(t *testing.T) {
+	c := fake.NewClient()
+	addTopPodResourceWithLabels(c, "pod-a", "default", "500m", "256Mi", map[string]string{"app": "nginx"})
+	addTopPodResourceWithLabels(c, "pod-b", "default", "250m", "128Mi", map[string]string{"app": "redis"})
+
+	a := NewTopAnalyzer(c)
+	result, err := a.Analyze(context.Background(), TopParams{
+		Cluster:       "test-cluster",
+		Kind:          "pod",
+		LabelSelector: "app=nginx",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+	if result.Total != 1 {
+		t.Fatalf("expected 1 pod with app=nginx, got %d", result.Total)
+	}
+	if result.Items[0].Name != "pod-a" {
+		t.Errorf("expected pod-a, got %s", result.Items[0].Name)
+	}
+}
+
+func addTopPodResource(c *fake.Client, name, namespace, cpu, memory string) {
+	addTopPodResourceWithLabels(c, name, namespace, cpu, memory, nil)
+}
+
+func addTopPodResourceWithLabels(c *fake.Client, name, namespace, cpu, memory string, labels map[string]string) {
+	u := &unstructured.Unstructured{}
+	u.SetUnstructuredContent(map[string]interface{}{
+		"spec": map[string]interface{}{
+			"containers": []interface{}{
+				map[string]interface{}{
+					"name": "main",
+					"resources": map[string]interface{}{
+						"requests": map[string]interface{}{
+							"cpu":    cpu,
+							"memory": memory,
+						},
+					},
+				},
+			},
+		},
+	})
+	u.SetKind("Pod")
+	u.SetName(name)
+	u.SetNamespace(namespace)
+	u.SetLabels(labels)
+	c.AddResource(u)
+}
+
+func addTopNodeResource(c *fake.Client, name, capacityCPU, capacityMem, allocCPU, allocMem string) {
+	u := &unstructured.Unstructured{}
+	u.SetUnstructuredContent(map[string]interface{}{
+		"status": map[string]interface{}{
+			"capacity": map[string]interface{}{
+				"cpu":    capacityCPU,
+				"memory": capacityMem,
+			},
+			"allocatable": map[string]interface{}{
+				"cpu":    allocCPU,
+				"memory": allocMem,
+			},
+		},
+	})
+	u.SetKind("Node")
+	u.SetName(name)
+	c.AddResource(u)
 }

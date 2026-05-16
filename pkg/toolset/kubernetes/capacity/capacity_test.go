@@ -1,7 +1,10 @@
 package capacity
 
 import (
+	"context"
 	"testing"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve/fake"
 
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -219,7 +222,7 @@ func TestMatchTaints(t *testing.T) {
 	})
 }
 
-func makeUnstructured(kind, name, namespace string, content map[string]interface{}) unstructured.Unstructured {
+func makeUnstructured(_, name, namespace string, content map[string]interface{}) unstructured.Unstructured {
 	u := unstructured.Unstructured{}
 	u.SetUnstructuredContent(content)
 	u.SetName(name)
@@ -602,4 +605,226 @@ func TestMatchesNodeSelector_Nil(t *testing.T) {
 	if !matchesNodeSelector(u, nil) {
 		t.Fatal("nil selector should match all")
 	}
+}
+
+func TestAnalyze_Integration(t *testing.T) {
+	c := makeFakeClient()
+
+	a := NewAnalyzer(c)
+	result, err := a.Analyze(context.Background(), Params{
+		Cluster: "test-cluster",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	if len(result.Nodes) != 2 {
+		t.Fatalf("expected 2 nodes, got %d", len(result.Nodes))
+	}
+
+	// Verify node names
+	nodeNames := map[string]bool{}
+	for _, n := range result.Nodes {
+		nodeNames[n.Name] = true
+	}
+	if !nodeNames["node-1"] || !nodeNames["node-2"] {
+		t.Errorf("expected nodes node-1 and node-2, got %v", nodeNames)
+	}
+
+	// Verify cluster-level aggregation
+	if result.Cluster.PodCount.Requested != 3 {
+		t.Errorf("expected 3 pods requested, got %d", result.Cluster.PodCount.Requested)
+	}
+	// 500m + 1000m + 250m = 1750m CPU requested
+	if result.Cluster.CPU.Requested != 1750 {
+		t.Errorf("expected 1750m CPU requested, got %d", result.Cluster.CPU.Requested)
+	}
+	// 256Mi + 512Mi + 128Mi = 896Mi memory requested
+	expectedMem := int64(256+512+128) * 1024 * 1024
+	if result.Cluster.Memory.Requested != expectedMem {
+		t.Errorf("expected %d memory requested, got %d", expectedMem, result.Cluster.Memory.Requested)
+	}
+}
+
+func TestAnalyze_Integration_ShowPods(t *testing.T) {
+	c := makeFakeClient()
+
+	a := NewAnalyzer(c)
+	result, err := a.Analyze(context.Background(), Params{
+		Cluster:  "test-cluster",
+		ShowPods: true,
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	// node-1 should have 2 pods, node-2 should have 1
+	for _, n := range result.Nodes {
+		switch n.Name {
+		case "node-1":
+			if len(n.Pods) != 2 {
+				t.Errorf("node-1: expected 2 pods, got %d", len(n.Pods))
+			}
+		case "node-2":
+			if len(n.Pods) != 1 {
+				t.Errorf("node-2: expected 1 pod, got %d", len(n.Pods))
+			}
+		}
+	}
+}
+
+func TestAnalyze_Integration_NodeLabelSelector(t *testing.T) {
+	c := makeFakeClient()
+
+	a := NewAnalyzer(c)
+	result, err := a.Analyze(context.Background(), Params{
+		Cluster:           "test-cluster",
+		NodeLabelSelector: "env=prod",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	if len(result.Nodes) != 1 {
+		t.Fatalf("expected 1 node matching env=prod, got %d", len(result.Nodes))
+	}
+	if result.Nodes[0].Name != "node-1" {
+		t.Errorf("expected node-1 (env=prod), got %s", result.Nodes[0].Name)
+	}
+}
+
+func TestAnalyze_Integration_PodLabelSelector(t *testing.T) {
+	c := makeFakeClient()
+
+	a := NewAnalyzer(c)
+	result, err := a.Analyze(context.Background(), Params{
+		Cluster:       "test-cluster",
+		LabelSelector: "app=nginx",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	// Only pod-a (app=nginx, on node-1) and pod-c (app=nginx, on node-2) should count
+	if result.Cluster.PodCount.Requested != 2 {
+		t.Errorf("expected 2 pods (app=nginx), got %d", result.Cluster.PodCount.Requested)
+	}
+	// pod-a has 256Mi, pod-c has 128Mi = 384Mi
+	expectedMem := int64(256+128) * 1024 * 1024
+	if result.Cluster.Memory.Requested != expectedMem {
+		t.Errorf("expected %d memory requested, got %d", expectedMem, result.Cluster.Memory.Requested)
+	}
+}
+
+func makeFakeClient() *fake.Client {
+	c := fake.NewClient()
+
+	c.AddResource(makeUnstructuredPtr("Node", "node-1", "", map[string]interface{}{
+		"status": map[string]interface{}{
+			"capacity": map[string]interface{}{
+				"cpu":    "4",
+				"memory": "16Gi",
+				"pods":   "110",
+			},
+			"allocatable": map[string]interface{}{
+				"cpu":    "3900m",
+				"memory": "15Gi",
+				"pods":   "110",
+			},
+		},
+	}, map[string]string{"env": "prod"}))
+
+	c.AddResource(makeUnstructuredPtr("Node", "node-2", "", map[string]interface{}{
+		"status": map[string]interface{}{
+			"capacity": map[string]interface{}{
+				"cpu":    "2",
+				"memory": "8Gi",
+				"pods":   "110",
+			},
+			"allocatable": map[string]interface{}{
+				"cpu":    "1900m",
+				"memory": "7Gi",
+				"pods":   "110",
+			},
+		},
+	}, map[string]string{"env": "staging"}))
+
+	// pod-a: Running on node-1, app=nginx, 500m/256Mi requests, 1/512Mi limits
+	c.AddResource(makeUnstructuredPtr("Pod", "pod-a", "default", map[string]interface{}{
+		"status": map[string]interface{}{
+			"phase": "Running",
+		},
+		"spec": map[string]interface{}{
+			"nodeName": "node-1",
+			"containers": []interface{}{
+				map[string]interface{}{
+					"name": "app",
+					"resources": map[string]interface{}{
+						"requests": map[string]interface{}{
+							"cpu":    "500m",
+							"memory": "256Mi",
+						},
+						"limits": map[string]interface{}{
+							"cpu":    "1",
+							"memory": "512Mi",
+						},
+					},
+				},
+			},
+		},
+	}, map[string]string{"app": "nginx"}))
+
+	// pod-b: Running on node-1, app=redis, 1000m/512Mi requests
+	c.AddResource(makeUnstructuredPtr("Pod", "pod-b", "default", map[string]interface{}{
+		"status": map[string]interface{}{
+			"phase": "Running",
+		},
+		"spec": map[string]interface{}{
+			"nodeName": "node-1",
+			"containers": []interface{}{
+				map[string]interface{}{
+					"name": "cache",
+					"resources": map[string]interface{}{
+						"requests": map[string]interface{}{
+							"cpu":    "1",
+							"memory": "512Mi",
+						},
+					},
+				},
+			},
+		},
+	}, map[string]string{"app": "redis"}))
+
+	// pod-c: Running on node-2, app=nginx, 250m/128Mi requests
+	c.AddResource(makeUnstructuredPtr("Pod", "pod-c", "default", map[string]interface{}{
+		"status": map[string]interface{}{
+			"phase": "Running",
+		},
+		"spec": map[string]interface{}{
+			"nodeName": "node-2",
+			"containers": []interface{}{
+				map[string]interface{}{
+					"name": "web",
+					"resources": map[string]interface{}{
+						"requests": map[string]interface{}{
+							"cpu":    "250m",
+							"memory": "128Mi",
+						},
+					},
+				},
+			},
+		},
+	}, map[string]string{"app": "nginx"}))
+
+	return c
+}
+
+func makeUnstructuredPtr(kind, name, namespace string, content map[string]interface{}, labels map[string]string) *unstructured.Unstructured {
+	u := &unstructured.Unstructured{}
+	u.SetUnstructuredContent(content)
+	u.SetKind(kind)
+	u.SetName(name)
+	u.SetNamespace(namespace)
+	u.SetLabels(labels)
+	return u
 }

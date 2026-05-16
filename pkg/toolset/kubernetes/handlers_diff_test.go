@@ -59,7 +59,7 @@ func TestTrimMetadataForDiff(t *testing.T) {
 		}
 	})
 
-	t.Run("no metadata field", func(t *testing.T) {
+	t.Run("no metadata field", func(_ *testing.T) {
 		u := &unstructured.Unstructured{}
 		u.SetUnstructuredContent(map[string]interface{}{
 			"kind": "Pod",
@@ -68,7 +68,7 @@ func TestTrimMetadataForDiff(t *testing.T) {
 		trimMetadataForDiff(u)
 	})
 
-	t.Run("non-map metadata", func(t *testing.T) {
+	t.Run("non-map metadata", func(_ *testing.T) {
 		u := &unstructured.Unstructured{}
 		u.SetUnstructuredContent(map[string]interface{}{
 			"metadata": "not-a-map",

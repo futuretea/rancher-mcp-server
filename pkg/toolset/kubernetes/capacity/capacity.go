@@ -17,11 +17,11 @@ import (
 
 // Analyzer performs capacity analysis
 type Analyzer struct {
-	client *steve.Client
+	client steve.ResourceReader
 }
 
 // NewAnalyzer creates a new capacity analyzer
-func NewAnalyzer(client *steve.Client) *Analyzer {
+func NewAnalyzer(client steve.ResourceReader) *Analyzer {
 	return &Analyzer{client: client}
 }
 

@@ -12,11 +12,11 @@ import (
 
 // SummaryAnalyzer performs resource summary analysis
 type SummaryAnalyzer struct {
-	client *steve.Client
+	client steve.ResourceReader
 }
 
 // NewSummaryAnalyzer creates a new summary analyzer
-func NewSummaryAnalyzer(client *steve.Client) *SummaryAnalyzer {
+func NewSummaryAnalyzer(client steve.ResourceReader) *SummaryAnalyzer {
 	return &SummaryAnalyzer{client: client}
 }
 

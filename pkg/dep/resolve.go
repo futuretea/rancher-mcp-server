@@ -59,15 +59,15 @@ type Result struct {
 
 // Resolve resolves the dependency/dependent graph for a Kubernetes resource.
 // direction: "dependents" (default) or "dependencies".
-func Resolve(ctx context.Context, steveClient *steve.Client, clusterID, rootKind, rootNS, rootName, direction string, maxDepth int) (*Result, error) {
+func Resolve(ctx context.Context, client steve.ResourceReader, clusterID, rootKind, rootNS, rootName, direction string, maxDepth int) (*Result, error) {
 	// 1. Get the root resource
-	root, err := steveClient.GetResource(ctx, clusterID, rootKind, rootNS, rootName)
+	root, err := client.GetResource(ctx, clusterID, rootKind, rootNS, rootName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get root resource %s/%s: %w", rootKind, rootName, err)
 	}
 
 	// 2. List all relevant resources concurrently
-	allObjects, err := listAllResources(ctx, steveClient, clusterID, rootNS)
+	allObjects, err := listAllResources(ctx, client, clusterID, rootNS)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list resources: %w", err)
 	}
@@ -234,7 +234,7 @@ func applyRelationships(node *Node, rmap *RelationshipMap, globalMapByUID map[ty
 }
 
 // listAllResources lists all relevant resource types concurrently.
-func listAllResources(ctx context.Context, steveClient *steve.Client, clusterID, namespace string) ([]unstructuredv1.Unstructured, error) {
+func listAllResources(ctx context.Context, client steve.ResourceReader, clusterID, namespace string) ([]unstructuredv1.Unstructured, error) {
 	var (
 		mu       sync.Mutex
 		wg       sync.WaitGroup
@@ -251,7 +251,7 @@ func listAllResources(ctx context.Context, steveClient *steve.Client, clusterID,
 				ns = ""
 			}
 
-			list, err := steveClient.ListResources(ctx, clusterID, s.kind, ns, nil)
+			list, err := client.ListResources(ctx, clusterID, s.kind, ns, nil)
 			if err != nil {
 				// Non-fatal: some resource types may not exist on the cluster
 				return

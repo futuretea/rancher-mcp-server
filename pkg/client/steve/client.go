@@ -23,6 +23,14 @@ import (
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
 )
 
+// ResourceReader is the read-only interface for querying Kubernetes resources.
+// *Client satisfies this interface implicitly.
+type ResourceReader interface {
+	GetResource(ctx context.Context, clusterID, kind, namespace, name string) (*unstructured.Unstructured, error)
+	ListResources(ctx context.Context, clusterID, kind, namespace string, opts *ListOptions) (*unstructured.UnstructuredList, error)
+	GetEvents(ctx context.Context, clusterID, namespace, name, kind string) ([]corev1.Event, error)
+}
+
 // Client provides methods for interacting with Kubernetes clusters via Rancher's Steve API.
 type Client struct {
 	serverURL string

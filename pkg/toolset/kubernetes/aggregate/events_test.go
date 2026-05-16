@@ -1,8 +1,11 @@
 package aggregate
 
 import (
+	"context"
 	"testing"
 	"time"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve/fake"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -113,5 +116,85 @@ func TestSortEventItems_ByName(t *testing.T) {
 	}
 	if items[2].Reason != "Event-C" {
 		t.Errorf("expected third item to be Event-C, got %s", items[2].Reason)
+	}
+}
+
+func TestEventAnalyzer_Analyze_Integration(t *testing.T) {
+	c := fake.NewClient()
+	now := time.Now()
+
+	c.AddEvent(corev1.Event{
+		ObjectMeta:     metav1.ObjectMeta{Namespace: "default"},
+		Reason:         "FailedScheduling",
+		Type:           "Warning",
+		InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "default"},
+		LastTimestamp:  metav1.Time{Time: now.Add(-2 * time.Minute)},
+	})
+	c.AddEvent(corev1.Event{
+		ObjectMeta:     metav1.ObjectMeta{Namespace: "default"},
+		Reason:         "FailedScheduling",
+		Type:           "Warning",
+		InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "default"},
+		LastTimestamp:  metav1.Time{Time: now.Add(-1 * time.Minute)},
+	})
+	c.AddEvent(corev1.Event{
+		ObjectMeta:     metav1.ObjectMeta{Namespace: "kube-system"},
+		Reason:         "OOMKilling",
+		Type:           "Warning",
+		InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "kube-system"},
+		LastTimestamp:  metav1.Time{Time: now.Add(-5 * time.Minute)},
+	})
+
+	a := NewEventAnalyzer(c)
+	result, err := a.Analyze(context.Background(), EventParams{
+		Cluster: "test-cluster",
+		Type:    "Warning",
+		SortBy:  "count",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	if result.Total != 2 {
+		t.Fatalf("expected 2 event groups, got %d", result.Total)
+	}
+	if result.Items[0].Reason != "FailedScheduling" || result.Items[0].Count != 2 {
+		t.Errorf("expected FailedScheduling count=2, got %+v", result.Items[0])
+	}
+}
+
+func TestEventAnalyzer_Analyze_KindFilter(t *testing.T) {
+	c := fake.NewClient()
+	now := time.Now()
+
+	c.AddEvent(corev1.Event{
+		ObjectMeta:     metav1.ObjectMeta{Namespace: "default"},
+		Reason:         "FailedMount",
+		Type:           "Warning",
+		InvolvedObject: corev1.ObjectReference{Kind: "Pod", Namespace: "default", Name: "pod-1"},
+		LastTimestamp:  metav1.Time{Time: now.Add(-1 * time.Minute)},
+	})
+	c.AddEvent(corev1.Event{
+		ObjectMeta:     metav1.ObjectMeta{Namespace: "default"},
+		Reason:         "Unhealthy",
+		Type:           "Warning",
+		InvolvedObject: corev1.ObjectReference{Kind: "Node", Namespace: "", Name: "node-1"},
+		LastTimestamp:  metav1.Time{Time: now.Add(-1 * time.Minute)},
+	})
+
+	a := NewEventAnalyzer(c)
+	result, err := a.Analyze(context.Background(), EventParams{
+		Cluster: "test-cluster",
+		Kind:    "Node",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	if result.Total != 1 {
+		t.Fatalf("expected 1 event for Node kind, got %d", result.Total)
+	}
+	if result.Items[0].Reason != "Unhealthy" {
+		t.Errorf("expected Unhealthy, got %s", result.Items[0].Reason)
 	}
 }

@@ -1,7 +1,10 @@
 package aggregate
 
 import (
+	"context"
 	"testing"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve/fake"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -159,4 +162,77 @@ func TestCapitalize(t *testing.T) {
 	if got := capitalize(""); got != "" {
 		t.Errorf("capitalize('') = %s, want empty string", got)
 	}
+}
+
+func TestWorkloadAnalyzer_Analyze_Integration(t *testing.T) {
+	c := fake.NewClient()
+
+	// Add deployments
+	addWorkloadResource(c, "Deployment", "dep-a", "default", 5, 5, 0)
+	addWorkloadResource(c, "Deployment", "dep-b", "default", 10, 7, 3)
+	addWorkloadResource(c, "Deployment", "dep-c", "kube-system", 3, 3, 0)
+
+	a := NewWorkloadAnalyzer(c)
+	result, err := a.Analyze(context.Background(), WorkloadParams{
+		Cluster:   "test-cluster",
+		Kind:      "deployment",
+		Namespace: "default",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	if result.Total != 2 {
+		t.Fatalf("expected 2 deployments in default ns, got %d", result.Total)
+	}
+
+	// dep-b should be first (worst unready count by default)
+	names := make([]string, len(result.Items))
+	for i, item := range result.Items {
+		names[i] = item.Name
+	}
+
+	found := make(map[string]bool)
+	for _, n := range names {
+		found[n] = true
+	}
+	if !found["dep-a"] || !found["dep-b"] {
+		t.Errorf("expected dep-a and dep-b, got %v", names)
+	}
+}
+
+func TestWorkloadAnalyzer_Analyze_AllKinds(t *testing.T) {
+	c := fake.NewClient()
+	addWorkloadResource(c, "Deployment", "dep-1", "default", 3, 3, 0)
+	addWorkloadResource(c, "StatefulSet", "sts-1", "default", 2, 2, 0)
+	addWorkloadResource(c, "DaemonSet", "ds-1", "default", 1, 1, 0)
+
+	a := NewWorkloadAnalyzer(c)
+	result, err := a.Analyze(context.Background(), WorkloadParams{
+		Cluster: "test-cluster",
+	})
+	if err != nil {
+		t.Fatalf("Analyze failed: %v", err)
+	}
+
+	if result.Total != 3 {
+		t.Fatalf("expected 3 workloads (all kinds), got %d", result.Total)
+	}
+}
+
+func addWorkloadResource(c *fake.Client, kind, name, namespace string, desired, ready, unavailable int32) {
+	u := &unstructured.Unstructured{}
+	u.SetUnstructuredContent(map[string]interface{}{
+		"status": map[string]interface{}{
+			"replicas":            int64(desired),
+			"readyReplicas":       int64(ready),
+			"updatedReplicas":     int64(ready),
+			"unavailableReplicas": int64(unavailable),
+		},
+	})
+	u.SetKind(kind)
+	u.SetAPIVersion("apps/v1")
+	u.SetName(name)
+	u.SetNamespace(namespace)
+	c.AddResource(u)
 }

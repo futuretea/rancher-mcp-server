@@ -57,10 +57,10 @@ func TestFormatFloat(t *testing.T) {
 
 func TestGetClusterProvider(t *testing.T) {
 	tests := []struct {
-		name   string
-		driver string
+		name     string
+		driver   string
 		provider string
-		want   string
+		want     string
 	}{
 		{"imported rke2", "imported", "rke2", "RKE2"},
 		{"imported k3s", "imported", "k3s", "K3S"},

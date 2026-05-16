@@ -52,13 +52,13 @@ func makeFakeNode(kind, namespace, name string, content map[string]interface{}) 
 	u.SetNamespace(namespace)
 	u.SetUnstructuredContent(content)
 	return &Node{
-		Unstructured:     u,
-		UID:              types.UID(namespace + "/" + kind + "/" + name),
-		Kind:             kind,
-		Namespace:        namespace,
-		Name:             name,
-		Dependencies:     map[types.UID]RelationshipSet{},
-		Dependents:       map[types.UID]RelationshipSet{},
+		Unstructured: u,
+		UID:          types.UID(namespace + "/" + kind + "/" + name),
+		Kind:         kind,
+		Namespace:    namespace,
+		Name:         name,
+		Dependencies: map[types.UID]RelationshipSet{},
+		Dependents:   map[types.UID]RelationshipSet{},
 	}
 }
 

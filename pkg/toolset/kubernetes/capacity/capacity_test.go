@@ -300,9 +300,9 @@ func TestExtractNodeInfo(t *testing.T) {
 func TestAggregateNodeToCluster(t *testing.T) {
 	cluster := &NodeInfo{Name: "*"}
 	node := &NodeInfo{
-		Name: "node-1",
-		CPU:  Resource{Capacity: 4000, Allocatable: 3900, Requested: 2500, Limited: 5000, Utilized: 1800},
-		Memory: Resource{Capacity: 17179869184, Allocatable: 16106127360, Requested: 8589934592, Limited: 12884901888, Utilized: 6442450944},
+		Name:     "node-1",
+		CPU:      Resource{Capacity: 4000, Allocatable: 3900, Requested: 2500, Limited: 5000, Utilized: 1800},
+		Memory:   Resource{Capacity: 17179869184, Allocatable: 16106127360, Requested: 8589934592, Limited: 12884901888, Utilized: 6442450944},
 		PodCount: PodCountInfo{Capacity: 110, Allocatable: 110, Requested: 15},
 	}
 

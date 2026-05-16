@@ -205,8 +205,8 @@ func TestGetNestedInt64(t *testing.T) {
 
 func TestSortedChildren(t *testing.T) {
 	nodeMap := NodeMap{
-		"uid-a": {UID: "uid-a", Namespace: "ns-2", Kind: "Pod", Name: "pod-a"},
-		"uid-b": {UID: "uid-b", Namespace: "ns-1", Kind: "Pod", Name: "pod-b"},
+		"uid-a":    {UID: "uid-a", Namespace: "ns-2", Kind: "Pod", Name: "pod-a"},
+		"uid-b":    {UID: "uid-b", Namespace: "ns-1", Kind: "Pod", Name: "pod-b"},
 		"uid-self": {UID: "uid-self", Namespace: "ns-1", Kind: "Pod", Name: "self"},
 	}
 

@@ -23,10 +23,10 @@ builds:
     ldflags:
       - -s
       - -w
-      - -X "github.com/rancher/rancher-mcp-server/pkg/version.Version=v{{ .Version }}"
-      - -X "github.com/rancher/rancher-mcp-server/pkg/version.CommitHash={{ .FullCommit }}"
-      - -X "github.com/rancher/rancher-mcp-server/pkg/version.BuildTime={{ .Date }}"
-      - -X "github.com/rancher/rancher-mcp-server/pkg/version.BinaryName=rancher-mcp-server"
+      - -X "github.com/futuretea/rancher-mcp-server/pkg/version.Version=v{{ .Version }}"
+      - -X "github.com/futuretea/rancher-mcp-server/pkg/version.CommitHash={{ .FullCommit }}"
+      - -X "github.com/futuretea/rancher-mcp-server/pkg/version.BuildTime={{ .Date }}"
+      - -X "github.com/futuretea/rancher-mcp-server/pkg/version.BinaryName=rancher-mcp-server"
 archives:
   - formats: ["tar.gz"]
     ids:

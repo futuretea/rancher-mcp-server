@@ -603,6 +603,7 @@ View rollout history for Deployments. Shows revision history with change annotat
 | `cluster` | string | Yes | Cluster ID |
 | `namespace` | string | Yes | Namespace |
 | `name` | string | Yes | Deployment name |
+| `format` | string | No | Output format: json, table (default: table) |
 
 </details>
 
@@ -615,6 +616,7 @@ Analyze node health and resource usage. Shows node capacity, allocatable resourc
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
 | `name` | string | No | Node name (if empty, analyzes all nodes) |
+| `format` | string | No | Output format: json, yaml (default: json) |
 
 </details>
 

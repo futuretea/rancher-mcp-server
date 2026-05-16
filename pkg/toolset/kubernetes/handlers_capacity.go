@@ -4,8 +4,8 @@ import (
 	"context"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/capacity"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
 // capacityHandler handles the kubernetes_capacity tool

@@ -8,9 +8,9 @@ import (
 
 func TestDeriveWorkloadStatus(t *testing.T) {
 	tests := []struct {
-		name   string
-		item   WorkloadItem
-		want   string
+		name string
+		item WorkloadItem
+		want string
 	}{
 		{
 			name: "healthy",
@@ -86,9 +86,9 @@ func TestExtractWorkloadItem(t *testing.T) {
 
 func TestSortWorkloadItems_ByUnreadyCount(t *testing.T) {
 	items := []WorkloadItem{
-		{Name: "dep-a", Ready: 5, Desired: 5},   // unready = 0
-		{Name: "dep-b", Ready: 3, Desired: 10},  // unready = 7
-		{Name: "dep-c", Ready: 8, Desired: 10},  // unready = 2
+		{Name: "dep-a", Ready: 5, Desired: 5},  // unready = 0
+		{Name: "dep-b", Ready: 3, Desired: 10}, // unready = 7
+		{Name: "dep-c", Ready: 8, Desired: 10}, // unready = 2
 	}
 	sortWorkloadItems(items, "unready.count")
 	if items[0].Name != "dep-b" {
@@ -104,9 +104,9 @@ func TestSortWorkloadItems_ByUnreadyCount(t *testing.T) {
 
 func TestSortWorkloadItems_ByReadyRatio(t *testing.T) {
 	items := []WorkloadItem{
-		{Name: "dep-a", Ready: 5, Desired: 5},   // 100%
-		{Name: "dep-b", Ready: 3, Desired: 10},  // 30%
-		{Name: "dep-c", Ready: 8, Desired: 10},  // 80%
+		{Name: "dep-a", Ready: 5, Desired: 5},  // 100%
+		{Name: "dep-b", Ready: 3, Desired: 10}, // 30%
+		{Name: "dep-c", Ready: 8, Desired: 10}, // 80%
 	}
 	sortWorkloadItems(items, "ready.ratio")
 	// Lower ready ratio first (worst first)

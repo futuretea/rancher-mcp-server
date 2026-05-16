@@ -73,17 +73,17 @@ func newHTTPServer(mcpServer *mcp.Server, staticConfig *config.StaticConfig) *ht
 	}
 
 	sseServer := mcpServer.ServeSse(staticConfig.SSEBaseURL, httpServer)
-	streamableHttpServer := mcpServer.ServeHTTP(httpServer)
+	streamableHTTPServer := mcpServer.ServeHTTP(httpServer)
 	mux.Handle(sseEndpoint, sseServer)
 	mux.Handle(sseMessageEndpoint, sseServer)
-	mux.Handle(mcpEndpoint, streamableHttpServer)
-	mux.HandleFunc(healthEndpoint, func(w http.ResponseWriter, r *http.Request) {
+	mux.Handle(mcpEndpoint, streamableHTTPServer)
+	mux.HandleFunc(healthEndpoint, func(w http.ResponseWriter, _ *http.Request) {
 		if mcpServer.IsHealthy() {
 			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("healthy"))
+			_, _ = w.Write([]byte("healthy"))
 		} else {
 			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("unhealthy: Rancher client initialization failed"))
+			_, _ = w.Write([]byte("unhealthy: Rancher client initialization failed"))
 		}
 	})
 

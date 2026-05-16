@@ -12,7 +12,7 @@ import (
 
 // diffHandler handles the kubernetes_diff tool.
 // It compares two Kubernetes resource versions and shows the differences as a git-style diff.
-func diffHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
+func diffHandler(_ context.Context, _ interface{}, params map[string]interface{}) (string, error) {
 	// Extract required parameters
 	resource1JSON, err := paramutil.ExtractRequiredString(params, "resource1")
 	if err != nil {

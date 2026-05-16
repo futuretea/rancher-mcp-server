@@ -157,4 +157,3 @@ func handleUploadFile(ctx context.Context, client interface{}, params map[string
 	}
 	return string(data), nil
 }
-

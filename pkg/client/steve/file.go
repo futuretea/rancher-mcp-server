@@ -139,7 +139,7 @@ func (c *Client) downloadFileWithDepth(ctx context.Context, clusterID, namespace
 		}
 
 		switch hdr.Typeflag {
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg, 0:
 			content, err := io.ReadAll(tr)
 			if err != nil {
 				return nil, fmt.Errorf("read file from tar: %w", err)

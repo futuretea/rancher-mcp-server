@@ -72,9 +72,9 @@ var K8sKindsToGVRs = map[string]schema.GroupVersionResource{
 	"volumeattachment": {Group: "storage.k8s.io", Version: "v1", Resource: "volumeattachments"},
 
 	// --- Custom Resource Definitions (Group: "apiextensions.k8s.io") ---
-	"crd":                        {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
-	"customresourcedefinition":   {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
-	"customresourcedefinitions":  {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
+	"crd":                       {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
+	"customresourcedefinition":  {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
+	"customresourcedefinitions": {Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"},
 
 	// --- Discovery/Endpoint Resources (Group: "discovery.k8s.io") ---
 	"endpointslice":  {Group: "discovery.k8s.io", Version: "v1", Resource: "endpointslices"},

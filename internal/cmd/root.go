@@ -23,7 +23,10 @@ type IOStreams struct {
 }
 
 // bindFlags binds command-line flags to viper configuration keys
-func bindFlags(cmd *cobra.Command) {
+func bindFlags(cmd *cobra.Command) error {
+	rootCmd := cmd.Root()
+	flags := rootCmd.Flags()
+
 	// Map of viper config key to flag name
 	flagBindings := map[string]string{
 		// Server configuration
@@ -54,8 +57,15 @@ func bindFlags(cmd *cobra.Command) {
 	}
 
 	for key, flag := range flagBindings {
-		viper.BindPFlag(key, cmd.Flags().Lookup(flag))
+		pflag := flags.Lookup(flag)
+		if pflag == nil {
+			return fmt.Errorf("flag %q for config key %q is not defined", flag, key)
+		}
+		if err := viper.BindPFlag(key, pflag); err != nil {
+			return fmt.Errorf("bind flag %s to config key %s: %w", flag, key, err)
+		}
 	}
+	return nil
 }
 
 // NewMCPServer creates a new cobra command for the Rancher MCP Server
@@ -72,11 +82,10 @@ This server can run in stdio mode for integration with MCP clients or in HTTP mo
 for network access.`,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			bindFlags(cmd)
-			return nil
+		PersistentPreRunE: func(cmd *cobra.Command, _ []string) error {
+			return bindFlags(cmd)
 		},
-		RunE: func(cmd *cobra.Command, args []string) error {
+		RunE: func(_ *cobra.Command, _ []string) error {
 			return runServer(cfgFile, streams)
 		},
 	}
@@ -158,17 +167,17 @@ func runServer(cfgFile string, streams IOStreams) error {
 		fmt.Fprintf(streams.ErrOut, "Starting Rancher MCP Server in stdio mode\n")
 		fmt.Fprintf(streams.ErrOut, "Enabled tools: %v\n", server.GetEnabledTools())
 		return server.ServeStdio()
-	} else {
-		// HTTP/SSE mode - use logging
-		logging.Info("Starting Rancher MCP Server in HTTP/SSE mode on port %d", cfg.Port)
-		logging.Info("Enabled tools: %v", server.GetEnabledTools())
-		if cfg.SSEBaseURL != "" {
-			logging.Info("SSE Base URL: %s", cfg.SSEBaseURL)
-		}
-
-		ctx := context.Background()
-		return internalhttp.Serve(ctx, server, cfg)
 	}
+
+	// HTTP/SSE mode - use logging
+	logging.Info("Starting Rancher MCP Server in HTTP/SSE mode on port %d", cfg.Port)
+	logging.Info("Enabled tools: %v", server.GetEnabledTools())
+	if cfg.SSEBaseURL != "" {
+		logging.Info("SSE Base URL: %s", cfg.SSEBaseURL)
+	}
+
+	ctx := context.Background()
+	return internalhttp.Serve(ctx, server, cfg)
 }
 
 // newVersionCommand creates the version command
@@ -176,7 +185,7 @@ func newVersionCommand(streams IOStreams) *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "version",
 		Short: "Print version information",
-		Run: func(cmd *cobra.Command, args []string) {
+		Run: func(_ *cobra.Command, _ []string) {
 			fmt.Fprintf(streams.Out, "%s\n", version.GetVersionInfo())
 		},
 	}

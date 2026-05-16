@@ -691,7 +691,7 @@ func (r *APIResourceInfo) GVR() schema.GroupVersionResource {
 
 // ListAPIResources discovers all API resources available in the cluster.
 // It returns a list of resource types that can be used to fetch all resources.
-func (c *Client) ListAPIResources(ctx context.Context, clusterID string) ([]APIResourceInfo, error) {
+func (c *Client) ListAPIResources(_ context.Context, clusterID string) ([]APIResourceInfo, error) {
 	clientset, err := c.getClientset(clusterID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create clientset: %w", err)

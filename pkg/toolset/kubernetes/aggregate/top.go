@@ -272,7 +272,7 @@ func (a *TopAnalyzer) buildResult(items []TopItem, p TopParams, warning string) 
 
 	// Sort
 	if p.SortBy != "" {
-		sortTopItems(items, p.Kind, p.SortBy)
+		sortTopItems(items, p.SortBy)
 	}
 
 	// Truncate to limit (capped at MaxItems)
@@ -302,7 +302,7 @@ func needsMetrics(sortBy string) bool {
 }
 
 // sortTopItems sorts top items by the specified field
-func sortTopItems(items []TopItem, kind, sortBy string) {
+func sortTopItems(items []TopItem, sortBy string) {
 	sort.Slice(items, func(i, j int) bool {
 		a, b := items[i], items[j]
 		switch sortBy {

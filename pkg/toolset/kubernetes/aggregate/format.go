@@ -5,9 +5,9 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"gopkg.in/yaml.v3"
-	"unicode/utf8"
 )
 
 // FormatResult formats a result based on the format string

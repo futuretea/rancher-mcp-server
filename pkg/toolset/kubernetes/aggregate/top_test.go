@@ -12,7 +12,7 @@ func TestSortTopItems_ByCPURequest(t *testing.T) {
 		{Name: "pod-a", CPUReq: 500},
 		{Name: "pod-b", CPUReq: 300},
 	}
-	sortTopItems(items, "pod", "cpu.request")
+	sortTopItems(items, "cpu.request")
 	if items[0].Name != "pod-a" {
 		t.Errorf("expected first item to be pod-a, got %s", items[0].Name)
 	}
@@ -30,7 +30,7 @@ func TestSortTopItems_ByMemoryUtil(t *testing.T) {
 		{Name: "pod-a", MemUtil: 500},
 		{Name: "pod-b", MemUtil: 300},
 	}
-	sortTopItems(items, "pod", "mem.util")
+	sortTopItems(items, "mem.util")
 	if items[0].Name != "pod-a" {
 		t.Errorf("expected first item to be pod-a, got %s", items[0].Name)
 	}
@@ -42,7 +42,7 @@ func TestSortTopItems_ByRestartCount(t *testing.T) {
 		{Name: "pod-a", Restarts: 10},
 		{Name: "pod-b", Restarts: 5},
 	}
-	sortTopItems(items, "pod", "restart.count")
+	sortTopItems(items, "restart.count")
 	if items[0].Name != "pod-a" {
 		t.Errorf("expected first item to be pod-a, got %s", items[0].Name)
 	}
@@ -54,7 +54,7 @@ func TestSortTopItems_DefaultName(t *testing.T) {
 		{Name: "pod-a"},
 		{Name: "pod-b"},
 	}
-	sortTopItems(items, "pod", "")
+	sortTopItems(items, "")
 	if items[0].Name != "pod-a" {
 		t.Errorf("expected first item to be pod-a, got %s", items[0].Name)
 	}

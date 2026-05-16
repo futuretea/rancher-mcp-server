@@ -7,9 +7,9 @@ import (
 )
 
 func TestRequestMiddleware(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte("test"))
+		_, _ = w.Write([]byte("test"))
 	})
 
 	middleware := RequestMiddleware(handler)
@@ -29,7 +29,7 @@ func TestRequestMiddleware(t *testing.T) {
 }
 
 func TestRequestMiddlewareHealthCheck(t *testing.T) {
-	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	handler := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
 	})
 

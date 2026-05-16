@@ -16,6 +16,8 @@ COMMON_BUILD_ARGS = -ldflags "$(LD_FLAGS)"
 
 GOLANGCI_LINT = $(shell pwd)/_output/tools/bin/golangci-lint
 GOLANGCI_LINT_VERSION ?= v2.2.2
+GOLANGCI_LINT_PKG = github.com/golangci/golangci-lint/v2/cmd/golangci-lint
+GO_VERSION = $(shell go env GOVERSION)
 
 # NPM version should not append the -dirty flag
 NPM_VERSION ?= $(shell echo $(shell git describe --tags --always) | sed 's/^v//')
@@ -85,15 +87,16 @@ tidy: ## Tidy up the go modules
 	go mod tidy
 
 .PHONY: golangci-lint
-golangci-lint: ## Download and install golangci-lint if not already installed
-		@[ -f $(GOLANGCI_LINT) ] || { \
-    	set -e ;\
-    	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b $(shell dirname $(GOLANGCI_LINT)) $(GOLANGCI_LINT_VERSION) ;\
-    	}
+golangci-lint: ## Build and install golangci-lint with the local Go toolchain
+	@[ -x $(GOLANGCI_LINT) ] && $(GOLANGCI_LINT) version 2>/dev/null | grep -q "built with $(GO_VERSION)" || { \
+		set -e; \
+		mkdir -p $(shell dirname $(GOLANGCI_LINT)); \
+		GOBIN=$(shell dirname $(GOLANGCI_LINT)) go install $(GOLANGCI_LINT_PKG)@$(GOLANGCI_LINT_VERSION); \
+	}
 
 .PHONY: lint
 lint: golangci-lint ## Lint the code
-	$(GOLANGCI_LINT) run --verbose --print-resources-usage
+	$(GOLANGCI_LINT) run --verbose
 
 .PHONY: version
 version: ## Show version information

@@ -23,7 +23,7 @@ func (t *Toolset) GetDescription() string {
 }
 
 // GetTools returns the tools provided by this toolset
-func (t *Toolset) GetTools(client interface{}) []toolset.ServerTool {
+func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 	return []toolset.ServerTool{
 		{
 			Tool: mcp.Tool{

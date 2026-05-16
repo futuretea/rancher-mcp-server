@@ -300,40 +300,6 @@ func formatTimestampedContent(timestamp time.Time, content string) string {
 	return line
 }
 
-// sortMultiPodLogsByTime sorts logs from multiple pods by timestamp.
-// Returns a merged, time-sorted list of log entries with pod and container info.
-func sortMultiPodLogsByTime(results []steve.MultiPodLogResult, timestamps bool) []LogEntry {
-	if !timestamps {
-		return nil
-	}
-	var allEntries []LogEntry
-	for _, result := range results {
-		for containerName, logs := range result.Logs {
-			lines := strings.Split(logs, "\n")
-			for _, line := range lines {
-				if line == "" {
-					continue
-				}
-				ts, content := parseLogTimestamp(line)
-				allEntries = append(allEntries, LogEntry{
-					Timestamp: ts,
-					Content:   content,
-					Pod:       result.Pod,
-					Container: containerName,
-				})
-			}
-		}
-	}
-	// Sort by timestamp (oldest first)
-	sort.Slice(allEntries, func(i, j int) bool {
-		if allEntries[i].Timestamp.IsZero() || allEntries[j].Timestamp.IsZero() {
-			return allEntries[i].Pod < allEntries[j].Pod
-		}
-		return allEntries[i].Timestamp.Before(allEntries[j].Timestamp)
-	})
-	return allEntries
-}
-
 // inspectPodHandler handles the kubernetes_inspect_pod tool
 func inspectPodHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)

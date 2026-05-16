@@ -3,24 +3,7 @@ package aggregate
 import (
 	"testing"
 	"time"
-
-	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
-
-func makeEvent(reason, kind, namespace string, count int32, lastTime time.Time) corev1.Event {
-	return corev1.Event{
-		Reason: reason,
-		Type:   "Warning",
-		InvolvedObject: corev1.ObjectReference{
-			Kind:      kind,
-			Namespace: namespace,
-		},
-		Count:          count,
-		LastTimestamp:  metav1.Time{Time: lastTime},
-		EventTime:      metav1.MicroTime{Time: lastTime},
-	}
-}
 
 func TestSortEventItems_ByCount(t *testing.T) {
 	now := time.Now()

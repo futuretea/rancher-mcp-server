@@ -131,4 +131,3 @@ func sortEventItems(items []EventItem, sortBy string) {
 		}
 	})
 }
-

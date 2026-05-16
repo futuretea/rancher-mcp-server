@@ -154,7 +154,7 @@ func TestToolHandlerLogsArgumentKeysOnly(t *testing.T) {
 	s := &Server{}
 	handler := s.makeToolHandler(toolset.ServerTool{
 		Tool: mcp.Tool{Name: "test_tool"},
-		Handler: func(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
+		Handler: func(_ context.Context, _ interface{}, _ map[string]interface{}) (string, error) {
 			return "ok", nil
 		},
 	})

@@ -835,6 +835,63 @@ Delete a Kubernetes resource. Disabled when `read_only=true` or `disable_destruc
 
 </details>
 
+<details>
+<summary>kubernetes_exec</summary>
+
+Execute a non-interactive command in a pod container. Disabled by default (`--enable-container-exec` required, also requires `--read-only=false`). The command must be an argv-style array; stdin and TTY are not supported. Returns `exitCode`, `stdout`, and `stderr`.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `namespace` | string | Yes | Namespace |
+| `name` | string | Yes | Pod name |
+| `container` | string | No | Container name (defaults to first container) |
+| `command` | array | Yes | Command and arguments, e.g. `["printenv", "HOSTNAME"]` |
+
+**Example:**
+
+```json
+{
+  "cluster": "c-abc123",
+  "namespace": "default",
+  "name": "nginx-7d8b8f9c4-x7k2q",
+  "command": ["cat", "/etc/hostname"]
+}
+```
+
+</details>
+
+<details>
+<summary>kubernetes_upload_file</summary>
+
+Upload a file to a pod container. Disabled by default (`--enable-container-file-upload` required). Accepts base64-encoded content and writes to the specified path. Requires `tar` in the container. Files are limited by `--max-file-size` (default: 10Mi).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `namespace` | string | Yes | Namespace |
+| `name` | string | Yes | Pod name |
+| `container` | string | No | Container name (defaults to first container) |
+| `filePath` | string | Yes | Absolute destination path in the container |
+| `content` | string | Yes | Base64-encoded file content |
+
+</details>
+
+<details>
+<summary>kubernetes_download_file</summary>
+
+Download a file from a pod container. Enabled by default, requires `--enable-container-file-download` to activate. Returns base64-encoded file content with metadata. Requires `tar` in the container. Files are limited by `--max-file-size` (default: 10Mi).
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `cluster` | string | Yes | Cluster ID |
+| `namespace` | string | Yes | Namespace |
+| `name` | string | Yes | Pod name |
+| `container` | string | No | Container name (defaults to first container) |
+| `filePath` | string | Yes | Absolute path of the file to download |
+
+</details>
+
 ### rancher
 
 <details>

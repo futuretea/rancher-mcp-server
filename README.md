@@ -241,19 +241,17 @@ Tools are organized into toolsets. Use `--toolsets` to enable specific sets or `
 
 ### High-Risk Container Operations
 
-Container exec and file mutation tools are disabled by default. To expose `kubernetes_exec`, administrators must set `read_only: false` and enable `enable_container_exec`. The tool accepts only an argv-style command array and does not support stdin or TTY sessions.
+Container exec and file transfer tools are disabled by default and must be explicitly enabled:
 
-```json
-{
-  "cluster": "c-abc123",
-  "namespace": "default",
-  "name": "api-7f8d8",
-  "container": "api",
-  "command": ["printenv", "HOSTNAME"]
-}
-```
+| Tool | Gate | Requires `read_only=false` |
+|------|------|---------------------------|
+| `kubernetes_exec` | `--enable-container-exec` | Yes |
+| `kubernetes_upload_file` | `--enable-container-file-upload` | No |
+| `kubernetes_download_file` | `--enable-container-file-download` | No |
 
-The response is JSON with `exitCode`, `stdout`, and `stderr`. A non-zero command exit is returned as a structured result; validation and transport failures are returned as tool errors.
+`kubernetes_exec` accepts an argv-style command array (no stdin, no TTY) and returns `exitCode`, `stdout`, and `stderr`. The file transfer tools require `tar` in the container and respect `--max-file-size` (default: 10Mi).
+
+See the [kubernetes tools section](#kubernetes) for full parameter documentation.
 
 ### Toolsets
 

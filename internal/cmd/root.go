@@ -47,6 +47,7 @@ func bindFlags(cmd *cobra.Command) error {
 		"enable_container_exec":          "enable-container-exec",
 		"enable_container_file_upload":   "enable-container-file-upload",
 		"enable_container_file_download": "enable-container-file-download",
+		"max_file_size":                  "max-file-size",
 		// Output configuration
 		"list_output":    "list-output",
 		"output_filters": "output-filters",
@@ -116,6 +117,7 @@ for network access.`,
 	cmd.Flags().Bool("enable-container-exec", false, "Enable pod command execution tool (disabled by default; requires read-only=false)")
 	cmd.Flags().Bool("enable-container-file-upload", false, "Enable container file upload tool")
 	cmd.Flags().Bool("enable-container-file-download", false, "Enable container file download tool")
+	cmd.Flags().String("max-file-size", "10Mi", "Maximum file size for container file operations (Kubernetes quantity format)")
 
 	// Output configuration flags
 	cmd.Flags().String("list-output", "json", "Output format for list operations (json, table, yaml)")

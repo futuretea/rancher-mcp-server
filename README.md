@@ -995,16 +995,14 @@ make build
 npx @modelcontextprotocol/inspector@latest $(pwd)/rancher-mcp-server
 ```
 
-See [DEVELOPMENT.md](DEVELOPMENT.md) for more details.
-
 ## Contributing
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+Open an issue or pull request on GitHub with the motivation, test evidence, and any compatibility notes for the change.
 
 ## Support
 
 - [GitHub Issues](https://github.com/futuretea/rancher-mcp-server/issues)
-- [Troubleshooting Guide](TROUBLESHOOTING.md)
+- Run `rancher-mcp-server --help` to inspect the supported configuration flags.
 
 ## License
 

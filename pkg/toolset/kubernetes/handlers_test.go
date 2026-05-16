@@ -140,6 +140,39 @@ func TestFormatAsTable(t *testing.T) {
 	})
 }
 
+func TestParseMaxFileSize(t *testing.T) {
+	t.Run("default value", func(t *testing.T) {
+		val, err := parseMaxFileSize(map[string]interface{}{})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if val != 10*1024*1024 { // 10Mi
+			t.Errorf("expected 10Mi (10485760), got %d", val)
+		}
+	})
+
+	t.Run("custom valid size", func(t *testing.T) {
+		val, err := parseMaxFileSize(map[string]interface{}{
+			"maxFileSize": "1Mi",
+		})
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if val != 1024*1024 {
+			t.Errorf("expected 1Mi (1048576), got %d", val)
+		}
+	})
+
+	t.Run("invalid size", func(t *testing.T) {
+		_, err := parseMaxFileSize(map[string]interface{}{
+			"maxFileSize": "not-a-size",
+		})
+		if err == nil {
+			t.Fatal("expected error for invalid size")
+		}
+	})
+}
+
 func containsStr(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

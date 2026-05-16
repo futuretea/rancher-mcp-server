@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"net/http"
+	"sort"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -227,8 +228,19 @@ func contextFunc(ctx context.Context, r *http.Request) context.Context {
 
 // registerTool registers a single tool with the MCP server
 func (s *Server) registerTool(tool toolset.ServerTool) error {
-	toolHandler := server.ToolHandlerFunc(func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-		logging.Debug("Tool %s called with params: %v", tool.Tool.Name, request.Params.Arguments)
+	toolHandler := s.makeToolHandler(tool)
+
+	// Use the simpler AddTool method
+	s.server.AddTool(tool.Tool, toolHandler)
+	s.enabledTools = append(s.enabledTools, tool.Tool.Name)
+
+	logging.Info("Registered tool: %s", tool.Tool.Name)
+	return nil
+}
+
+func (s *Server) makeToolHandler(tool toolset.ServerTool) server.ToolHandlerFunc {
+	return server.ToolHandlerFunc(func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+		logging.Debug("Tool %s called with param keys: %v", tool.Tool.Name, toolArgumentKeys(request.Params.Arguments))
 
 		// Convert arguments to the format expected by our tool handlers
 		params := make(map[string]interface{})
@@ -241,13 +253,20 @@ func (s *Server) registerTool(tool toolset.ServerTool) error {
 		result, err := tool.Handler(ctx, s.combinedClient, params)
 		return NewTextResult(result, err), nil
 	})
+}
 
-	// Use the simpler AddTool method
-	s.server.AddTool(tool.Tool, toolHandler)
-	s.enabledTools = append(s.enabledTools, tool.Tool.Name)
+func toolArgumentKeys(arguments interface{}) []string {
+	args, ok := arguments.(map[string]interface{})
+	if !ok || len(args) == 0 {
+		return nil
+	}
 
-	logging.Info("Registered tool: %s", tool.Tool.Name)
-	return nil
+	keys := make([]string, 0, len(args))
+	for key := range args {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }
 
 // ServeStdio starts the MCP server in stdio mode

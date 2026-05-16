@@ -13,10 +13,6 @@ const (
 	DecimalMega = 1000 * 1000
 	DecimalGiga = 1000 * 1000 * 1000
 
-	// Log parsing constants
-	RFC3339NanoLen = 30 // Length of RFC3339Nano timestamp string
-	RFC3339Len     = 20 // Length of RFC3339 timestamp string (without nanoseconds)
-
 	// Default log tail lines
 	DefaultTailLines    = 100
 	PodInspectTailLines = 50

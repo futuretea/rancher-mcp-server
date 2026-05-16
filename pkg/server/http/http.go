@@ -22,29 +22,7 @@ const (
 )
 
 func Serve(ctx context.Context, mcpServer *mcp.Server, staticConfig *config.StaticConfig) error {
-	mux := http.NewServeMux()
-
-	wrappedMux := RequestMiddleware(mux)
-
-	httpServer := &http.Server{
-		Addr:    staticConfig.GetPortString(),
-		Handler: wrappedMux,
-	}
-
-	sseServer := mcpServer.ServeSse(staticConfig.SSEBaseURL, httpServer)
-	streamableHttpServer := mcpServer.ServeHTTP(httpServer)
-	mux.Handle(sseEndpoint, sseServer)
-	mux.Handle(sseMessageEndpoint, sseServer)
-	mux.Handle(mcpEndpoint, streamableHttpServer)
-	mux.HandleFunc(healthEndpoint, func(w http.ResponseWriter, r *http.Request) {
-		if mcpServer.IsHealthy() {
-			w.WriteHeader(http.StatusOK)
-			w.Write([]byte("healthy"))
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			w.Write([]byte("unhealthy: Rancher client initialization failed"))
-		}
-	})
+	httpServer := newHTTPServer(mcpServer, staticConfig)
 
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -82,4 +60,32 @@ func Serve(ctx context.Context, mcpServer *mcp.Server, staticConfig *config.Stat
 
 	logging.Info("HTTP server shutdown complete")
 	return nil
+}
+
+func newHTTPServer(mcpServer *mcp.Server, staticConfig *config.StaticConfig) *http.Server {
+	mux := http.NewServeMux()
+
+	wrappedMux := RequestMiddleware(mux)
+
+	httpServer := &http.Server{
+		Addr:    staticConfig.GetPortString(),
+		Handler: wrappedMux,
+	}
+
+	sseServer := mcpServer.ServeSse(staticConfig.SSEBaseURL, httpServer)
+	streamableHttpServer := mcpServer.ServeHTTP(httpServer)
+	mux.Handle(sseEndpoint, sseServer)
+	mux.Handle(sseMessageEndpoint, sseServer)
+	mux.Handle(mcpEndpoint, streamableHttpServer)
+	mux.HandleFunc(healthEndpoint, func(w http.ResponseWriter, r *http.Request) {
+		if mcpServer.IsHealthy() {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("healthy"))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("unhealthy: Rancher client initialization failed"))
+		}
+	})
+
+	return httpServer
 }

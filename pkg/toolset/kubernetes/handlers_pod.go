@@ -112,7 +112,7 @@ func logsHandler(ctx context.Context, client interface{}, params map[string]inte
 	var resultLines []string
 	for _, entry := range allEntries {
 		if timestamps && !entry.Timestamp.IsZero() {
-			resultLines = append(resultLines, fmt.Sprintf("[%s] %s %s", entry.Container, entry.Timestamp.Format(time.RFC3339Nano), entry.Content))
+			resultLines = append(resultLines, fmt.Sprintf("[%s] %s", entry.Container, formatTimestampedContent(entry.Timestamp, entry.Content)))
 		} else {
 			resultLines = append(resultLines, fmt.Sprintf("[%s] %s", entry.Container, entry.Content))
 		}
@@ -204,7 +204,7 @@ func getMultiPodLogs(ctx context.Context, steveClient *steve.Client, cluster, na
 	var resultLines []string
 	for _, entry := range allEntries {
 		if timestamps && !entry.Timestamp.IsZero() {
-			resultLines = append(resultLines, fmt.Sprintf("[%s/%s] %s %s", entry.Pod, entry.Container, entry.Timestamp.Format(time.RFC3339Nano), entry.Content))
+			resultLines = append(resultLines, fmt.Sprintf("[%s/%s] %s", entry.Pod, entry.Container, formatTimestampedContent(entry.Timestamp, entry.Content)))
 		} else {
 			resultLines = append(resultLines, fmt.Sprintf("[%s/%s] %s", entry.Pod, entry.Container, entry.Content))
 		}
@@ -237,22 +237,25 @@ func filterLogsByKeyword(logs, keyword string) string {
 // Kubernetes log format: 2024-01-15T10:30:00.123456789Z log message
 // Returns the timestamp and the remaining log content.
 func parseLogTimestamp(line string) (time.Time, string) {
-	if len(line) < RFC3339NanoLen {
+	timestampStr, content, ok := splitLogTimestamp(line)
+	if !ok {
 		return time.Time{}, line
 	}
-	// Try to parse ISO 8601 timestamp at the beginning of the line
-	timestampStr := line[:RFC3339NanoLen]
+
 	if t, err := time.Parse(time.RFC3339Nano, timestampStr); err == nil {
-		return t, line[RFC3339NanoLen+1:]
+		return t, content
 	}
-	// Try without nanoseconds
-	if len(line) >= RFC3339Len {
-		timestampStr = line[:RFC3339Len]
-		if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
-			return t, line[RFC3339Len+1:]
-		}
+	if t, err := time.Parse(time.RFC3339, timestampStr); err == nil {
+		return t, content
 	}
 	return time.Time{}, line
+}
+
+func splitLogTimestamp(line string) (timestamp, content string, ok bool) {
+	if idx := strings.IndexByte(line, ' '); idx >= 0 {
+		return line[:idx], line[idx+1:], true
+	}
+	return line, "", line != ""
 }
 
 // sortLogsByTime sorts log lines by timestamp (oldest first).
@@ -281,12 +284,20 @@ func sortLogsByTime(logs string, timestamps bool) string {
 	var result []string
 	for _, entry := range entries {
 		if !entry.Timestamp.IsZero() {
-			result = append(result, entry.Timestamp.Format(time.RFC3339Nano)+" "+entry.Content)
+			result = append(result, formatTimestampedContent(entry.Timestamp, entry.Content))
 		} else {
 			result = append(result, entry.Content)
 		}
 	}
 	return strings.Join(result, "\n")
+}
+
+func formatTimestampedContent(timestamp time.Time, content string) string {
+	line := timestamp.Format(time.RFC3339Nano)
+	if content != "" {
+		line += " " + content
+	}
+	return line
 }
 
 // sortMultiPodLogsByTime sorts logs from multiple pods by timestamp.

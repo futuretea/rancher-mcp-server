@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"net/http"
@@ -13,16 +14,16 @@ import (
 )
 
 func TestServeHealthEndpoint(t *testing.T) {
-	// Use a dynamic port
-	listener, err := net.Listen("tcp", ":0")
+	listener, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
-	port := listener.Addr().(*net.TCPAddr).Port
-	listener.Close()
+	t.Cleanup(func() {
+		_ = listener.Close()
+	})
 
 	cfg := &config.StaticConfig{
-		Port:     port,
+		Port:     listener.Addr().(*net.TCPAddr).Port,
 		LogLevel: 0,
 	}
 
@@ -36,19 +37,20 @@ func TestServeHealthEndpoint(t *testing.T) {
 	}
 	defer server.Close()
 
-	// Start server in background
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+	httpServer := newHTTPServer(server, cfg)
+	t.Cleanup(func() {
+		_ = httpServer.Shutdown(context.Background())
+	})
 
+	serverErr := make(chan error, 1)
 	go func() {
-		_ = Serve(ctx, server, cfg)
+		if err := httpServer.Serve(listener); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			serverErr <- err
+		}
 	}()
 
-	// Wait for server to start
-	time.Sleep(500 * time.Millisecond)
-
 	// Test health endpoint
-	resp, err := http.Get(fmt.Sprintf("http://localhost:%d/healthz", port))
+	resp, err := waitForHTTPGet(fmt.Sprintf("http://%s/healthz", listener.Addr().String()), 2*time.Second)
 	if err != nil {
 		t.Fatalf("failed to call health endpoint: %v", err)
 	}
@@ -58,7 +60,23 @@ func TestServeHealthEndpoint(t *testing.T) {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
 	}
 
-	// Cancel context to stop server
-	cancel()
-	time.Sleep(100 * time.Millisecond)
+	select {
+	case err := <-serverErr:
+		t.Fatalf("server returned unexpected error: %v", err)
+	default:
+	}
+}
+
+func waitForHTTPGet(url string, timeout time.Duration) (*http.Response, error) {
+	deadline := time.Now().Add(timeout)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		resp, err := http.Get(url)
+		if err == nil {
+			return resp, nil
+		}
+		lastErr = err
+		time.Sleep(20 * time.Millisecond)
+	}
+	return nil, lastErr
 }

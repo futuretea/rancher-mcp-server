@@ -58,12 +58,14 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
 ### Claude Code
 
 ```shell
-claude mcp add rancher -- npx @futuretea/rancher-mcp-server@latest \
+claude mcp add rancher -- npx -y @futuretea/rancher-mcp-server@latest \
   --rancher-server-url https://your-rancher-server.com \
   --rancher-token your-token
 ```
 
-### VS Code / Cursor
+Arguments after `--` are written to your MCP config as-is. The `-y` flag tells `npx` to install without prompting, which is required for non-interactive MCP startup. See the [VS Code / Cursor](#vs-code--cursor) section for the equivalent JSON config.
+
+### VS Code / Cursor <a id="vs-code--cursor"></a>
 
 Add to `.vscode/mcp.json` or `~/.cursor/mcp.json`:
 

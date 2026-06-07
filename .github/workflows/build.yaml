@@ -48,14 +48,18 @@ jobs:
       - name: Build
         run: |
           build_date="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          git_version="$(git describe --tags --always --dirty)"
+          git_commit="$(git rev-parse HEAD)"
           echo "BUILD_DATE=$build_date" >> "$GITHUB_ENV"
-          make build BUILD_DATE="$build_date"
+          echo "GIT_VERSION=$git_version" >> "$GITHUB_ENV"
+          echo "GIT_COMMIT=$git_commit" >> "$GITHUB_ENV"
+          make build BUILD_DATE="$build_date" GIT_VERSION="$git_version" GIT_COMMIT="$git_commit"
       - name: Verify version output
         run: |
           binary=./rancher-mcp-server
           if [[ -f ./rancher-mcp-server.exe ]]; then
             binary=./rancher-mcp-server.exe
           fi
-          ./scripts/verify-version-output.sh "$binary" "$(git describe --tags --always --dirty)" "$(git rev-parse HEAD)" "$BUILD_DATE"
+          ./scripts/verify-version-output.sh "$binary" "${GIT_VERSION:?GIT_VERSION is required}" "${GIT_COMMIT:?GIT_COMMIT is required}" "${BUILD_DATE:?BUILD_DATE is required}"
       - name: Test
         run: go test ./...

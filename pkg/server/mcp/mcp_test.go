@@ -42,20 +42,40 @@ func TestNewServer(t *testing.T) {
 		t.Errorf("Expected at least 1 tool, got %d", len(tools))
 	}
 
-	// Check that we have our expected tools
-	expectedTools := []string{"cluster_list", "project_list", "kubernetes_get", "kubernetes_list", "kubernetes_describe", "kubernetes_events"}
+	// Kubernetes tools are registered when Rancher config exists. Rancher-specific
+	// tools are hidden when the Norman client cannot be initialized.
+	assertToolsPresent(t, tools, "kubernetes_get", "kubernetes_list", "kubernetes_describe", "kubernetes_events")
+	assertToolsAbsent(t, tools, "cluster_list", "project_list")
+}
+
+func assertToolsPresent(t *testing.T, tools []string, expectedTools ...string) {
+	t.Helper()
+
+	toolNames := makeToolNameSet(tools)
 	for _, expected := range expectedTools {
-		found := false
-		for _, actual := range tools {
-			if actual == expected {
-				found = true
-				break
-			}
-		}
-		if !found {
+		if !toolNames[expected] {
 			t.Errorf("Expected tool '%s' not found in registered tools", expected)
 		}
 	}
+}
+
+func assertToolsAbsent(t *testing.T, tools []string, unexpectedTools ...string) {
+	t.Helper()
+
+	toolNames := makeToolNameSet(tools)
+	for _, unexpected := range unexpectedTools {
+		if toolNames[unexpected] {
+			t.Errorf("Unexpected tool '%s' found in registered tools", unexpected)
+		}
+	}
+}
+
+func makeToolNameSet(tools []string) map[string]bool {
+	toolNames := make(map[string]bool, len(tools))
+	for _, tool := range tools {
+		toolNames[tool] = true
+	}
+	return toolNames
 }
 
 func TestNewTextResult(t *testing.T) {

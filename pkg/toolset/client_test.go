@@ -49,20 +49,18 @@ func TestValidateSteveClient(t *testing.T) {
 }
 
 func TestValidateNormanClient(t *testing.T) {
-	t.Run("CombinedClient with Norman", func(t *testing.T) {
-		n := &norman.Client{}
-		cc := &CombinedClient{Norman: n}
-		got, err := ValidateNormanClient(cc)
-		if err != nil || got != n {
-			t.Fatal("expected CombinedClient.Norman to be returned")
+	t.Run("CombinedClient with unusable Norman", func(t *testing.T) {
+		cc := &CombinedClient{Norman: &norman.Client{}}
+		_, err := ValidateNormanClient(cc)
+		if err == nil {
+			t.Fatal("expected error for unusable Norman client")
 		}
 	})
 
-	t.Run("direct Norman client", func(t *testing.T) {
-		n := &norman.Client{}
-		got, err := ValidateNormanClient(n)
-		if err != nil || got != n {
-			t.Fatal("expected direct Norman client to be returned")
+	t.Run("direct unusable Norman client", func(t *testing.T) {
+		_, err := ValidateNormanClient(&norman.Client{})
+		if err == nil {
+			t.Fatal("expected error for unusable Norman client")
 		}
 	})
 

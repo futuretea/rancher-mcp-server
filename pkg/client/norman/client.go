@@ -29,6 +29,11 @@ type Client struct {
 	management *managementClient.Client
 }
 
+// IsUsable returns true when the client has an initialized management backend.
+func (c *Client) IsUsable() bool {
+	return c != nil && c.management != nil
+}
+
 // NewClient creates a new Norman API client
 func NewClient(cfg *config.StaticConfig) (*Client, error) {
 	if !cfg.HasRancherConfig() {

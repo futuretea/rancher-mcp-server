@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -58,6 +59,20 @@ func TestServeHealthEndpoint(t *testing.T) {
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)
+	}
+
+	var payload mcp.HealthStatus
+	if err := json.NewDecoder(resp.Body).Decode(&payload); err != nil {
+		t.Fatalf("failed to decode health payload: %v", err)
+	}
+	if payload.Status != "ok" {
+		t.Fatalf("expected health status ok, got %s", payload.Status)
+	}
+	if payload.Capabilities["rancher"].Available {
+		t.Fatalf("expected rancher capability to be unavailable without config")
+	}
+	if payload.Capabilities["kubernetes"].Available {
+		t.Fatalf("expected kubernetes capability to be unavailable without config")
 	}
 
 	select {

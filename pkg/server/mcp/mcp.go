@@ -126,10 +126,21 @@ func (s *Server) registerTools() error {
 	// Create combined client for toolsets that need both Norman and Steve clients
 	combinedClient := s.combinedClient
 
+	if err := validateUniqueToolNames(enabledToolsets, combinedClient); err != nil {
+		return err
+	}
+
 	// Register tools from each enabled toolset
 	for _, ts := range enabledToolsets {
 		tools := ts.GetTools(combinedClient)
-		for _, tool := range tools {
+		for _, rawTool := range tools {
+			tool := applyDefaultAnnotations(ts.GetName(), rawTool)
+
+			if allowed, reason := s.capabilityAllowsTool(tool); !allowed {
+				logging.Info("Skipping tool %s: %s", tool.Tool.Name, reason)
+				continue
+			}
+
 			// Check config-flag-based gating for high-risk container operation tools.
 			if tool.Tool.Name == "kubernetes_upload_file" && !s.configuration.EnableContainerFileUpload {
 				continue
@@ -152,6 +163,7 @@ func (s *Server) registerTools() error {
 		}
 	}
 
+	logging.Info("Capability summary: %s", s.capabilitySummary())
 	logging.Info("MCP server initialized with %d tools", len(s.enabledTools))
 	return nil
 }
@@ -311,13 +323,7 @@ func (s *Server) GetEnabledTools() []string {
 
 // IsHealthy returns true if the server and its clients are properly initialized
 func (s *Server) IsHealthy() bool {
-	// Check if Norman client is properly configured (if Rancher config is provided)
-	if s.configuration.HasRancherConfig() {
-		if s.normanClient == nil {
-			return false
-		}
-	}
-	return true
+	return s != nil && s.server != nil
 }
 
 // Close cleans up the server resources

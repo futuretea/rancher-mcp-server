@@ -1,8 +1,12 @@
 package kubernetes
 
 import (
+	"context"
 	"testing"
 
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -76,4 +80,72 @@ func TestTrimMetadataForDiff(t *testing.T) {
 		// Should not panic
 		trimMetadataForDiff(u)
 	})
+}
+
+func TestDiffHandler_DoesNotRequireClient(t *testing.T) {
+	params := map[string]interface{}{
+		"resource1": `{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"demo","namespace":"default"},"data":{"key":"a"}}`,
+		"resource2": `{"apiVersion":"v1","kind":"ConfigMap","metadata":{"name":"demo","namespace":"default"},"data":{"key":"b"}}`,
+	}
+
+	if _, err := diffHandler(context.Background(), nil, params); err != nil {
+		t.Fatalf("diffHandler() returned unexpected error without client: %v", err)
+	}
+}
+
+func TestResourceDiffHandler_CombinedClientNilSteve(t *testing.T) {
+	params := map[string]interface{}{
+		"kind": "deployment",
+		"left": map[string]interface{}{
+			"cluster": "c1",
+			"name":    "left",
+		},
+		"right": map[string]interface{}{
+			"cluster": "c1",
+			"name":    "right",
+		},
+	}
+
+	_, err := resourceDiffHandler(context.Background(), &toolset.CombinedClient{}, params)
+	if err != paramutil.ErrSteveNotConfigured {
+		t.Fatalf("resourceDiffHandler() error = %v, want %v", err, paramutil.ErrSteveNotConfigured)
+	}
+}
+
+func TestResourceDiffHandler_AcceptsCombinedClientWithSteve(t *testing.T) {
+	params := map[string]interface{}{
+		"kind": "deployment",
+		"left": map[string]interface{}{
+			"cluster": "c1",
+			"name":    "left",
+		},
+		"right": map[string]interface{}{
+			"cluster": "c1",
+			"name":    "right",
+		},
+	}
+
+	combinedClient := &toolset.CombinedClient{
+		Steve: steve.NewClient("https://example.com", "token", "", "", false),
+	}
+
+	_, err := resourceDiffHandler(context.Background(), combinedClient, params)
+	if err == paramutil.ErrSteveNotConfigured {
+		t.Fatal("resourceDiffHandler() should accept a CombinedClient with a Steve client")
+	}
+}
+
+func TestExtractDiffTarget_UsesOptionalNamespaceSemantics(t *testing.T) {
+	target, err := extractDiffTarget(map[string]interface{}{
+		"left": map[string]interface{}{
+			"cluster": "c1",
+			"name":    "node-1",
+		},
+	}, "left")
+	if err != nil {
+		t.Fatalf("extractDiffTarget() returned unexpected error: %v", err)
+	}
+	if target.Namespace != "" {
+		t.Fatalf("expected empty namespace for cluster-scoped lookups, got %q", target.Namespace)
+	}
 }

@@ -4,6 +4,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"os"
@@ -80,13 +81,14 @@ func newHTTPServer(mcpServer *mcp.Server, staticConfig *config.StaticConfig) *ht
 	mux.Handle(sseMessageEndpoint, sseServer)
 	mux.Handle(mcpEndpoint, streamableHTTPServer)
 	mux.HandleFunc(healthEndpoint, func(w http.ResponseWriter, _ *http.Request) {
-		if mcpServer.IsHealthy() {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte("healthy"))
-		} else {
-			w.WriteHeader(http.StatusServiceUnavailable)
-			_, _ = w.Write([]byte("unhealthy: Rancher client initialization failed"))
+		statusCode := http.StatusOK
+		if !mcpServer.IsHealthy() {
+			statusCode = http.StatusServiceUnavailable
 		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(statusCode)
+		_ = json.NewEncoder(w).Encode(mcpServer.GetHealthStatus())
 	})
 
 	return httpServer

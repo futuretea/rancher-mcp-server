@@ -505,3 +505,99 @@ func TestExecToolReadOnlyExcluded(t *testing.T) {
 		}
 	}
 }
+
+func TestValidateUniqueToolNamesRejectsDuplicateNames(t *testing.T) {
+	duplicateTool := toolset.ServerTool{
+		Tool: mcp.Tool{Name: "duplicate_tool"},
+	}
+
+	err := validateUniqueToolNames([]toolset.Toolset{
+		staticToolset{name: "first", tools: []toolset.ServerTool{duplicateTool}},
+		staticToolset{name: "second", tools: []toolset.ServerTool{duplicateTool}},
+	}, nil)
+	if err == nil {
+		t.Fatal("expected duplicate tool name validation to fail")
+	}
+	if !strings.Contains(err.Error(), "duplicate tool name") {
+		t.Fatalf("unexpected duplicate validation error: %v", err)
+	}
+}
+
+func TestNewServerHidesCapabilityDependentToolsWithoutRancherConfig(t *testing.T) {
+	server, err := NewServer(Configuration{StaticConfig: &config.StaticConfig{}})
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+	defer server.Close()
+
+	tools := server.GetEnabledTools()
+
+	for _, hiddenTool := range []string{"cluster_list", "project_list", "kubernetes_get", "kubernetes_resource_diff"} {
+		for _, actual := range tools {
+			if actual == hiddenTool {
+				t.Fatalf("expected tool %q to be hidden without runtime capability, enabled tools: %v", hiddenTool, tools)
+			}
+		}
+	}
+
+	foundLocalDiff := false
+	for _, actual := range tools {
+		if actual == "kubernetes_diff" {
+			foundLocalDiff = true
+			break
+		}
+	}
+	if !foundLocalDiff {
+		t.Fatalf("expected local kubernetes_diff to stay enabled without runtime capability, enabled tools: %v", tools)
+	}
+}
+
+func TestGetHealthStatusWithoutRancherConfig(t *testing.T) {
+	server, err := NewServer(Configuration{StaticConfig: &config.StaticConfig{}})
+	if err != nil {
+		t.Fatalf("failed to create server: %v", err)
+	}
+	defer server.Close()
+
+	if !server.IsHealthy() {
+		t.Fatal("expected server to be healthy when process initialized")
+	}
+
+	status := server.GetHealthStatus()
+	if status.Status != "ok" {
+		t.Fatalf("expected health status ok, got %s", status.Status)
+	}
+
+	rancherStatus, ok := status.Capabilities["rancher"]
+	if !ok {
+		t.Fatal("expected rancher capability in health status")
+	}
+	if rancherStatus.Configured || rancherStatus.Available {
+		t.Fatalf("expected rancher capability to be unconfigured and unavailable, got %+v", rancherStatus)
+	}
+
+	kubernetesStatus, ok := status.Capabilities["kubernetes"]
+	if !ok {
+		t.Fatal("expected kubernetes capability in health status")
+	}
+	if kubernetesStatus.Configured || kubernetesStatus.Available {
+		t.Fatalf("expected kubernetes capability to be unconfigured and unavailable, got %+v", kubernetesStatus)
+	}
+}
+
+type staticToolset struct {
+	name  string
+	tools []toolset.ServerTool
+}
+
+func (s staticToolset) GetName() string {
+	return s.name
+}
+
+func (s staticToolset) GetDescription() string {
+	return s.name
+}
+
+func (s staticToolset) GetTools(_ interface{}) []toolset.ServerTool {
+	return s.tools
+}

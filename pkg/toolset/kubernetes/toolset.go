@@ -481,7 +481,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 		},
 		{
 			Tool: mcp.Tool{
-				Name:        "kubernetes_diff",
+				Name:        "kubernetes_resource_diff",
 				Description: "Compare two Kubernetes resources (e.g., two deployments). Returns a git-style diff showing differences between the specified resources. Can compare resources across different clusters and namespaces.",
 				InputSchema: mcp.ToolInputSchema{
 					Type:     "object",
@@ -503,8 +503,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 								"cluster": clusterIDProperty,
 								"namespace": map[string]any{
 									"type":        "string",
-									"description": "Namespace name",
-									"default":     "default",
+									"description": "Namespace name (optional, empty for cluster-scoped resources)",
 								},
 								"name": map[string]any{
 									"type":        "string",
@@ -520,8 +519,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 								"cluster": clusterIDProperty,
 								"namespace": map[string]any{
 									"type":        "string",
-									"description": "Namespace name",
-									"default":     "default",
+									"description": "Namespace name (optional, empty for cluster-scoped resources)",
 								},
 								"name": map[string]any{
 									"type":        "string",
@@ -546,7 +544,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 			Annotations: toolset.ToolAnnotations{
 				ReadOnlyHint: paramutil.BoolPtr(true),
 			},
-			Handler: diffHandler,
+			Handler: resourceDiffHandler,
 		},
 		{
 			Tool: mcp.Tool{
@@ -635,7 +633,8 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 				},
 			},
 			Annotations: toolset.ToolAnnotations{
-				ReadOnlyHint: paramutil.BoolPtr(true),
+				ReadOnlyHint:       paramutil.BoolPtr(true),
+				RequiresKubernetes: paramutil.BoolPtr(false),
 			},
 			Handler: diffHandler,
 		},

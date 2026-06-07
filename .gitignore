@@ -71,3 +71,12 @@ third-party-projects/
 .trae/
 enhancements/
 vendor/
+
+
+AGENTS.md
+CLAUDE.md
+.claude/
+.agents/
+.cursor/
+.qoder/
+.project/

@@ -2,6 +2,7 @@ version: 2
 before:
   hooks:
     - go mod tidy
+    - ./scripts/verify-version-contract.sh
 dist: releases
 snapshot:
   version_template: "{{ .Summary }}"
@@ -23,10 +24,9 @@ builds:
     ldflags:
       - -s
       - -w
-      - -X "github.com/futuretea/rancher-mcp-server/pkg/version.Version=v{{ .Version }}"
-      - -X "github.com/futuretea/rancher-mcp-server/pkg/version.CommitHash={{ .FullCommit }}"
-      - -X "github.com/futuretea/rancher-mcp-server/pkg/version.BuildTime={{ .Date }}"
-      - -X "github.com/futuretea/rancher-mcp-server/pkg/version.BinaryName=rancher-mcp-server"
+      - -X "github.com/futuretea/rancher-mcp-server/pkg/core/version.Version=v{{ .Version }}"
+      - -X "github.com/futuretea/rancher-mcp-server/pkg/core/version.GitCommit={{ .FullCommit }}"
+      - '-X "github.com/futuretea/rancher-mcp-server/pkg/core/version.BuildDate={{ if index .Env "BUILD_DATE" }}{{ .Env.BUILD_DATE }}{{ else }}{{ .Date }}{{ end }}"'
 archives:
   - formats: ["tar.gz"]
     ids:

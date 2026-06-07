@@ -46,6 +46,16 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
       - name: Build
-        run: make build
+        run: |
+          build_date="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+          echo "BUILD_DATE=$build_date" >> "$GITHUB_ENV"
+          make build BUILD_DATE="$build_date"
+      - name: Verify version output
+        run: |
+          binary=./rancher-mcp-server
+          if [[ -f ./rancher-mcp-server.exe ]]; then
+            binary=./rancher-mcp-server.exe
+          fi
+          ./scripts/verify-version-output.sh "$binary" "$(git describe --tags --always --dirty)" "$(git rev-parse HEAD)" "$BUILD_DATE"
       - name: Test
         run: go test ./...

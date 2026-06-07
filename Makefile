@@ -3,15 +3,15 @@
 .DEFAULT_GOAL := help
 
 PACKAGE = $(shell go list -m)
-GIT_COMMIT_HASH = $(shell git rev-parse HEAD)
-GIT_VERSION = $(shell git describe --tags --always --dirty)
-BUILD_TIME = $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
+VERSION_PKG = $(PACKAGE)/pkg/core/version
+GIT_COMMIT := $(shell git rev-parse HEAD)
+GIT_VERSION := $(shell git describe --tags --always --dirty)
+BUILD_DATE := $(shell date -u '+%Y-%m-%dT%H:%M:%SZ')
 BINARY_NAME = rancher-mcp-server
 LD_FLAGS = -s -w \
-	-X '$(PACKAGE)/pkg/version.CommitHash=$(GIT_COMMIT_HASH)' \
-	-X '$(PACKAGE)/pkg/version.Version=$(GIT_VERSION)' \
-	-X '$(PACKAGE)/pkg/version.BuildTime=$(BUILD_TIME)' \
-	-X '$(PACKAGE)/pkg/version.BinaryName=$(BINARY_NAME)'
+	-X '$(VERSION_PKG).GitCommit=$(GIT_COMMIT)' \
+	-X '$(VERSION_PKG).Version=$(GIT_VERSION)' \
+	-X '$(VERSION_PKG).BuildDate=$(BUILD_DATE)'
 COMMON_BUILD_ARGS = -ldflags "$(LD_FLAGS)"
 
 GOLANGCI_LINT = $(shell pwd)/_output/tools/bin/golangci-lint
@@ -40,11 +40,11 @@ clean: ## Clean up all build artifacts
 	rm -rf $(CLEAN_TARGETS)
 
 .PHONY: build
-build: tidy ## Build the project
+build: verify-version-contract tidy ## Build the project
 	CGO_ENABLED=0 go build $(COMMON_BUILD_ARGS) -o $(BINARY_NAME) ./cmd/rancher-mcp-server
 
 .PHONY: build-all-platforms
-build-all-platforms: tidy ## Build the project for all platforms
+build-all-platforms: verify-version-contract tidy ## Build the project for all platforms
 	$(foreach os,$(OSES),$(foreach arch,$(ARCHS), \
 		GOOS=$(os) GOARCH=$(arch) go build $(COMMON_BUILD_ARGS) -o $(BINARY_NAME)-$(os)-$(arch)$(if $(findstring windows,$(os)),.exe,) ./cmd/rancher-mcp-server; \
 	))
@@ -77,6 +77,16 @@ npm-publish: npm-copy-binaries ## Publish the npm packages
 .PHONY: test
 test: ## Run the tests
 	go test -count=1 -v ./...
+
+.PHONY: verify-version-contract
+verify-version-contract: ## Verify build metadata injection targets
+	./scripts/verify-version-contract.sh
+
+.PHONY: verify-version-output
+verify-version-output: build ## Verify built binary version output
+	@binary=./$(BINARY_NAME); \
+	if [ -f "./$(BINARY_NAME).exe" ]; then binary=./$(BINARY_NAME).exe; fi; \
+	./scripts/verify-version-output.sh "$$binary" "$(GIT_VERSION)" "$(GIT_COMMIT)" "$(BUILD_DATE)"
 
 .PHONY: format
 format: ## Format the code

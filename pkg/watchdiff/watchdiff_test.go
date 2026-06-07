@@ -1,6 +1,7 @@
 package watchdiff
 
 import (
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -166,4 +167,45 @@ func TestAreObjectsEqual_AdditionalEdges(t *testing.T) {
 			t.Fatal("expected not equal (object slice type mismatch)")
 		}
 	})
+}
+
+func TestDiffDeleteClearsCacheAndMarksDeletion(t *testing.T) {
+	differ := NewDiffer(false)
+
+	obj := &unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"apiVersion": "apps/v1",
+			"kind":       "Deployment",
+			"metadata": map[string]interface{}{
+				"name":      "demo",
+				"namespace": "default",
+			},
+			"spec": map[string]interface{}{
+				"replicas": int64(1),
+			},
+		},
+	}
+
+	if _, err := differ.Diff(obj); err != nil {
+		t.Fatalf("Diff() returned unexpected error: %v", err)
+	}
+
+	deleted, err := differ.DiffDelete(obj)
+	if err != nil {
+		t.Fatalf("DiffDelete() returned unexpected error: %v", err)
+	}
+	if deleted == "" {
+		t.Fatal("expected deletion diff output")
+	}
+	if !strings.Contains(deleted, "Deleted Resource") {
+		t.Fatalf("expected explicit deleted marker, got %q", deleted)
+	}
+
+	deletedAgain, err := differ.DiffDelete(obj)
+	if err != nil {
+		t.Fatalf("second DiffDelete() returned unexpected error: %v", err)
+	}
+	if deletedAgain != "" {
+		t.Fatalf("expected empty output after cache cleanup, got %q", deletedAgain)
+	}
 }

@@ -215,6 +215,9 @@ func (p *Printer) Diff(oldObj, newObj *unstructured.Unstructured) (string, error
 	}
 
 	// Print structured diff.
+	if len(oldFields) > 0 && len(newFields) == 0 {
+		buf.WriteString("- Deleted Resource\n")
+	}
 	printDiff(&buf, "", oldFields, newFields, "")
 	buf.WriteString("\n")
 	return buf.String(), nil

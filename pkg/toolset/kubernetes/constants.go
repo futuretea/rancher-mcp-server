@@ -33,6 +33,8 @@ const (
 	MaxIntervalSeconds     = 600
 	MinIterations          = 1
 	MaxIterations          = 100
+	MaxWatchItems          = 200
+	MaxWatchOutputBytes    = 256 * 1024
 
 	// Dep graph defaults
 	DefaultMaxDepth = 10

@@ -549,7 +549,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 		{
 			Tool: mcp.Tool{
 				Name:        "kubernetes_watch",
-				Description: "Watch Kubernetes resources and return git-style diffs for each interval, similar to the Linux 'watch' command.",
+				Description: "Watch Kubernetes resources with polling and return git-style diffs for each interval, including deletion diffs. The polling path fails fast when per-iteration resource or output-size guards are exceeded.",
 				InputSchema: mcp.ToolInputSchema{
 					Type:     "object",
 					Required: []string{"cluster", "kind"},

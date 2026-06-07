@@ -11,6 +11,7 @@ import (
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"github.com/futuretea/rancher-mcp-server/pkg/watchdiff"
+	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
 // watchDiffHandler handles the kubernetes_watch tool.
@@ -23,20 +24,36 @@ func watchDiffHandler(ctx context.Context, client interface{}, params map[string
 		return "", err
 	}
 
-	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
+	request, err := buildWatchRequest(params)
 	if err != nil {
 		return "", err
+	}
+	return watchDiffWithReader(ctx, steveClient, request)
+}
+
+type watchRequest struct {
+	cluster        string
+	kind           string
+	namespace      string
+	labelSelector  string
+	fieldSelector  string
+	ignoreStatus   bool
+	ignoreMeta     bool
+	interval       time.Duration
+	iterations     int64
+	maxItems       int
+	maxOutputBytes int
+}
+
+func buildWatchRequest(params map[string]interface{}) (*watchRequest, error) {
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
+	if err != nil {
+		return nil, err
 	}
 	kind, err := extractResourceKind(params)
 	if err != nil {
-		return "", err
+		return nil, err
 	}
-	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
-	labelSelector := paramutil.ExtractOptionalString(params, paramutil.ParamLabelSelector)
-	fieldSelector := paramutil.ExtractOptionalString(params, paramutil.ParamFieldSelector)
-
-	ignoreStatus := paramutil.ExtractBool(params, "ignoreStatus", false)
-	ignoreMeta := paramutil.ExtractBool(params, "ignoreMeta", false)
 
 	intervalSeconds := paramutil.ExtractInt64(params, paramutil.ParamIntervalSeconds, DefaultIntervalSeconds)
 	if intervalSeconds < MinIntervalSeconds {
@@ -54,64 +71,162 @@ func watchDiffHandler(ctx context.Context, client interface{}, params map[string
 		iterations = MaxIterations
 	}
 
+	return &watchRequest{
+		cluster:        cluster,
+		kind:           kind,
+		namespace:      paramutil.ExtractOptionalString(params, paramutil.ParamNamespace),
+		labelSelector:  paramutil.ExtractOptionalString(params, paramutil.ParamLabelSelector),
+		fieldSelector:  paramutil.ExtractOptionalString(params, paramutil.ParamFieldSelector),
+		ignoreStatus:   paramutil.ExtractBool(params, "ignoreStatus", false),
+		ignoreMeta:     paramutil.ExtractBool(params, "ignoreMeta", false),
+		interval:       time.Duration(intervalSeconds) * time.Second,
+		iterations:     iterations,
+		maxItems:       MaxWatchItems,
+		maxOutputBytes: MaxWatchOutputBytes,
+	}, nil
+}
+
+func watchDiffWithReader(ctx context.Context, reader steve.ResourceReader, request *watchRequest) (string, error) {
 	differ := watchdiff.NewDiffer(true)
-	differ.SetIgnoreStatus(ignoreStatus)
-	differ.SetIgnoreMeta(ignoreMeta)
+	differ.SetIgnoreStatus(request.ignoreStatus)
+	differ.SetIgnoreMeta(request.ignoreMeta)
 
 	var resultLines []string
+	totalOutputBytes := 0
+	previousObjects := make(map[string]*unstructured.Unstructured)
 
-	for i := int64(0); i < iterations; i++ {
-		// List current resources for this iteration
-		listOpts := &steve.ListOptions{
-			LabelSelector: labelSelector,
-			FieldSelector: fieldSelector,
+	for i := int64(0); i < request.iterations; i++ {
+		if err := ctx.Err(); err != nil {
+			return "", err
 		}
-		list, err := steveClient.ListResources(ctx, cluster, kind, namespace, listOpts)
+
+		list, err := reader.ListResources(ctx, request.cluster, request.kind, request.namespace, &steve.ListOptions{
+			LabelSelector: request.labelSelector,
+			FieldSelector: request.fieldSelector,
+			Limit:         int64(request.maxItems + 1),
+		})
 		if err != nil {
 			return "", fmt.Errorf("failed to list resources: %w", err)
 		}
+		if list.GetContinue() != "" {
+			return "", fmt.Errorf("watch scope exceeded the per-iteration limit of %d resources; narrow kind, namespace, or selectors", request.maxItems)
+		}
+		if len(list.Items) > request.maxItems {
+			return "", fmt.Errorf("watch scope returned %d resources, exceeding the per-iteration limit of %d; narrow kind, namespace, or selectors", len(list.Items), request.maxItems)
+		}
 
-		// Sort for deterministic output
-		sort.Slice(list.Items, func(i, j int) bool {
-			ai := list.Items[i]
-			aj := list.Items[j]
-			if ai.GetNamespace() != aj.GetNamespace() {
-				return ai.GetNamespace() < aj.GetNamespace()
-			}
-			if ai.GetKind() != aj.GetKind() {
-				return ai.GetKind() < aj.GetKind()
-			}
-			return ai.GetName() < aj.GetName()
-		})
+		sortResourceList(list.Items)
 
-		iterationHeader := fmt.Sprintf("# iteration %d\n", i+1)
-		iterationLines := []string{iterationHeader}
+		currentObjects := make(map[string]*unstructured.Unstructured, len(list.Items))
+		var diffTexts []string
+		changeCount := 0
+		deleteCount := 0
 
 		for idx := range list.Items {
 			obj := &list.Items[idx]
+			currentObjects[watchObjectKey(obj)] = obj.DeepCopy()
+
 			diffText, err := differ.Diff(obj)
 			if err != nil {
 				return "", fmt.Errorf("failed to diff resource: %w", err)
 			}
 			if diffText != "" {
-				iterationLines = append(iterationLines, diffText)
+				changeCount++
+				diffTexts = append(diffTexts, diffText)
 			}
 		}
 
-		// Only append iteration output if there was any diff beyond the header.
-		if len(iterationLines) > 1 {
-			resultLines = append(resultLines, strings.Join(iterationLines, "\n"))
+		deletedKeys := diffDeletedKeys(previousObjects, currentObjects)
+		for _, key := range deletedKeys {
+			diffText, err := differ.DiffDelete(previousObjects[key])
+			if err != nil {
+				return "", fmt.Errorf("failed to diff deleted resource: %w", err)
+			}
+			if diffText != "" {
+				deleteCount++
+				diffTexts = append(diffTexts, diffText)
+			}
 		}
 
-		// Sleep between iterations, except after the last one.
-		if i+1 < iterations {
-			time.Sleep(time.Duration(intervalSeconds) * time.Second)
+		if len(diffTexts) > 0 {
+			iterationOutput := fmt.Sprintf(
+				"# iteration %d resources=%d changes=%d deletions=%d\n\n%s",
+				i+1,
+				len(list.Items),
+				changeCount,
+				deleteCount,
+				strings.Join(diffTexts, "\n"),
+			)
+			if totalOutputBytes+len(iterationOutput) > request.maxOutputBytes {
+				return "", fmt.Errorf(
+					"watch response exceeded the %d byte output limit before iteration %d completed; narrow kind, namespace, selectors, or iterations",
+					request.maxOutputBytes,
+					i+1,
+				)
+			}
+			resultLines = append(resultLines, iterationOutput)
+			totalOutputBytes += len(iterationOutput)
+		}
+
+		previousObjects = currentObjects
+
+		if i+1 < request.iterations {
+			if err := waitForNextIteration(ctx, request.interval); err != nil {
+				return "", err
+			}
 		}
 	}
 
 	if len(resultLines) == 0 {
-		return "No changes detected across iterations", nil
+		return fmt.Sprintf("No changes detected across %d iterations", request.iterations), nil
 	}
 
 	return strings.Join(resultLines, "\n"), nil
+}
+
+func waitForNextIteration(ctx context.Context, interval time.Duration) error {
+	timer := time.NewTimer(interval)
+	defer timer.Stop()
+
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+
+func sortResourceList(items []unstructured.Unstructured) {
+	sort.Slice(items, func(i, j int) bool {
+		ai := items[i]
+		aj := items[j]
+		if ai.GetNamespace() != aj.GetNamespace() {
+			return ai.GetNamespace() < aj.GetNamespace()
+		}
+		if ai.GetKind() != aj.GetKind() {
+			return ai.GetKind() < aj.GetKind()
+		}
+		return ai.GetName() < aj.GetName()
+	})
+}
+
+func diffDeletedKeys(previousObjects, currentObjects map[string]*unstructured.Unstructured) []string {
+	var deletedKeys []string
+	for key := range previousObjects {
+		if _, found := currentObjects[key]; found {
+			continue
+		}
+		deletedKeys = append(deletedKeys, key)
+	}
+	sort.Strings(deletedKeys)
+	return deletedKeys
+}
+
+func watchObjectKey(obj *unstructured.Unstructured) string {
+	return fmt.Sprintf("%s/%s/%s/%s",
+		obj.GetAPIVersion(),
+		obj.GetKind(),
+		obj.GetNamespace(),
+		obj.GetName(),
+	)
 }

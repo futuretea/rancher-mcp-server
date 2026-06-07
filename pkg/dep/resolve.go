@@ -57,17 +57,30 @@ type Result struct {
 	RootUID types.UID
 }
 
+// ResolveOptions controls the scan scope and traversal budget.
+type ResolveOptions struct {
+	Direction         string
+	MaxDepth          int
+	ScanNamespace     string
+	MaxScannedObjects int
+}
+
 // Resolve resolves the dependency/dependent graph for a Kubernetes resource.
-// direction: "dependents" (default) or "dependencies".
-func Resolve(ctx context.Context, client steve.ResourceReader, clusterID, rootKind, rootNS, rootName, direction string, maxDepth int) (*Result, error) {
+// Direction should be "dependents" (default) or "dependencies".
+func Resolve(ctx context.Context, client steve.ResourceReader, clusterID, rootKind, rootNS, rootName string, options ResolveOptions) (*Result, error) {
+	scanNamespace, err := normalizeScanNamespace(rootNS, options.ScanNamespace)
+	if err != nil {
+		return nil, err
+	}
+
 	// 1. Get the root resource
 	root, err := client.GetResource(ctx, clusterID, rootKind, rootNS, rootName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get root resource %s/%s: %w", rootKind, rootName, err)
 	}
 
-	// 2. List all relevant resources concurrently
-	allObjects, err := listAllResources(ctx, client, clusterID, rootNS)
+	// 2. List all relevant resources within the requested scope and budget.
+	allObjects, err := listAllResources(ctx, client, clusterID, scanNamespace, options.MaxScannedObjects)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list resources: %w", err)
 	}
@@ -126,7 +139,7 @@ func Resolve(ctx context.Context, client steve.ResourceReader, clusterID, rootKi
 	}
 
 	// 6. BFS traversal from root
-	depsIsDependencies := direction == "dependencies"
+	depsIsDependencies := options.Direction == "dependencies"
 	rootUID := root.GetUID()
 
 	nodeMap := NodeMap{}
@@ -151,7 +164,7 @@ func Resolve(ctx context.Context, client steve.ResourceReader, clusterID, rootKi
 
 		if uid == "" {
 			depth++
-			if maxDepth > 0 && depth >= uint(maxDepth) {
+			if options.MaxDepth > 0 && depth >= uint(options.MaxDepth) {
 				break
 			}
 			uidQueue = append(uidQueue, "") // next depth sentinel
@@ -233,8 +246,26 @@ func applyRelationships(node *Node, rmap *RelationshipMap, globalMapByUID map[ty
 	}
 }
 
-// listAllResources lists all relevant resource types concurrently.
-func listAllResources(ctx context.Context, client steve.ResourceReader, clusterID, namespace string) ([]unstructuredv1.Unstructured, error) {
+func normalizeScanNamespace(rootNamespace, scanNamespace string) (string, error) {
+	if rootNamespace == "" {
+		return scanNamespace, nil
+	}
+	if scanNamespace == "" || scanNamespace == rootNamespace {
+		return rootNamespace, nil
+	}
+	return "", fmt.Errorf("scan namespace %q does not match namespaced root namespace %q", scanNamespace, rootNamespace)
+}
+
+// listAllResources lists all relevant resource types, optionally under a budget.
+func listAllResources(ctx context.Context, client steve.ResourceReader, clusterID, namespace string, maxScannedObjects int) ([]unstructuredv1.Unstructured, error) {
+	if maxScannedObjects > 0 {
+		return listAllResourcesWithBudget(ctx, client, clusterID, namespace, maxScannedObjects)
+	}
+	return listAllResourcesConcurrently(ctx, client, clusterID, namespace)
+}
+
+// listAllResourcesConcurrently lists all relevant resource types concurrently.
+func listAllResourcesConcurrently(ctx context.Context, client steve.ResourceReader, clusterID, namespace string) ([]unstructuredv1.Unstructured, error) {
 	var (
 		mu       sync.Mutex
 		wg       sync.WaitGroup
@@ -264,5 +295,48 @@ func listAllResources(ctx context.Context, client steve.ResourceReader, clusterI
 	}
 
 	wg.Wait()
+	return allItems, nil
+}
+
+// listAllResourcesWithBudget lists resource kinds serially and fails fast when
+// the total scanned object count would exceed the configured budget.
+func listAllResourcesWithBudget(ctx context.Context, client steve.ResourceReader, clusterID, namespace string, maxScannedObjects int) ([]unstructuredv1.Unstructured, error) {
+	allItems := make([]unstructuredv1.Unstructured, 0, maxScannedObjects)
+	remaining := maxScannedObjects
+	scannedKinds := 0
+
+	for _, spec := range resourceKindsToList {
+		ns := namespace
+		if spec.clusterScoped {
+			ns = ""
+		}
+
+		limit := 1
+		if remaining > 0 {
+			limit = remaining + 1
+		}
+
+		list, err := client.ListResources(ctx, clusterID, spec.kind, ns, &steve.ListOptions{Limit: int64(limit)})
+		if err != nil {
+			// Non-fatal: some resource types may not exist on the cluster
+			continue
+		}
+
+		scannedKinds++
+		if list.GetContinue() != "" || len(list.Items) > remaining {
+			return nil, fmt.Errorf(
+				"dependency scan budget exceeded: scannedObjects=%d scannedKinds=%d budget=%d scanNamespace=%q blockedKind=%s",
+				len(allItems),
+				scannedKinds,
+				maxScannedObjects,
+				namespace,
+				spec.kind,
+			)
+		}
+
+		allItems = append(allItems, list.Items...)
+		remaining -= len(list.Items)
+	}
+
 	return allItems, nil
 }

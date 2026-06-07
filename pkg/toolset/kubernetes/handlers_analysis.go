@@ -22,43 +22,94 @@ func depHandler(ctx context.Context, client interface{}, params map[string]inter
 		return "", err
 	}
 
-	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
+	request, err := buildDepRequest(params)
 	if err != nil {
 		return "", err
-	}
-	kind, err := extractResourceKind(params)
-	if err != nil {
-		return "", err
-	}
-	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
-	if err != nil {
-		return "", err
-	}
-	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
-	direction := paramutil.ExtractOptionalStringWithDefault(params, paramutil.ParamDirection, "dependents")
-	maxDepth := int(paramutil.ExtractInt64(params, paramutil.ParamDepth, DefaultMaxDepth))
-	format := paramutil.ExtractOptionalStringWithDefault(params, paramutil.ParamFormat, "tree")
-
-	if direction != "dependents" && direction != "dependencies" {
-		return "", fmt.Errorf("%w: direction must be 'dependents' or 'dependencies'", paramutil.ErrMissingParameter)
-	}
-	if maxDepth < MinDepth || maxDepth > MaxDepth {
-		maxDepth = DefaultMaxDepth
 	}
 
-	result, err := dep.Resolve(ctx, steveClient, cluster, kind, namespace, name, direction, maxDepth)
+	result, err := dep.Resolve(
+		ctx,
+		steveClient,
+		request.Cluster,
+		request.Kind,
+		request.Namespace,
+		request.Name,
+		request.ResolveOptions,
+	)
 	if err != nil {
 		return "", fmt.Errorf("failed to resolve dependencies: %w", err)
 	}
 
-	depsIsDependencies := direction == "dependencies"
+	depsIsDependencies := request.ResolveOptions.Direction == "dependencies"
 
-	switch format {
+	switch request.Format {
 	case "json":
 		return dep.FormatJSON(result, depsIsDependencies)
 	default: // tree
 		return dep.FormatTree(result, depsIsDependencies), nil
 	}
+}
+
+type depRequest struct {
+	Cluster        string
+	Kind           string
+	Name           string
+	Namespace      string
+	Format         string
+	ResolveOptions dep.ResolveOptions
+}
+
+func buildDepRequest(params map[string]interface{}) (*depRequest, error) {
+	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
+	if err != nil {
+		return nil, err
+	}
+	kind, err := extractResourceKind(params)
+	if err != nil {
+		return nil, err
+	}
+	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
+	if err != nil {
+		return nil, err
+	}
+
+	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	scanNamespace := paramutil.ExtractOptionalString(params, paramutil.ParamScanNamespace)
+	direction := paramutil.ExtractOptionalStringWithDefault(params, paramutil.ParamDirection, "dependents")
+	maxDepth := int(paramutil.ExtractInt64(params, paramutil.ParamDepth, DefaultMaxDepth))
+	maxScannedObjects := int(paramutil.ExtractInt64(params, paramutil.ParamMaxScannedObjects, 0))
+	format := paramutil.ExtractOptionalStringWithDefault(params, paramutil.ParamFormat, "tree")
+
+	if direction != "dependents" && direction != "dependencies" {
+		return nil, fmt.Errorf("%w: direction must be 'dependents' or 'dependencies'", paramutil.ErrMissingParameter)
+	}
+	if maxDepth < MinDepth || maxDepth > MaxDepth {
+		maxDepth = DefaultMaxDepth
+	}
+	if maxScannedObjects < 0 {
+		return nil, fmt.Errorf("%w: maxScannedObjects must be >= 0", paramutil.ErrMissingParameter)
+	}
+	if namespace != "" {
+		if scanNamespace == "" {
+			scanNamespace = namespace
+		} else if scanNamespace != namespace {
+			return nil, fmt.Errorf("scan namespace %q does not match namespaced root namespace %q", scanNamespace, namespace)
+		}
+	}
+
+	return &depRequest{
+		Cluster:   cluster,
+		Kind:      kind,
+		Name:      name,
+		Namespace: namespace,
+		Format:    format,
+		ResolveOptions: dep.ResolveOptions{
+			Direction:         direction,
+			MaxDepth:          maxDepth,
+			ScanNamespace:     scanNamespace,
+			MaxScannedObjects: maxScannedObjects,
+		},
+	}, nil
 }
 
 // NodeAnalysisResult contains the comprehensive analysis of a node.

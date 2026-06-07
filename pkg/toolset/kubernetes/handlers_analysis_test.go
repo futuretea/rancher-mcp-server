@@ -34,25 +34,19 @@ func TestParseResourceQuantity(t *testing.T) {
 		q    string
 		want int64
 	}{
-		// empty
 		{"", 0},
-		// millicores
 		{"100m", 100},
 		{"1500m", 1500},
 		{"0m", 0},
-		// binary memory
 		{"128Ki", 128 * 1024},
 		{"10Mi", 10 * 1024 * 1024},
 		{"2Gi", 2 * 1024 * 1024 * 1024},
 		{"1Ti", 1024 * 1024 * 1024 * 1024},
-		// decimal memory
 		{"1K", 1000},
 		{"1k", 1000},
 		{"2M", 2 * 1000 * 1000},
 		{"3G", 3 * 1000 * 1000 * 1000},
-		// plain number
 		{"500", 500},
-		// invalid
 		{"abcMi", 0},
 		{"invalid", 0},
 	}
@@ -101,4 +95,32 @@ func TestFormatResourceQuantity(t *testing.T) {
 			t.Errorf("expected '500 bytes', got %q", got)
 		}
 	})
+}
+
+func TestBuildDepRequest_RejectsMismatchedScanNamespace(t *testing.T) {
+	_, err := buildDepRequest(map[string]interface{}{
+		"cluster":       "c1",
+		"kind":          "deployment",
+		"namespace":     "default",
+		"name":          "demo",
+		"scanNamespace": "kube-system",
+	})
+	if err == nil {
+		t.Fatal("expected mismatched scan namespace error")
+	}
+}
+
+func TestBuildDepRequest_DefaultsScanNamespaceToRootNamespace(t *testing.T) {
+	request, err := buildDepRequest(map[string]interface{}{
+		"cluster":   "c1",
+		"kind":      "deployment",
+		"namespace": "default",
+		"name":      "demo",
+	})
+	if err != nil {
+		t.Fatalf("buildDepRequest() returned unexpected error: %v", err)
+	}
+	if request.ResolveOptions.ScanNamespace != "default" {
+		t.Fatalf("expected default scan namespace to match root namespace, got %q", request.ResolveOptions.ScanNamespace)
+	}
 }

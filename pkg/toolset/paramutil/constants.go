@@ -35,8 +35,10 @@ const (
 	ParamPage          = "page"
 	ParamFieldSelector = "fieldSelector"
 	// Dep tool parameters
-	ParamDirection = "direction"
-	ParamDepth     = "depth"
+	ParamDirection         = "direction"
+	ParamDepth             = "depth"
+	ParamScanNamespace     = "scanNamespace"
+	ParamMaxScannedObjects = "maxScannedObjects"
 	// Sensitive data parameters
 	ParamShowSensitiveData = "showSensitiveData"
 	// Watch/diff tool parameters

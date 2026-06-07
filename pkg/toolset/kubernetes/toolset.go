@@ -376,7 +376,7 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 		{
 			Tool: mcp.Tool{
 				Name:        "kubernetes_dep",
-				Description: "Show all dependencies or dependents of any Kubernetes resource as a tree. Covers OwnerReference chains, Pod->Node/SA/ConfigMap/Secret/PVC, Service->Pod (label selector), Ingress->IngressClass/Service/TLS Secret, PVC<->PV->StorageClass, RBAC bindings, PDB->Pod, and Events.",
+				Description: "Show all dependencies or dependents of any Kubernetes resource as a tree. Covers OwnerReference chains, Pod->Node/SA/ConfigMap/Secret/PVC, Service->Pod (label selector), Ingress->IngressClass/Service/TLS Secret, PVC<->PV->StorageClass, RBAC bindings, PDB->Pod, and Events. Cluster-scoped roots can narrow auxiliary namespaced scans with scanNamespace, and maxScannedObjects enables fail-fast scan budgeting.",
 				InputSchema: mcp.ToolInputSchema{
 					Type:     "object",
 					Required: []string{"cluster", "kind", "name"},
@@ -406,6 +406,16 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 							"type":        "integer",
 							"description": "Maximum traversal depth (1-20)",
 							"default":     10,
+						},
+						"scanNamespace": map[string]any{
+							"type":        "string",
+							"description": "Optional namespace override for auxiliary namespaced scans. Use this only with cluster-scoped roots; namespaced roots must match their own namespace.",
+							"default":     "",
+						},
+						"maxScannedObjects": map[string]any{
+							"type":        "integer",
+							"description": "Optional fail-fast budget for total scanned objects. When set to a value greater than 0, kubernetes_dep aborts instead of building a partial graph after the budget is exceeded.",
+							"default":     0,
 						},
 						"format": map[string]any{
 							"type":        "string",

@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"sync"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/util/url"
 
@@ -40,16 +41,22 @@ type Client struct {
 	accessKey string
 	secretKey string
 	insecure  bool
+
+	cacheMu        sync.Mutex
+	dynamicClients map[string]dynamic.Interface
+	clientsets     map[string]kubernetes.Interface
 }
 
 // NewClient creates a new Steve API client.
 func NewClient(serverURL, token, accessKey, secretKey string, insecure bool) *Client {
 	return &Client{
-		serverURL: serverURL,
-		token:     token,
-		accessKey: accessKey,
-		secretKey: secretKey,
-		insecure:  insecure,
+		serverURL:      serverURL,
+		token:          token,
+		accessKey:      accessKey,
+		secretKey:      secretKey,
+		insecure:       insecure,
+		dynamicClients: make(map[string]dynamic.Interface),
+		clientsets:     make(map[string]kubernetes.Interface),
 	}
 }
 
@@ -101,20 +108,57 @@ func (c *Client) createRestConfig(clusterID string) (*rest.Config, error) {
 
 // getDynamicClient creates a dynamic Kubernetes client for the given cluster.
 func (c *Client) getDynamicClient(clusterID string) (dynamic.Interface, error) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	c.ensureCachesLocked()
+
+	if client, ok := c.dynamicClients[clusterID]; ok {
+		return client, nil
+	}
+
 	restConfig, err := c.createRestConfig(clusterID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create REST config: %w", err)
 	}
-	return dynamic.NewForConfig(restConfig)
+
+	client, err := dynamic.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+	c.dynamicClients[clusterID] = client
+	return client, nil
 }
 
 // getClientset creates a typed Kubernetes clientset for the given cluster.
 func (c *Client) getClientset(clusterID string) (kubernetes.Interface, error) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	c.ensureCachesLocked()
+
+	if clientset, ok := c.clientsets[clusterID]; ok {
+		return clientset, nil
+	}
+
 	restConfig, err := c.createRestConfig(clusterID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create REST config: %w", err)
 	}
-	return kubernetes.NewForConfig(restConfig)
+
+	clientset, err := kubernetes.NewForConfig(restConfig)
+	if err != nil {
+		return nil, err
+	}
+	c.clientsets[clusterID] = clientset
+	return clientset, nil
+}
+
+func (c *Client) ensureCachesLocked() {
+	if c.dynamicClients == nil {
+		c.dynamicClients = make(map[string]dynamic.Interface)
+	}
+	if c.clientsets == nil {
+		c.clientsets = make(map[string]kubernetes.Interface)
+	}
 }
 
 // getResourceInterface returns a dynamic resource interface for the given parameters.

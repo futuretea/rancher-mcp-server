@@ -52,9 +52,18 @@ jobs:
           cp Dockerfile "$stage_dir/Dockerfile"
           cp "$binary_path" "$stage_dir/rancher-mcp-server"
           chmod +x "$stage_dir/rancher-mcp-server"
-          docker build --target=release -t rancher-mcp-server-version-preflight "$stage_dir"
+          docker build --target=goreleaser-release -t rancher-mcp-server-version-preflight "$stage_dir"
           ./scripts/verify-version-container-output.sh rancher-mcp-server-version-preflight "$(git describe --tags --exact-match HEAD)" "$(git rev-parse HEAD)" "$BUILD_DATE"
           docker rmi rancher-mcp-server-version-preflight
+      - name: Verify direct local Docker build path
+        run: |
+          docker build \
+            --build-arg VERSION="$(git describe --tags --exact-match HEAD)" \
+            --build-arg GIT_COMMIT="$(git rev-parse HEAD)" \
+            --build-arg BUILD_DATE="$BUILD_DATE" \
+            -t rancher-mcp-server-local-preflight .
+          ./scripts/verify-version-container-output.sh rancher-mcp-server-local-preflight "$(git describe --tags --exact-match HEAD)" "$(git rev-parse HEAD)" "$BUILD_DATE"
+          docker rmi rancher-mcp-server-local-preflight
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
         with:

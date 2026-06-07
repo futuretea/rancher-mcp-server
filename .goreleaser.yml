@@ -57,7 +57,7 @@ dockers:
     dockerfile: Dockerfile
     use: buildx
     build_flag_templates:
-      - "--target=release"
+      - "--target=goreleaser-release"
       - "--platform=linux/amd64"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"
@@ -72,7 +72,7 @@ dockers:
     dockerfile: Dockerfile
     use: buildx
     build_flag_templates:
-      - "--target=release"
+      - "--target=goreleaser-release"
       - "--platform=linux/arm64"
       - "--label=org.opencontainers.image.created={{.Date}}"
       - "--label=org.opencontainers.image.title={{.ProjectName}}"

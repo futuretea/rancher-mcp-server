@@ -5,6 +5,12 @@ FROM golang:1.26-alpine AS builder
 
 WORKDIR /build
 
+RUN apk add --no-cache bash make
+
+ARG VERSION=dev
+ARG GIT_COMMIT=unknown
+ARG BUILD_DATE=unknown
+
 # Copy go mod files first for better caching
 COPY go.mod go.sum ./
 RUN go mod download
@@ -12,8 +18,8 @@ RUN go mod download
 # Copy source code
 COPY . .
 
-# Build the binary
-RUN CGO_ENABLED=0 go build -o rancher-mcp-server ./cmd/rancher-mcp-server
+# Reuse the shared build contract instead of duplicating ldflags in Docker.
+RUN make build BUILD_DATE="${BUILD_DATE}" GIT_VERSION="${VERSION}" GIT_COMMIT="${GIT_COMMIT}"
 
 # Final stage
 FROM cgr.dev/chainguard/wolfi-base:latest AS runtime
@@ -26,12 +32,16 @@ USER rancher
 ENTRYPOINT ["/usr/local/bin/rancher-mcp-server"]
 
 # Release image
-FROM runtime AS release
+FROM runtime AS goreleaser-release
 
+# This target expects a prebuilt rancher-mcp-server binary in the Docker context.
 COPY rancher-mcp-server /usr/local/bin/rancher-mcp-server
 
-# Dev image
-FROM runtime AS dev
+# Local image
+FROM runtime AS local
 
-# Copy the binary from builder
+# This target is the supported direct docker build path from the repository root.
 COPY --from=builder /build/rancher-mcp-server /usr/local/bin/rancher-mcp-server
+
+# Dev image
+FROM local AS dev

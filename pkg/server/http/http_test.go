@@ -55,7 +55,7 @@ func TestServeHealthEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("failed to call health endpoint: %v", err)
 	}
-	defer resp.Body.Close()
+	defer func() { _ = resp.Body.Close() }()
 
 	if resp.StatusCode != http.StatusOK {
 		t.Errorf("expected status 200, got %d", resp.StatusCode)

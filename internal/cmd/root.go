@@ -166,8 +166,8 @@ func runServer(cfgFile string, streams IOStreams) error {
 	// Start server based on port configuration
 	if cfg.Port == 0 {
 		// Stdio mode - use fmt.Fprintf for startup messages as logging is disabled
-		fmt.Fprintf(streams.ErrOut, "Starting Rancher MCP Server in stdio mode\n")
-		fmt.Fprintf(streams.ErrOut, "Enabled tools: %v\n", server.GetEnabledTools())
+		_, _ = fmt.Fprintf(streams.ErrOut, "Starting Rancher MCP Server in stdio mode\n")
+		_, _ = fmt.Fprintf(streams.ErrOut, "Enabled tools: %v\n", server.GetEnabledTools())
 		return server.ServeStdio()
 	}
 
@@ -188,7 +188,7 @@ func newVersionCommand(streams IOStreams) *cobra.Command {
 		Use:   "version",
 		Short: "Print version information",
 		Run: func(_ *cobra.Command, _ []string) {
-			fmt.Fprintf(streams.Out, "%s\n", version.GetVersionInfo())
+			_, _ = fmt.Fprintf(streams.Out, "%s\n", version.GetVersionInfo())
 		},
 	}
 

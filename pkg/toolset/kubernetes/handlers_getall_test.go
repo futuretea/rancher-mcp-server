@@ -158,9 +158,19 @@ func TestParseDuration(t *testing.T) {
 		{"1d", 24 * time.Hour, false},
 		{"2d", 48 * time.Hour, false},
 		{"1w", 7 * 24 * time.Hour, false},
+		{"2d12h", 60 * time.Hour, false},
+		{"1w2d", 9 * 24 * time.Hour, false},
+		// Standard edge cases
+		{"1.5h", 90 * time.Minute, false},
+		{"-30m", -30 * time.Minute, false},
 		// Invalid
 		{"abc", 0, true},
 		{"", 0, true},
+		{"1h30", 0, true},
+		{"30", 0, true},
+		{"1x", 0, true},
+		{"h", 0, true},
+		{"1h 30m", 0, true},
 	}
 	for _, tt := range tests {
 		t.Run(tt.s, func(t *testing.T) {

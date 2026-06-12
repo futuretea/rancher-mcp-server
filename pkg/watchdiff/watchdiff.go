@@ -134,61 +134,83 @@ func (p *Printer) Diff(oldObj, newObj *unstructured.Unstructured) (string, error
 		return "", nil
 	}
 
-	// Prepare shallow maps containing only fields we care about.
-	oldFields := make(map[string]interface{})
-	newFields := make(map[string]interface{})
+	oldFields := extractDiffFields(oldObj)
+	newFields := extractDiffFields(newObj)
 
-	if oldObj != nil {
-		if spec, ok := oldObj.Object["spec"]; ok {
-			oldFields["spec"] = spec
-		}
-		if status, ok := oldObj.Object["status"]; ok {
-			oldFields["status"] = status
-		}
-	}
-	if newObj != nil {
-		if spec, ok := newObj.Object["spec"]; ok {
-			newFields["spec"] = spec
-		}
-		if status, ok := newObj.Object["status"]; ok {
-			newFields["status"] = status
-		}
-	}
-
-	// If there is no change, return empty string.
 	if areObjectsEqual(oldFields, newFields) {
 		return "", nil
 	}
 
 	var buf bytes.Buffer
 
-	// Header line similar to "diff kind.group name" with optional timestamp.
-	name := ""
-	if newObj != nil {
-		name = newObj.GetName()
-		if ns := newObj.GetNamespace(); ns != "" {
-			name = ns + "/" + name
-		}
-	} else if oldObj != nil {
-		name = oldObj.GetName()
-		if ns := oldObj.GetNamespace(); ns != "" {
-			name = ns + "/" + name
-		}
+	obj := pickObject(oldObj, newObj)
+	name := resourceName(obj)
+	resource := resourceType(obj)
+	p.writeHeader(&buf, resource, name)
+
+	if isNewResource(oldObj) {
+		writeNewResourceDiff(&buf, newObj)
+		return buf.String(), nil
 	}
 
-	resource := ""
-	if newObj != nil {
-		resource = strings.ToLower(newObj.GetKind())
-		if group := newObj.GetAPIVersion(); group != "" {
-			resource = fmt.Sprintf("%s.%s", resource, group)
-		}
-	} else if oldObj != nil {
-		resource = strings.ToLower(oldObj.GetKind())
-		if group := oldObj.GetAPIVersion(); group != "" {
-			resource = fmt.Sprintf("%s.%s", resource, group)
-		}
-	}
+	writeStructuredDiff(&buf, oldFields, newFields)
+	return buf.String(), nil
+}
 
+// extractDiffFields returns a shallow map with only the fields that participate
+// in the diff: spec and status.
+func extractDiffFields(obj *unstructured.Unstructured) map[string]interface{} {
+	fields := make(map[string]interface{})
+	if obj == nil {
+		return fields
+	}
+	if spec, ok := obj.Object["spec"]; ok {
+		fields["spec"] = spec
+	}
+	if status, ok := obj.Object["status"]; ok {
+		fields["status"] = status
+	}
+	return fields
+}
+
+// pickObject returns newObj when available, otherwise oldObj. It assumes at
+// least one argument is non-nil.
+func pickObject(oldObj, newObj *unstructured.Unstructured) *unstructured.Unstructured {
+	if newObj != nil {
+		return newObj
+	}
+	return oldObj
+}
+
+// resourceName returns the display name for an object, optionally prefixed by
+// its namespace.
+func resourceName(obj *unstructured.Unstructured) string {
+	if obj == nil {
+		return ""
+	}
+	name := obj.GetName()
+	if ns := obj.GetNamespace(); ns != "" {
+		name = ns + "/" + name
+	}
+	return name
+}
+
+// resourceType returns the display resource type as "kind.group" or just "kind"
+// when no API group is present.
+func resourceType(obj *unstructured.Unstructured) string {
+	if obj == nil {
+		return ""
+	}
+	resource := strings.ToLower(obj.GetKind())
+	if group := obj.GetAPIVersion(); group != "" {
+		resource = fmt.Sprintf("%s.%s", resource, group)
+	}
+	return resource
+}
+
+// writeHeader writes the "diff resource name" header and separator into buf.
+// It updates the printer's last-print timestamp when timestamps are enabled.
+func (p *Printer) writeHeader(buf *bytes.Buffer, resource, name string) {
 	timestamp := ""
 	if p.showTimestamp {
 		now := time.Now()
@@ -198,29 +220,37 @@ func (p *Printer) Diff(oldObj, newObj *unstructured.Unstructured) (string, error
 		}
 	}
 
-	fmt.Fprintf(&buf, "%s%s\n", timestamp, fmt.Sprintf("diff %s %s", resource, name))
-	fmt.Fprintf(&buf, "%s\n", strings.Repeat("-", 80))
+	fmt.Fprintf(buf, "%s%s\n", timestamp, fmt.Sprintf("diff %s %s", resource, name))
+	fmt.Fprintf(buf, "%s\n", strings.Repeat("-", 80))
+}
 
-	// For first-time objects (no real old version), show as added sections.
-	if oldObj == nil || (oldObj.Object["spec"] == nil && oldObj.Object["status"] == nil) {
-		buf.WriteString("+ New Resource\n")
-		if spec, ok := newObj.Object["spec"]; ok {
-			printSection(&buf, "spec", spec, true)
-		}
-		if status, ok := newObj.Object["status"]; ok {
-			printSection(&buf, "status", status, true)
-		}
-		buf.WriteString("\n")
-		return buf.String(), nil
+// isNewResource reports whether oldObj represents a resource that has no real
+// prior version, in which case the diff is rendered as added sections.
+func isNewResource(oldObj *unstructured.Unstructured) bool {
+	return oldObj == nil || (oldObj.Object["spec"] == nil && oldObj.Object["status"] == nil)
+}
+
+// writeNewResourceDiff renders a diff for a resource that is being seen for the
+// first time.
+func writeNewResourceDiff(buf *bytes.Buffer, newObj *unstructured.Unstructured) {
+	buf.WriteString("+ New Resource\n")
+	if spec, ok := newObj.Object["spec"]; ok {
+		printSection(buf, "spec", spec, true)
 	}
+	if status, ok := newObj.Object["status"]; ok {
+		printSection(buf, "status", status, true)
+	}
+	buf.WriteString("\n")
+}
 
-	// Print structured diff.
+// writeStructuredDiff renders a field-by-field diff between oldFields and
+// newFields.
+func writeStructuredDiff(buf *bytes.Buffer, oldFields, newFields map[string]interface{}) {
 	if len(oldFields) > 0 && len(newFields) == 0 {
 		buf.WriteString("- Deleted Resource\n")
 	}
-	printDiff(&buf, "", oldFields, newFields, "")
+	printDiff(buf, "", oldFields, newFields, "")
 	buf.WriteString("\n")
-	return buf.String(), nil
 }
 
 // trimMetadata keeps only essential metadata fields (name and namespace).

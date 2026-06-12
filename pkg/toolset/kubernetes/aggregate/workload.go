@@ -91,16 +91,29 @@ func extractWorkloadItem(obj unstructured.Unstructured, kind string) WorkloadIte
 		Kind:      capitalize(kind),
 	}
 
-	// Extract status fields
-	replicas, _, _ := unstructured.NestedInt64(obj.Object, "status", "replicas")
-	readyReplicas, _, _ := unstructured.NestedInt64(obj.Object, "status", "readyReplicas")
-	updatedReplicas, _, _ := unstructured.NestedInt64(obj.Object, "status", "updatedReplicas")
-	unavailableReplicas, _, _ := unstructured.NestedInt64(obj.Object, "status", "unavailableReplicas")
+	// Extract status fields. DaemonSet uses different field names than
+	// Deployment/StatefulSet.
+	if strings.ToLower(kind) == "daemonset" {
+		desiredNumberScheduled, _, _ := unstructured.NestedInt64(obj.Object, "status", "desiredNumberScheduled")
+		numberReady, _, _ := unstructured.NestedInt64(obj.Object, "status", "numberReady")
+		updatedNumberScheduled, _, _ := unstructured.NestedInt64(obj.Object, "status", "updatedNumberScheduled")
+		numberUnavailable, _, _ := unstructured.NestedInt64(obj.Object, "status", "numberUnavailable")
 
-	item.Desired = int32(replicas)
-	item.Ready = int32(readyReplicas)
-	item.Updated = int32(updatedReplicas)
-	item.Unavailable = int32(unavailableReplicas)
+		item.Desired = int32(desiredNumberScheduled)
+		item.Ready = int32(numberReady)
+		item.Updated = int32(updatedNumberScheduled)
+		item.Unavailable = int32(numberUnavailable)
+	} else {
+		replicas, _, _ := unstructured.NestedInt64(obj.Object, "status", "replicas")
+		readyReplicas, _, _ := unstructured.NestedInt64(obj.Object, "status", "readyReplicas")
+		updatedReplicas, _, _ := unstructured.NestedInt64(obj.Object, "status", "updatedReplicas")
+		unavailableReplicas, _, _ := unstructured.NestedInt64(obj.Object, "status", "unavailableReplicas")
+
+		item.Desired = int32(replicas)
+		item.Ready = int32(readyReplicas)
+		item.Updated = int32(updatedReplicas)
+		item.Unavailable = int32(unavailableReplicas)
+	}
 
 	// Derive status
 	item.Status = deriveWorkloadStatus(item)

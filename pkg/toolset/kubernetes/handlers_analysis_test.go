@@ -47,6 +47,12 @@ func TestParseResourceQuantity(t *testing.T) {
 		{"2M", 2 * 1000 * 1000},
 		{"3G", 3 * 1000 * 1000 * 1000},
 		{"500", 500},
+		// Fractional and exponential forms
+		{"0.5Gi", int64(0.5 * 1024 * 1024 * 1024)},
+		{"1.5Mi", int64(1.5 * 1024 * 1024)},
+		{"1e9", 1e9},
+		{"1.5e9", 1.5e9},
+		{"100.5m", 101},
 		{"abcMi", 0},
 		{"invalid", 0},
 	}

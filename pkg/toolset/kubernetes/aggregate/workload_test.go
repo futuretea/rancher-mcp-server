@@ -87,6 +87,46 @@ func TestExtractWorkloadItem(t *testing.T) {
 	}
 }
 
+func TestExtractWorkloadItem_DaemonSet(t *testing.T) {
+	ds := unstructured.Unstructured{
+		Object: map[string]interface{}{
+			"metadata": map[string]interface{}{
+				"name":      "test-ds",
+				"namespace": "kube-system",
+			},
+			"status": map[string]interface{}{
+				"desiredNumberScheduled": int64(5),
+				"numberReady":            int64(3),
+				"updatedNumberScheduled": int64(5),
+				"numberUnavailable":      int64(2),
+			},
+		},
+	}
+
+	item := extractWorkloadItem(ds, "daemonset")
+	if item.Name != "test-ds" {
+		t.Errorf("expected name test-ds, got %s", item.Name)
+	}
+	if item.Kind != "Daemonset" {
+		t.Errorf("expected kind Daemonset, got %s", item.Kind)
+	}
+	if item.Desired != 5 {
+		t.Errorf("expected Desired 5, got %d", item.Desired)
+	}
+	if item.Ready != 3 {
+		t.Errorf("expected Ready 3, got %d", item.Ready)
+	}
+	if item.Updated != 5 {
+		t.Errorf("expected Updated 5, got %d", item.Updated)
+	}
+	if item.Unavailable != 2 {
+		t.Errorf("expected Unavailable 2, got %d", item.Unavailable)
+	}
+	if item.Status != "Progressing" {
+		t.Errorf("expected Status Progressing, got %s", item.Status)
+	}
+}
+
 func TestSortWorkloadItems_ByUnreadyCount(t *testing.T) {
 	items := []WorkloadItem{
 		{Name: "dep-a", Ready: 5, Desired: 5},  // unready = 0

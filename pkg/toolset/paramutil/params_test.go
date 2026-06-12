@@ -137,47 +137,85 @@ func TestBoolPtr(t *testing.T) {
 func TestApplyPagination(t *testing.T) {
 	items := []string{"a", "b", "c", "d", "e"}
 
-	t.Run("first page", func(t *testing.T) {
-		result, total := ApplyPagination(items, 2, 1)
-		if total != 5 || len(result) != 2 || result[0] != "a" || result[1] != "b" {
-			t.Fatalf("got %v (total=%d), want [a b] (total=5)", result, total)
-		}
-	})
+	tests := []struct {
+		name  string
+		items []string
+		limit int64
+		page  int64
+		want  []string
+		total int64
+	}{
+		{
+			name:  "first page",
+			items: items,
+			limit: 2,
+			page:  1,
+			want:  []string{"a", "b"},
+			total: 5,
+		},
+		{
+			name:  "last page partial",
+			items: items,
+			limit: 2,
+			page:  3,
+			want:  []string{"e"},
+			total: 5,
+		},
+		{
+			name:  "page beyond range",
+			items: items,
+			limit: 3,
+			page:  10,
+			want:  []string{},
+			total: 5,
+		},
+		{
+			name:  "zero limit returns all",
+			items: items,
+			limit: 0,
+			page:  1,
+			want:  []string{"a", "b", "c", "d", "e"},
+			total: 5,
+		},
+		{
+			name:  "zero page defaults to 1",
+			items: items,
+			limit: 2,
+			page:  0,
+			want:  []string{"a", "b"},
+			total: 5,
+		},
+		{
+			name:  "empty items",
+			items: []string{},
+			limit: 2,
+			page:  1,
+			want:  []string{},
+			total: 0,
+		},
+	}
 
-	t.Run("last page partial", func(t *testing.T) {
-		result, total := ApplyPagination(items, 2, 3)
-		if total != 5 || len(result) != 1 || result[0] != "e" {
-			t.Fatalf("got %v (total=%d), want [e] (total=5)", result, total)
-		}
-	})
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, total := ApplyPagination(tt.items, tt.limit, tt.page)
+			assertPaginationResult(t, got, total, tt.want, tt.total)
+		})
+	}
+}
 
-	t.Run("page beyond range", func(t *testing.T) {
-		result, total := ApplyPagination(items, 3, 10)
-		if total != 5 || len(result) != 0 {
-			t.Fatalf("expected empty, got %v (total=%d)", result, total)
+func assertPaginationResult(t *testing.T, got []string, total int64, want []string, wantTotal int64) {
+	t.Helper()
+	if total != wantTotal {
+		t.Errorf("total = %d, want %d", total, wantTotal)
+	}
+	if len(got) != len(want) {
+		t.Fatalf("got %v (len=%d), want %v (len=%d)", got, len(got), want, len(want))
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("got[%d] = %q, want %q", i, got[i], want[i])
 		}
-	})
-
-	t.Run("zero limit returns all", func(t *testing.T) {
-		result, total := ApplyPagination(items, 0, 1)
-		if total != 5 || len(result) != 5 {
-			t.Fatalf("expected all items, got %v (total=%d)", result, total)
-		}
-	})
-
-	t.Run("zero page defaults to 1", func(t *testing.T) {
-		result, total := ApplyPagination(items, 2, 0)
-		if total != 5 || len(result) != 2 || result[0] != "a" {
-			t.Fatalf("got %v (total=%d), want [a b]", result, total)
-		}
-	})
-
-	t.Run("empty items", func(t *testing.T) {
-		result, total := ApplyPagination([]string{}, 2, 1)
-		if total != 0 || len(result) != 0 {
-			t.Fatalf("expected empty, got %v (total=%d)", result, total)
-		}
-	})
+	}
 }
 
 func TestExtractInt64(t *testing.T) {

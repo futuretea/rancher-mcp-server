@@ -86,6 +86,13 @@ func buildWatchRequest(params map[string]interface{}) (*watchRequest, error) {
 	}, nil
 }
 
+type iterationDiff struct {
+	currentObjects map[string]*unstructured.Unstructured
+	diffTexts      []string
+	changeCount    int
+	deleteCount    int
+}
+
 func watchDiffWithReader(ctx context.Context, reader steve.ResourceReader, request *watchRequest) (string, error) {
 	differ := watchdiff.NewDiffer(true)
 	differ.SetIgnoreStatus(request.ignoreStatus)
@@ -108,55 +115,19 @@ func watchDiffWithReader(ctx context.Context, reader steve.ResourceReader, reque
 		if err != nil {
 			return "", fmt.Errorf("failed to list resources: %w", err)
 		}
-		if list.GetContinue() != "" {
-			return "", fmt.Errorf("watch scope exceeded the per-iteration limit of %d resources; narrow kind, namespace, or selectors", request.maxItems)
-		}
-		if len(list.Items) > request.maxItems {
-			return "", fmt.Errorf("watch scope returned %d resources, exceeding the per-iteration limit of %d; narrow kind, namespace, or selectors", len(list.Items), request.maxItems)
+		if err := validateWatchIteration(list, request.maxItems); err != nil {
+			return "", err
 		}
 
 		sortResourceList(list.Items)
 
-		currentObjects := make(map[string]*unstructured.Unstructured, len(list.Items))
-		var diffTexts []string
-		changeCount := 0
-		deleteCount := 0
-
-		for idx := range list.Items {
-			obj := &list.Items[idx]
-			currentObjects[watchObjectKey(obj)] = obj.DeepCopy()
-
-			diffText, err := differ.Diff(obj)
-			if err != nil {
-				return "", fmt.Errorf("failed to diff resource: %w", err)
-			}
-			if diffText != "" {
-				changeCount++
-				diffTexts = append(diffTexts, diffText)
-			}
+		diff, err := diffIteration(differ, previousObjects, list.Items)
+		if err != nil {
+			return "", err
 		}
 
-		deletedKeys := diffDeletedKeys(previousObjects, currentObjects)
-		for _, key := range deletedKeys {
-			diffText, err := differ.DiffDelete(previousObjects[key])
-			if err != nil {
-				return "", fmt.Errorf("failed to diff deleted resource: %w", err)
-			}
-			if diffText != "" {
-				deleteCount++
-				diffTexts = append(diffTexts, diffText)
-			}
-		}
-
-		if len(diffTexts) > 0 {
-			iterationOutput := fmt.Sprintf(
-				"# iteration %d resources=%d changes=%d deletions=%d\n\n%s",
-				i+1,
-				len(list.Items),
-				changeCount,
-				deleteCount,
-				strings.Join(diffTexts, "\n"),
-			)
+		iterationOutput := buildIterationOutput(int(i+1), len(list.Items), diff.changeCount, diff.deleteCount, diff.diffTexts)
+		if iterationOutput != "" {
 			if totalOutputBytes+len(iterationOutput) > request.maxOutputBytes {
 				return "", fmt.Errorf(
 					"watch response exceeded the %d byte output limit before iteration %d completed; narrow kind, namespace, selectors, or iterations",
@@ -168,7 +139,7 @@ func watchDiffWithReader(ctx context.Context, reader steve.ResourceReader, reque
 			totalOutputBytes += len(iterationOutput)
 		}
 
-		previousObjects = currentObjects
+		previousObjects = diff.currentObjects
 
 		if i+1 < request.iterations {
 			if err := waitForNextIteration(ctx, request.interval); err != nil {
@@ -182,6 +153,65 @@ func watchDiffWithReader(ctx context.Context, reader steve.ResourceReader, reque
 	}
 
 	return strings.Join(resultLines, "\n"), nil
+}
+
+func validateWatchIteration(list *unstructured.UnstructuredList, maxItems int) error {
+	if list.GetContinue() != "" {
+		return fmt.Errorf("watch scope exceeded the per-iteration limit of %d resources; narrow kind, namespace, or selectors", maxItems)
+	}
+	if len(list.Items) > maxItems {
+		return fmt.Errorf("watch scope returned %d resources, exceeding the per-iteration limit of %d; narrow kind, namespace, or selectors", len(list.Items), maxItems)
+	}
+	return nil
+}
+
+func diffIteration(differ *watchdiff.Differ, previousObjects map[string]*unstructured.Unstructured, items []unstructured.Unstructured) (*iterationDiff, error) {
+	result := &iterationDiff{
+		currentObjects: make(map[string]*unstructured.Unstructured, len(items)),
+		diffTexts:      make([]string, 0),
+	}
+
+	for idx := range items {
+		obj := &items[idx]
+		result.currentObjects[watchObjectKey(obj)] = obj.DeepCopy()
+
+		diffText, err := differ.Diff(obj)
+		if err != nil {
+			return nil, fmt.Errorf("failed to diff resource: %w", err)
+		}
+		if diffText != "" {
+			result.changeCount++
+			result.diffTexts = append(result.diffTexts, diffText)
+		}
+	}
+
+	deletedKeys := diffDeletedKeys(previousObjects, result.currentObjects)
+	for _, key := range deletedKeys {
+		diffText, err := differ.DiffDelete(previousObjects[key])
+		if err != nil {
+			return nil, fmt.Errorf("failed to diff deleted resource: %w", err)
+		}
+		if diffText != "" {
+			result.deleteCount++
+			result.diffTexts = append(result.diffTexts, diffText)
+		}
+	}
+
+	return result, nil
+}
+
+func buildIterationOutput(iteration, resourceCount, changeCount, deleteCount int, diffTexts []string) string {
+	if len(diffTexts) == 0 {
+		return ""
+	}
+	return fmt.Sprintf(
+		"# iteration %d resources=%d changes=%d deletions=%d\n\n%s",
+		iteration,
+		resourceCount,
+		changeCount,
+		deleteCount,
+		strings.Join(diffTexts, "\n"),
+	)
 }
 
 func waitForNextIteration(ctx context.Context, interval time.Duration) error {

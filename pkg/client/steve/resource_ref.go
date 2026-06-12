@@ -6,6 +6,7 @@ import (
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
+	"k8s.io/client-go/dynamic"
 )
 
 type dottedKindCandidate struct {
@@ -126,4 +127,158 @@ func describeGVRMatches(matches []schema.GroupVersionResource) string {
 		parts = append(parts, fmt.Sprintf("%s %s", apiVersion, match.Resource))
 	}
 	return strings.Join(parts, ", ")
+}
+
+// getResourceInterfaceByKind resolves the kind to GVR and returns a dynamic resource interface.
+// It accepts built-in kind aliases, Kubernetes apiVersion/kind references, plain discovered
+// kinds, and legacy dotted resource forms.
+func (c *Client) getResourceInterfaceByKind(clusterID, kind, namespace string) (dynamic.ResourceInterface, error) {
+	gvr, err := c.resolveGVR(clusterID, kind)
+	if err != nil {
+		return nil, err
+	}
+	return c.getResourceInterface(clusterID, gvr, namespace)
+}
+
+func (c *Client) resolveGVR(clusterID, kind string) (schema.GroupVersionResource, error) {
+	original := strings.TrimSpace(kind)
+	if original == "" {
+		return schema.GroupVersionResource{}, fmt.Errorf("unsupported resource kind: %s", kind)
+	}
+
+	if apiVersion, apiKind, ok := parseAPIVersionKind(original); ok {
+		normalizedKind := strings.ToLower(apiKind)
+		if gvr, ok := GetGVR(normalizedKind); ok && gvrMatchesAPIVersion(gvr, apiVersion) {
+			return gvr, nil
+		}
+		gvr, err := c.discoverGVRForAPIVersionKind(clusterID, apiVersion, normalizedKind)
+		if err != nil {
+			return schema.GroupVersionResource{}, fmt.Errorf("unsupported resource kind: %s (%w)", original, err)
+		}
+		return gvr, nil
+	}
+
+	normalized := strings.ToLower(original)
+	if gvr, ok := GetGVR(normalized); ok {
+		return gvr, nil
+	}
+
+	if strings.Contains(normalized, ".") {
+		gvr, err := c.discoverDottedGVR(clusterID, normalized)
+		if err == nil {
+			return gvr, nil
+		}
+	}
+
+	gvr, err := c.discoverGVRByKind(clusterID, normalized)
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("unsupported resource kind: %s (%w)", original, err)
+	}
+	return gvr, nil
+}
+
+func (c *Client) discoverGVRForAPIVersionKind(clusterID, apiVersion, kind string) (schema.GroupVersionResource, error) {
+	clientset, err := c.getClientset(clusterID)
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	resourceList, err := clientset.Discovery().ServerResourcesForGroupVersion(apiVersion)
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to discover resources for %s: %w", apiVersion, err)
+	}
+
+	if gvr, ok := findAPIResourceGVR(apiVersion, kind, resourceList.APIResources); ok {
+		return gvr, nil
+	}
+
+	return schema.GroupVersionResource{}, fmt.Errorf("resource kind %s not found in %s", kind, apiVersion)
+}
+
+func (c *Client) discoverGVRByKind(clusterID, kind string) (schema.GroupVersionResource, error) {
+	clientset, err := c.getClientset(clusterID)
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	var matches []schema.GroupVersionResource
+	if resourceList, err := clientset.Discovery().ServerResourcesForGroupVersion("v1"); err == nil {
+		if gvr, ok := findAPIResourceGVR("v1", kind, resourceList.APIResources); ok {
+			matches = appendUniqueGVR(matches, gvr)
+		}
+	}
+
+	groups, err := clientset.Discovery().ServerGroups()
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to discover API groups: %w", err)
+	}
+
+	for _, group := range groups.Groups {
+		groupVersion := group.PreferredVersion.GroupVersion
+		resourceList, err := clientset.Discovery().ServerResourcesForGroupVersion(groupVersion)
+		if err != nil {
+			continue
+		}
+		if gvr, ok := findAPIResourceGVR(groupVersion, kind, resourceList.APIResources); ok {
+			matches = appendUniqueGVR(matches, gvr)
+		}
+	}
+
+	switch len(matches) {
+	case 0:
+		return schema.GroupVersionResource{}, fmt.Errorf("resource kind %s not found", kind)
+	case 1:
+		return matches[0], nil
+	default:
+		return schema.GroupVersionResource{}, fmt.Errorf("resource kind %s is ambiguous; specify apiVersion. Matches: %s", kind, describeGVRMatches(matches))
+	}
+}
+
+// discoverDottedGVR resolves dotted resource kinds to a GroupVersionResource using
+// Kubernetes API discovery. It supports both historical <resource>.<apiGroup>
+// input and Steve-style <apiGroup>.<resource-or-kind> input.
+func (c *Client) discoverDottedGVR(clusterID, dottedKind string) (schema.GroupVersionResource, error) {
+	candidates := parseDottedKindCandidates(dottedKind)
+	if len(candidates) == 0 {
+		return schema.GroupVersionResource{}, fmt.Errorf("invalid dotted kind format: %s", dottedKind)
+	}
+
+	clientset, err := c.getClientset(clusterID)
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	groups, err := clientset.Discovery().ServerGroups()
+	if err != nil {
+		return schema.GroupVersionResource{}, fmt.Errorf("failed to discover API groups: %w", err)
+	}
+
+	for _, candidate := range candidates {
+		groupVersion, ok := findPreferredGroupVersion(groups, candidate.apiGroup)
+		if !ok {
+			continue
+		}
+		resourceList, err := clientset.Discovery().ServerResourcesForGroupVersion(groupVersion)
+		if err != nil {
+			continue
+		}
+		if gvr, ok := findAPIResourceGVR(groupVersion, candidate.resource, resourceList.APIResources); ok {
+			return gvr, nil
+		}
+	}
+
+	return schema.GroupVersionResource{}, fmt.Errorf("resource %s not found", dottedKind)
+}
+
+// matchesResourceName checks if an API resource matches the given name
+// by comparing against its singular name, plural name, or lowercased Kind.
+func matchesResourceName(r metav1.APIResource, name string) bool {
+	name = strings.ToLower(strings.TrimSpace(name))
+	singularName := strings.ToLower(strings.TrimSpace(r.SingularName))
+	resourceName := strings.ToLower(strings.TrimSpace(r.Name))
+	kindName := strings.ToLower(strings.TrimSpace(r.Kind))
+	if singularName == "" {
+		singularName = kindName
+	}
+	return singularName == name || resourceName == name || kindName == name
 }

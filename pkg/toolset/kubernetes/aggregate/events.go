@@ -44,58 +44,71 @@ func (a *EventAnalyzer) Analyze(ctx context.Context, p EventParams) (*EventResul
 	return summarizeEvents(events, p, sinceThreshold), nil
 }
 
+// eventGroupKey identifies a group of events by reason, kind, and namespace.
+type eventGroupKey struct{ reason, kind, ns string }
+
 func summarizeEvents(events []corev1.Event, p EventParams, sinceThreshold time.Time) *EventResult {
-	// Group by (reason, kind, namespace)
-	type groupKey struct{ reason, kind, ns string }
-	groups := make(map[groupKey]*EventItem)
+	groups := make(map[eventGroupKey]*EventItem)
 	for _, event := range events {
-		// Filter by type
-		if p.Type != "" && event.Type != p.Type {
+		if shouldSkipEvent(event, p, sinceThreshold) {
 			continue
 		}
-
-		// Filter by since
-		if !sinceThreshold.IsZero() {
-			lastTime := event.LastTimestamp.Time
-			if lastTime.IsZero() {
-				lastTime = event.EventTime.Time
-			}
-			if !lastTime.IsZero() && lastTime.Before(sinceThreshold) {
-				continue
-			}
-		}
-
-		key := groupKey{
-			reason: event.Reason,
-			kind:   event.InvolvedObject.Kind,
-			ns:     event.InvolvedObject.Namespace,
-		}
-		if key.ns == "" {
-			key.ns = event.Namespace
-		}
-
-		if _, ok := groups[key]; !ok {
-			groups[key] = &EventItem{
+		key := makeEventGroupKey(event)
+		item := groups[key]
+		if item == nil {
+			item = &EventItem{
 				Reason:    key.reason,
 				Kind:      key.kind,
 				Namespace: key.ns,
 			}
+			groups[key] = item
 		}
+		updateEventItem(item, event)
+	}
+	return buildEventResult(groups, p.SortBy, p.Limit)
+}
 
-		item := groups[key]
-		item.Count++
-
-		// Track latest timestamp
-		lastTime := event.LastTimestamp.Time
-		if lastTime.IsZero() {
-			lastTime = event.EventTime.Time
-		}
-		if !lastTime.IsZero() && lastTime.After(item.LastSeen) {
-			item.LastSeen = lastTime
+func shouldSkipEvent(event corev1.Event, p EventParams, sinceThreshold time.Time) bool {
+	if p.Type != "" && event.Type != p.Type {
+		return true
+	}
+	if !sinceThreshold.IsZero() {
+		lastTime := eventLastTimestamp(event)
+		if !lastTime.IsZero() && lastTime.Before(sinceThreshold) {
+			return true
 		}
 	}
+	return false
+}
 
-	// Convert map to slice
+func eventLastTimestamp(event corev1.Event) time.Time {
+	if !event.LastTimestamp.Time.IsZero() {
+		return event.LastTimestamp.Time
+	}
+	return event.EventTime.Time
+}
+
+func makeEventGroupKey(event corev1.Event) eventGroupKey {
+	key := eventGroupKey{
+		reason: event.Reason,
+		kind:   event.InvolvedObject.Kind,
+		ns:     event.InvolvedObject.Namespace,
+	}
+	if key.ns == "" {
+		key.ns = event.Namespace
+	}
+	return key
+}
+
+func updateEventItem(item *EventItem, event corev1.Event) {
+	item.Count++
+	lastTime := eventLastTimestamp(event)
+	if !lastTime.IsZero() && lastTime.After(item.LastSeen) {
+		item.LastSeen = lastTime
+	}
+}
+
+func buildEventResult(groups map[eventGroupKey]*EventItem, sortBy string, limit int) *EventResult {
 	items := make([]EventItem, 0, len(groups))
 	for _, item := range groups {
 		items = append(items, *item)
@@ -103,13 +116,11 @@ func summarizeEvents(events []corev1.Event, p EventParams, sinceThreshold time.T
 
 	total := len(items)
 
-	// Sort
-	if p.SortBy != "" {
-		sortEventItems(items, p.SortBy)
+	if sortBy != "" {
+		sortEventItems(items, sortBy)
 	}
 
-	// Truncate to limit (capped at MaxItems)
-	limit := ClampLimit(p.Limit)
+	limit = ClampLimit(limit)
 	truncated := len(items) > limit
 	if truncated {
 		items = items[:limit]

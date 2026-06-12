@@ -54,6 +54,31 @@ func TestResolve_UsesScanNamespaceForClusterScopedRoot(t *testing.T) {
 	}
 }
 
+func TestResolve_InvalidDirection(t *testing.T) {
+	reader := newResolveTestReader(newResolveTestObject("v1", "Pod", "default", "demo", "root-uid"))
+
+	_, err := Resolve(context.Background(), reader, "c1", "pod", "default", "demo", ResolveOptions{
+		Direction: "sideways",
+	})
+	if err == nil || !strings.Contains(err.Error(), "invalid direction") {
+		t.Fatalf("expected invalid direction error, got %v", err)
+	}
+}
+
+func TestResolve_DefaultsToDependents(t *testing.T) {
+	reader := newResolveTestReader(newResolveTestObject("v1", "Pod", "default", "demo", "root-uid"))
+
+	result, err := Resolve(context.Background(), reader, "c1", "pod", "default", "demo", ResolveOptions{
+		Direction: "",
+	})
+	if err != nil {
+		t.Fatalf("Resolve() returned unexpected error: %v", err)
+	}
+	if result.RootUID != types.UID("root-uid") {
+		t.Fatalf("unexpected root UID %q", result.RootUID)
+	}
+}
+
 type resolveTestReader struct {
 	root                *unstructured.Unstructured
 	listResponses       map[string]*unstructured.UnstructuredList

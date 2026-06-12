@@ -95,6 +95,9 @@ type Node struct {
 
 // AddDependency adds a dependency relationship to this node.
 func (n *Node) AddDependency(uid types.UID, r Relationship) {
+	if n == nil {
+		return
+	}
 	if _, ok := n.Dependencies[uid]; !ok {
 		n.Dependencies[uid] = RelationshipSet{}
 	}
@@ -103,6 +106,9 @@ func (n *Node) AddDependency(uid types.UID, r Relationship) {
 
 // AddDependent adds a dependent relationship to this node.
 func (n *Node) AddDependent(uid types.UID, r Relationship) {
+	if n == nil {
+		return
+	}
 	if _, ok := n.Dependents[uid]; !ok {
 		n.Dependents[uid] = RelationshipSet{}
 	}

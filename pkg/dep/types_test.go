@@ -89,6 +89,11 @@ func TestNode_AddDependency(t *testing.T) {
 	}
 }
 
+func TestNode_AddDependency_NilSafe(t *testing.T) {
+	var node *Node
+	node.AddDependency(types.UID("abc-123"), RelationshipPodNode) // must not panic
+}
+
 func TestNode_AddDependent(t *testing.T) {
 	node := &Node{
 		Dependents: map[types.UID]RelationshipSet{},
@@ -101,6 +106,11 @@ func TestNode_AddDependent(t *testing.T) {
 	} else if _, ok := deps[RelationshipPodNode]; !ok {
 		t.Fatal("expected PodNode relationship")
 	}
+}
+
+func TestNode_AddDependent_NilSafe(t *testing.T) {
+	var node *Node
+	node.AddDependent(types.UID("xyz-789"), RelationshipPodNode) // must not panic
 }
 
 func TestNode_GetDeps(t *testing.T) {

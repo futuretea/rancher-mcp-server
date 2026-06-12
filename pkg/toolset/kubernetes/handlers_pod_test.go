@@ -1,9 +1,102 @@
 package kubernetes
 
 import (
+	"context"
+	"strings"
 	"testing"
 	"time"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 )
+
+func int64Ptr(v int64) *int64 { return &v }
+
+type mockMultiPodLogClient struct {
+	opts    *steve.PodLogOptions
+	results []steve.MultiPodLogResult
+	err     error
+}
+
+func (m *mockMultiPodLogClient) GetMultiPodLogs(ctx context.Context, clusterID, namespace, labelSelector string, opts *steve.PodLogOptions) ([]steve.MultiPodLogResult, error) {
+	m.opts = opts
+	return m.results, m.err
+}
+
+type mockAllContainerLogClient struct {
+	opts *steve.PodLogOptions
+	logs map[string]string
+	err  error
+}
+
+func (m *mockAllContainerLogClient) GetAllContainerLogs(ctx context.Context, clusterID, namespace, podName string, opts *steve.PodLogOptions) (map[string]string, error) {
+	m.opts = opts
+	return m.logs, m.err
+}
+
+func TestGetMultiPodLogs_PropagatesOptions(t *testing.T) {
+	since := int64(120)
+	client := &mockMultiPodLogClient{
+		results: []steve.MultiPodLogResult{
+			{Pod: "pod-1", Logs: map[string]string{"app": "hello"}},
+		},
+	}
+
+	_, err := getMultiPodLogs(context.Background(), client, "c1", "ns", "app=web", "", 50, &since, true, "", false)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client.opts == nil {
+		t.Fatal("expected PodLogOptions to be passed to client")
+	}
+	if client.opts.SinceSeconds == nil || *client.opts.SinceSeconds != since {
+		t.Errorf("SinceSeconds = %v, want %d", client.opts.SinceSeconds, since)
+	}
+	if !client.opts.Previous {
+		t.Error("expected Previous to be true")
+	}
+}
+
+func TestGetAllContainerLogs_PropagatesOptions(t *testing.T) {
+	since := int64(120)
+	client := &mockAllContainerLogClient{
+		logs: map[string]string{"app": "hello"},
+	}
+
+	_, err := getAllContainerLogs(context.Background(), client, "c1", "ns", "pod-1", &steve.PodLogOptions{
+		TailLines:    int64Ptr(50),
+		SinceSeconds: &since,
+		Previous:     true,
+	}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if client.opts == nil {
+		t.Fatal("expected PodLogOptions to be passed to client")
+	}
+	if client.opts.SinceSeconds == nil || *client.opts.SinceSeconds != since {
+		t.Errorf("SinceSeconds = %v, want %d", client.opts.SinceSeconds, since)
+	}
+	if !client.opts.Previous {
+		t.Error("expected Previous to be true")
+	}
+}
+
+func TestGetAllContainerLogs_HappyPath(t *testing.T) {
+	client := &mockAllContainerLogClient{
+		logs: map[string]string{"app": "line1\nline2"},
+	}
+
+	out, err := getAllContainerLogs(context.Background(), client, "c1", "ns", "pod-1", &steve.PodLogOptions{TailLines: int64Ptr(10)}, "")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(out, "[app] line1") {
+		t.Errorf("expected output to contain '[app] line1', got %q", out)
+	}
+	if !strings.Contains(out, "[app] line2") {
+		t.Errorf("expected output to contain '[app] line2', got %q", out)
+	}
+}
 
 func TestParseLogTimestamp(t *testing.T) {
 	tests := []struct {

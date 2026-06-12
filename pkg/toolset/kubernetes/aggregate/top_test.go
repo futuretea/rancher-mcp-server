@@ -39,6 +39,24 @@ func TestSortTopItems_ByMemoryUtil(t *testing.T) {
 	}
 }
 
+func TestSortTopItems_ByMemoryUtilAlias(t *testing.T) {
+	items := []TopItem{
+		{Name: "pod-c", MemUtil: 100},
+		{Name: "pod-a", MemUtil: 500},
+		{Name: "pod-b", MemUtil: 300},
+	}
+	sortTopItems(items, "memory.util")
+	if items[0].Name != "pod-a" {
+		t.Errorf("expected first item to be pod-a for memory.util alias, got %s", items[0].Name)
+	}
+	if items[1].Name != "pod-b" {
+		t.Errorf("expected second item to be pod-b, got %s", items[1].Name)
+	}
+	if items[2].Name != "pod-c" {
+		t.Errorf("expected third item to be pod-c, got %s", items[2].Name)
+	}
+}
+
 func TestSortTopItems_ByRestartCount(t *testing.T) {
 	items := []TopItem{
 		{Name: "pod-c", Restarts: 1},
@@ -358,13 +376,18 @@ func TestExtractRestartCount(t *testing.T) {
 }
 
 func TestNeedsMetrics(t *testing.T) {
-	metricSorts := []string{"cpu.util", "mem.util", "cpu.util.percentage", "mem.util.percentage"}
+	metricSorts := []string{
+		"cpu.util",
+		"mem.util", "memory.util",
+		"cpu.util.percentage",
+		"mem.util.percentage", "memory.util.percentage",
+	}
 	for _, s := range metricSorts {
 		if !needsMetrics(s) {
 			t.Errorf("needsMetrics(%q) = false, want true", s)
 		}
 	}
-	nonMetricSorts := []string{"", "cpu.request", "mem.request", "name", "restart.count"}
+	nonMetricSorts := []string{"", "cpu.request", "mem.request", "memory.request", "name", "restart.count"}
 	for _, s := range nonMetricSorts {
 		if needsMetrics(s) {
 			t.Errorf("needsMetrics(%q) = true, want false", s)

@@ -20,6 +20,16 @@ type LogEntry struct {
 	Container string
 }
 
+// multiPodLogClient is the subset of *steve.Client used by getMultiPodLogs.
+type multiPodLogClient interface {
+	GetMultiPodLogs(ctx context.Context, clusterID, namespace, labelSelector string, opts *steve.PodLogOptions) ([]steve.MultiPodLogResult, error)
+}
+
+// allContainerLogClient is the subset of *steve.Client used by getAllContainerLogs.
+type allContainerLogClient interface {
+	GetAllContainerLogs(ctx context.Context, clusterID, namespace, podName string, opts *steve.PodLogOptions) (map[string]string, error)
+}
+
 // logsHandler handles the kubernetes_logs tool
 func logsHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
 	steveClient, err := toolset.ValidateSteveClient(client)
@@ -46,7 +56,7 @@ func logsHandler(ctx context.Context, client interface{}, params map[string]inte
 
 	// If labelSelector is provided, get logs from multiple pods
 	if labelSelector != "" {
-		return getMultiPodLogs(ctx, steveClient, cluster, namespace, labelSelector, container, tailLines, keyword, timestamps)
+		return getMultiPodLogs(ctx, steveClient, cluster, namespace, labelSelector, container, tailLines, sinceSeconds, previous, keyword, timestamps)
 	}
 
 	// If name is not provided and no labelSelector, return error
@@ -73,63 +83,25 @@ func logsHandler(ctx context.Context, client interface{}, params map[string]inte
 		return logs, nil
 	}
 
-	// Get logs for all containers
-	logs, err := steveClient.GetAllContainerLogs(ctx, cluster, namespace, name, &steve.PodLogOptions{
-		TailLines:  &tailLines,
-		Timestamps: timestamps,
-	})
-	if err != nil {
-		return "", fmt.Errorf("failed to get pod logs: %w", err)
-	}
-
-	// Apply keyword filter to each container's logs and collect all entries for sorting
-	var allEntries []LogEntry
-	for containerName, containerLogs := range logs {
-		filteredLogs := filterLogsByKeyword(containerLogs, keyword)
-		lines := strings.Split(filteredLogs, "\n")
-		for _, line := range lines {
-			if line == "" {
-				continue
-			}
-			ts, content := parseLogTimestamp(line)
-			allEntries = append(allEntries, LogEntry{
-				Timestamp: ts,
-				Content:   content,
-				Container: containerName,
-			})
-		}
-	}
-
-	// Sort by timestamp (oldest first)
-	sort.Slice(allEntries, func(i, j int) bool {
-		if allEntries[i].Timestamp.IsZero() || allEntries[j].Timestamp.IsZero() {
-			return allEntries[i].Container < allEntries[j].Container
-		}
-		return allEntries[i].Timestamp.Before(allEntries[j].Timestamp)
-	})
-
-	// Format output
-	var resultLines []string
-	for _, entry := range allEntries {
-		if timestamps && !entry.Timestamp.IsZero() {
-			resultLines = append(resultLines, fmt.Sprintf("[%s] %s", entry.Container, formatTimestampedContent(entry.Timestamp, entry.Content)))
-		} else {
-			resultLines = append(resultLines, fmt.Sprintf("[%s] %s", entry.Container, entry.Content))
-		}
-	}
-
-	return strings.Join(resultLines, "\n"), nil
+	return getAllContainerLogs(ctx, steveClient, cluster, namespace, name, &steve.PodLogOptions{
+		TailLines:    &tailLines,
+		SinceSeconds: sinceSeconds,
+		Timestamps:   timestamps,
+		Previous:     previous,
+	}, keyword)
 }
 
 // getMultiPodLogs retrieves and merges logs from multiple pods matching the label selector
 // Logs are sorted by timestamp when timestamps is true.
-func getMultiPodLogs(ctx context.Context, steveClient *steve.Client, cluster, namespace, labelSelector, container string, tailLines int64, keyword string, timestamps bool) (string, error) {
+func getMultiPodLogs(ctx context.Context, client multiPodLogClient, cluster, namespace, labelSelector, container string, tailLines int64, sinceSeconds *int64, previous bool, keyword string, timestamps bool) (string, error) {
 	opts := &steve.PodLogOptions{
-		TailLines:  &tailLines,
-		Timestamps: timestamps,
+		TailLines:    &tailLines,
+		SinceSeconds: sinceSeconds,
+		Timestamps:   timestamps,
+		Previous:     previous,
 	}
 
-	results, err := steveClient.GetMultiPodLogs(ctx, cluster, namespace, labelSelector, opts)
+	results, err := client.GetMultiPodLogs(ctx, cluster, namespace, labelSelector, opts)
 	if err != nil {
 		return "", fmt.Errorf("failed to get multi pod logs: %w", err)
 	}
@@ -188,29 +160,68 @@ func getMultiPodLogs(ctx context.Context, steveClient *steve.Client, cluster, na
 		return "No log entries found", nil
 	}
 
-	// Sort by timestamp (oldest first)
-	sort.Slice(allEntries, func(i, j int) bool {
-		if allEntries[i].Timestamp.IsZero() || allEntries[j].Timestamp.IsZero() {
-			// If no timestamp, sort by pod name then container name
-			if allEntries[i].Pod != allEntries[j].Pod {
-				return allEntries[i].Pod < allEntries[j].Pod
-			}
-			return allEntries[i].Container < allEntries[j].Container
-		}
-		return allEntries[i].Timestamp.Before(allEntries[j].Timestamp)
-	})
-
-	// Format output
-	var resultLines []string
-	for _, entry := range allEntries {
+	return formatLogEntries(allEntries, timestamps, func(entry LogEntry) string {
 		if timestamps && !entry.Timestamp.IsZero() {
-			resultLines = append(resultLines, fmt.Sprintf("[%s/%s] %s", entry.Pod, entry.Container, formatTimestampedContent(entry.Timestamp, entry.Content)))
-		} else {
-			resultLines = append(resultLines, fmt.Sprintf("[%s/%s] %s", entry.Pod, entry.Container, entry.Content))
+			return fmt.Sprintf("[%s/%s] %s", entry.Pod, entry.Container, formatTimestampedContent(entry.Timestamp, entry.Content))
+		}
+		return fmt.Sprintf("[%s/%s] %s", entry.Pod, entry.Container, entry.Content)
+	}), nil
+}
+
+// getAllContainerLogs retrieves and formats logs from all containers in a pod.
+func getAllContainerLogs(ctx context.Context, client allContainerLogClient, cluster, namespace, name string, opts *steve.PodLogOptions, keyword string) (string, error) {
+	logs, err := client.GetAllContainerLogs(ctx, cluster, namespace, name, opts)
+	if err != nil {
+		return "", fmt.Errorf("failed to get pod logs: %w", err)
+	}
+
+	timestamps := false
+	if opts != nil {
+		timestamps = opts.Timestamps
+	}
+
+	var allEntries []LogEntry
+	for containerName, containerLogs := range logs {
+		filteredLogs := filterLogsByKeyword(containerLogs, keyword)
+		lines := strings.Split(filteredLogs, "\n")
+		for _, line := range lines {
+			if line == "" {
+				continue
+			}
+			ts, content := parseLogTimestamp(line)
+			allEntries = append(allEntries, LogEntry{
+				Timestamp: ts,
+				Content:   content,
+				Container: containerName,
+			})
 		}
 	}
 
-	return strings.Join(resultLines, "\n"), nil
+	return formatLogEntries(allEntries, timestamps, func(entry LogEntry) string {
+		if timestamps && !entry.Timestamp.IsZero() {
+			return fmt.Sprintf("[%s] %s", entry.Container, formatTimestampedContent(entry.Timestamp, entry.Content))
+		}
+		return fmt.Sprintf("[%s] %s", entry.Container, entry.Content)
+	}), nil
+}
+
+// formatLogEntries sorts log entries by timestamp and formats them.
+func formatLogEntries(entries []LogEntry, timestamps bool, formatEntry func(LogEntry) string) string {
+	sort.Slice(entries, func(i, j int) bool {
+		if entries[i].Timestamp.IsZero() || entries[j].Timestamp.IsZero() {
+			if entries[i].Pod != entries[j].Pod {
+				return entries[i].Pod < entries[j].Pod
+			}
+			return entries[i].Container < entries[j].Container
+		}
+		return entries[i].Timestamp.Before(entries[j].Timestamp)
+	})
+
+	var resultLines []string
+	for _, entry := range entries {
+		resultLines = append(resultLines, formatEntry(entry))
+	}
+	return strings.Join(resultLines, "\n")
 }
 
 // filterLogsByKeyword filters log lines by keyword (case-insensitive).

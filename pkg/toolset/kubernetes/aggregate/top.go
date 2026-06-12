@@ -175,59 +175,78 @@ func extractPodTopItem(pod unstructured.Unstructured, metricsMap map[string]*pod
 		Namespace: pod.GetNamespace(),
 	}
 
-	// Extract container resources
-	containers, found, _ := unstructured.NestedSlice(pod.Object, "spec", "containers")
-	if found {
-		for _, c := range containers {
-			container, ok := c.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			resources, found, _ := unstructured.NestedMap(container, "resources")
-			if !found {
-				continue
-			}
-			// Requests
-			if requests, found, _ := unstructured.NestedMap(resources, "requests"); found {
-				if cpu, ok := requests["cpu"].(string); ok {
-					item.CPUReq += resourceQuantityToMilli(cpu)
-				}
-				if mem, ok := requests["memory"].(string); ok {
-					item.MemReq += resourceQuantityToBytes(mem)
-				}
-			}
-			// Limits
-			if limits, found, _ := unstructured.NestedMap(resources, "limits"); found {
-				if cpu, ok := limits["cpu"].(string); ok {
-					item.CPULimit += resourceQuantityToMilli(cpu)
-				}
-				if mem, ok := limits["memory"].(string); ok {
-					item.MemLimit += resourceQuantityToBytes(mem)
-				}
-			}
-		}
-	}
+	sumPodContainerResources(&item, pod.Object)
+	sumPodRestartCounts(&item, pod.Object)
+	applyPodMetrics(&item, metricsMap)
 
-	// Extract restart count from container statuses
-	statuses, found, _ := unstructured.NestedSlice(pod.Object, "status", "containerStatuses")
-	if found {
-		for _, s := range statuses {
-			status, ok := s.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			item.Restarts += extractRestartCount(status)
-		}
-	}
+	return item
+}
 
-	// Apply metrics if available
+func sumPodContainerResources(item *TopItem, obj map[string]interface{}) {
+	containers, found, _ := unstructured.NestedSlice(obj, "spec", "containers")
+	if !found {
+		return
+	}
+	for _, c := range containers {
+		container, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		addContainerResourceUsage(item, container)
+	}
+}
+
+func addContainerResourceUsage(item *TopItem, container map[string]interface{}) {
+	resources, found, _ := unstructured.NestedMap(container, "resources")
+	if !found {
+		return
+	}
+	if requests, found, _ := unstructured.NestedMap(resources, "requests"); found {
+		item.CPUReq += stringQuantityToMilli(requests["cpu"])
+		item.MemReq += stringQuantityToBytes(requests["memory"])
+	}
+	if limits, found, _ := unstructured.NestedMap(resources, "limits"); found {
+		item.CPULimit += stringQuantityToMilli(limits["cpu"])
+		item.MemLimit += stringQuantityToBytes(limits["memory"])
+	}
+}
+
+func stringQuantityToMilli(v interface{}) int64 {
+	s, ok := v.(string)
+	if !ok {
+		return 0
+	}
+	return resourceQuantityToMilli(s)
+}
+
+func stringQuantityToBytes(v interface{}) int64 {
+	s, ok := v.(string)
+	if !ok {
+		return 0
+	}
+	return resourceQuantityToBytes(s)
+}
+
+func sumPodRestartCounts(item *TopItem, obj map[string]interface{}) {
+	statuses, found, _ := unstructured.NestedSlice(obj, "status", "containerStatuses")
+	if !found {
+		return
+	}
+	for _, s := range statuses {
+		status, ok := s.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		item.Restarts += extractRestartCount(status)
+	}
+}
+
+func applyPodMetrics(item *TopItem, metricsMap map[string]*podMetrics) {
 	key := item.Namespace + "/" + item.Name
 	if m, ok := metricsMap[key]; ok {
 		item.CPUUtil = m.cpuUtil
 		item.MemUtil = m.memUtil
 	}
-
-	return item
 }
 
 // extractNodeTopItem extracts a TopItem from a node unstructured object
@@ -294,7 +313,10 @@ func (a *TopAnalyzer) buildResult(items []TopItem, p TopParams, warning string) 
 // Used for both pod and node top analysis.
 func needsMetrics(sortBy string) bool {
 	switch sortBy {
-	case "cpu.util", "mem.util", "cpu.util.percentage", "mem.util.percentage":
+	case "cpu.util",
+		"mem.util", "memory.util",
+		"cpu.util.percentage",
+		"mem.util.percentage", "memory.util.percentage":
 		return true
 	default:
 		return false

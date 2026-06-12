@@ -355,6 +355,48 @@ func TestGetRoleBindingRelationships(t *testing.T) {
 	}
 }
 
+func TestGetRoleBindingRelationships_SameNamespaceServiceAccount(t *testing.T) {
+	content := map[string]interface{}{
+		"metadata": map[string]interface{}{
+			"namespace": "default",
+		},
+		"roleRef": map[string]interface{}{
+			"apiGroup": "rbac.authorization.k8s.io",
+			"kind":     "Role",
+			"name":     "edit",
+		},
+		"subjects": []interface{}{
+			map[string]interface{}{
+				"kind":     "ServiceAccount",
+				"apiGroup": "",
+				"name":     "my-sa",
+				// namespace omitted; should default to the RoleBinding namespace
+			},
+		},
+	}
+	node := makeFakeNode("RoleBinding", "default", "rb-edit", content)
+	node.SetGroupVersionKind(schema.GroupVersionKind{
+		Group:   "rbac.authorization.k8s.io",
+		Version: "v1",
+		Kind:    "RoleBinding",
+	})
+
+	result := getRoleBindingRelationships(node)
+	if result == nil {
+		t.Fatal("expected non-nil result")
+	}
+
+	roleKey := ObjectReferenceKey("rbac.authorization.k8s.io\\Role\\default\\edit")
+	if _, ok := result.DependenciesByRef[roleKey]; !ok {
+		t.Errorf("expected Role dependency, got: %v", result.DependenciesByRef)
+	}
+
+	saKey := ObjectReferenceKey("\\ServiceAccount\\default\\my-sa")
+	if _, ok := result.DependentsByRef[saKey]; !ok {
+		t.Errorf("expected ServiceAccount dependent with default namespace, got: %v", result.DependentsByRef)
+	}
+}
+
 func TestGetClusterRoleBindingRelationships(t *testing.T) {
 	content := map[string]interface{}{
 		"roleRef": map[string]interface{}{

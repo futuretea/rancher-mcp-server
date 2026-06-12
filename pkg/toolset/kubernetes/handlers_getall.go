@@ -258,41 +258,58 @@ func formatAllResourcesAsYAML(items []steve.AllResourceItem) (string, error) {
 // parseDuration parses a human-readable duration string.
 // Supports formats like: "1h30m", "2d", "1w", etc.
 func parseDuration(s string) (time.Duration, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty duration")
+	}
+
 	// Try standard Go duration parsing first
 	if d, err := time.ParseDuration(s); err == nil {
 		return d, nil
 	}
 
-	// Parse custom formats like "1d" (day), "1w" (week)
+	// Parse custom formats like "1d" (day), "1w" (week).
+	// Every number must be followed by a supported unit, and the string must not
+	// end with an orphaned number.
 	var total time.Duration
-	var num int
-	var unit string
+	var num int64
+	var hasNum bool
 
-	// Simple parser for patterns like "1h30m", "2d", "1w"
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if c >= '0' && c <= '9' {
-			num = num*10 + int(c-'0')
-		} else {
-			unit = string(c)
-			switch unit {
-			case "s":
-				total += time.Duration(num) * time.Second
-			case "m":
-				total += time.Duration(num) * time.Minute
-			case "h":
-				total += time.Duration(num) * time.Hour
-			case "d":
-				total += time.Duration(num) * 24 * time.Hour
-			case "w":
-				total += time.Duration(num) * 7 * 24 * time.Hour
-			default:
-				return 0, fmt.Errorf("unknown time unit: %s", unit)
-			}
-			num = 0
+			num = num*10 + int64(c-'0')
+			hasNum = true
+			continue
 		}
+
+		if !hasNum {
+			return 0, fmt.Errorf("missing number before unit %q", string(c))
+		}
+
+		var unit time.Duration
+		switch c {
+		case 's':
+			unit = time.Second
+		case 'm':
+			unit = time.Minute
+		case 'h':
+			unit = time.Hour
+		case 'd':
+			unit = 24 * time.Hour
+		case 'w':
+			unit = 7 * 24 * time.Hour
+		default:
+			return 0, fmt.Errorf("unknown time unit: %s", string(c))
+		}
+		total += time.Duration(num) * unit
+		num = 0
+		hasNum = false
 	}
 
+	if hasNum {
+		return 0, fmt.Errorf("duration %q ends with a number without a unit", s)
+	}
 	if total == 0 {
 		return 0, fmt.Errorf("could not parse duration: %s", s)
 	}

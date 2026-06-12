@@ -68,94 +68,130 @@ type ResolveOptions struct {
 // Resolve resolves the dependency/dependent graph for a Kubernetes resource.
 // Direction should be "dependents" (default) or "dependencies".
 func Resolve(ctx context.Context, client steve.ResourceReader, clusterID, rootKind, rootNS, rootName string, options ResolveOptions) (*Result, error) {
+	switch options.Direction {
+	case "", "dependents":
+		options.Direction = "dependents"
+	case "dependencies":
+		// valid
+	default:
+		return nil, fmt.Errorf("invalid direction %q, must be %q or %q", options.Direction, "dependents", "dependencies")
+	}
+
 	scanNamespace, err := normalizeScanNamespace(rootNS, options.ScanNamespace)
 	if err != nil {
 		return nil, err
 	}
 
-	// 1. Get the root resource
 	root, err := client.GetResource(ctx, clusterID, rootKind, rootNS, rootName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get root resource %s/%s: %w", rootKind, rootName, err)
 	}
 
-	// 2. List all relevant resources within the requested scope and budget.
 	allObjects, err := listAllResources(ctx, client, clusterID, scanNamespace, options.MaxScannedObjects)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list resources: %w", err)
 	}
-
-	// Include root object to handle edge cases
+	// Include root object to handle edge cases.
 	allObjects = append(allObjects, *root)
 
-	// 3. Build the global node maps
-	globalMapByUID := map[types.UID]*Node{}
-	globalMapByKey := map[ObjectReferenceKey]*Node{}
+	globalMapByUID, globalMapByKey := buildNodeMaps(allObjects)
 
-	for ix := range allObjects {
-		o := &allObjects[ix]
-		uid := o.GetUID()
-		if uid == "" {
-			continue
-		}
-		gvk := o.GroupVersionKind()
-		node := &Node{
-			Unstructured: o,
-			UID:          uid,
-			Kind:         gvk.Kind,
-			Namespace:    o.GetNamespace(),
-			Name:         o.GetName(),
-			Dependencies: map[types.UID]RelationshipSet{},
-			Dependents:   map[types.UID]RelationshipSet{},
-		}
-		if _, ok := globalMapByUID[uid]; ok {
-			continue
-		}
-		globalMapByUID[uid] = node
-		globalMapByKey[node.GetObjectReferenceKey()] = node
+	populateOwnerReferences(globalMapByUID)
+	populateSemanticRelationships(globalMapByUID, globalMapByKey)
+
+	nodeMap, err := traverseGraph(root.GetUID(), options.Direction, options.MaxDepth, globalMapByUID)
+	if err != nil {
+		return nil, err
 	}
 
-	// 4. Populate OwnerReference relationships
-	for _, node := range globalMapByUID {
+	return &Result{
+		NodeMap: nodeMap,
+		RootUID: root.GetUID(),
+	}, nil
+}
+
+// buildNodeMaps creates UID and object-reference keyed maps from a list of objects.
+func buildNodeMaps(objects []unstructuredv1.Unstructured) (map[types.UID]*Node, map[ObjectReferenceKey]*Node) {
+	byUID := make(map[types.UID]*Node, len(objects))
+	byKey := make(map[ObjectReferenceKey]*Node, len(objects))
+
+	for i := range objects {
+		node := newNode(&objects[i])
+		if node == nil {
+			continue
+		}
+		if _, exists := byUID[node.UID]; exists {
+			continue
+		}
+		byUID[node.UID] = node
+		byKey[node.GetObjectReferenceKey()] = node
+	}
+
+	return byUID, byKey
+}
+
+// newNode creates a graph Node from an unstructured object.
+// It returns nil when the object has no UID.
+func newNode(o *unstructuredv1.Unstructured) *Node {
+	uid := o.GetUID()
+	if uid == "" {
+		return nil
+	}
+	gvk := o.GroupVersionKind()
+	return &Node{
+		Unstructured: o,
+		UID:          uid,
+		Kind:         gvk.Kind,
+		Namespace:    o.GetNamespace(),
+		Name:         o.GetName(),
+		Dependencies: map[types.UID]RelationshipSet{},
+		Dependents:   map[types.UID]RelationshipSet{},
+	}
+}
+
+// populateOwnerReferences adds ControllerRef and OwnerRef relationships between nodes.
+func populateOwnerReferences(byUID map[types.UID]*Node) {
+	for _, node := range byUID {
 		for _, ref := range node.GetOwnerReferences() {
-			if owner, ok := globalMapByUID[ref.UID]; ok {
-				if ref.Controller != nil && *ref.Controller {
-					node.AddDependency(owner.UID, RelationshipControllerRef)
-					owner.AddDependent(node.UID, RelationshipControllerRef)
-				}
-				node.AddDependency(owner.UID, RelationshipOwnerRef)
-				owner.AddDependent(node.UID, RelationshipOwnerRef)
+			owner, ok := byUID[ref.UID]
+			if !ok {
+				continue
 			}
+			if ref.Controller != nil && *ref.Controller {
+				node.AddDependency(owner.UID, RelationshipControllerRef)
+				owner.AddDependent(node.UID, RelationshipControllerRef)
+			}
+			node.AddDependency(owner.UID, RelationshipOwnerRef)
+			owner.AddDependent(node.UID, RelationshipOwnerRef)
 		}
 	}
+}
 
-	// 5. Populate semantic relationships per resource type
-	for _, node := range globalMapByUID {
-		rmap := extractRelationships(node, globalMapByUID)
+// populateSemanticRelationships runs the kind-specific extractors on every node.
+func populateSemanticRelationships(byUID map[types.UID]*Node, byKey map[ObjectReferenceKey]*Node) {
+	for _, node := range byUID {
+		rmap := extractRelationships(node, byUID)
 		if rmap == nil {
 			continue
 		}
-		applyRelationships(node, rmap, globalMapByUID, globalMapByKey)
+		applyRelationships(node, rmap, byUID, byKey)
 	}
+}
 
-	// 6. BFS traversal from root
-	depsIsDependencies := options.Direction == "dependencies"
-	rootUID := root.GetUID()
-
-	nodeMap := NodeMap{}
-	uidQueue := []types.UID{}
-	visited := map[types.UID]struct{}{}
-
-	if rootNode, ok := globalMapByUID[rootUID]; ok {
-		nodeMap[rootUID] = rootNode
-		rootNode.Depth = 0
-		uidQueue = append(uidQueue, rootUID)
-	} else {
+// traverseGraph performs a breadth-first traversal starting from rootUID and
+// returns the visited NodeMap. It honors maxDepth when positive.
+func traverseGraph(rootUID types.UID, direction string, maxDepth int, globalMapByUID map[types.UID]*Node) (NodeMap, error) {
+	rootNode := globalMapByUID[rootUID]
+	if rootNode == nil {
 		return nil, fmt.Errorf("root resource not found in graph")
 	}
 
-	// BFS with depth tracking using sentinel
-	uidQueue = append(uidQueue, "") // sentinel for depth boundary
+	nodeMap := NodeMap{rootUID: rootNode}
+	rootNode.Depth = 0
+
+	depsIsDependencies := direction == "dependencies"
+	uidQueue := []types.UID{rootUID, ""} // sentinel marks depth boundaries
+	visited := map[types.UID]struct{}{}
 	var depth uint
 
 	for len(uidQueue) > 1 {
@@ -164,7 +200,7 @@ func Resolve(ctx context.Context, client steve.ResourceReader, clusterID, rootKi
 
 		if uid == "" {
 			depth++
-			if options.MaxDepth > 0 && depth >= uint(options.MaxDepth) {
+			if maxDepth > 0 && depth >= uint(maxDepth) {
 				break
 			}
 			uidQueue = append(uidQueue, "") // next depth sentinel
@@ -181,13 +217,12 @@ func Resolve(ctx context.Context, client steve.ResourceReader, clusterID, rootKi
 			continue
 		}
 
-		// Allow nodes to keep the smallest depth
+		// Allow nodes to keep the smallest depth.
 		if node.Depth == 0 || depth < node.Depth {
 			node.Depth = depth
 		}
 
-		deps := node.GetDeps(depsIsDependencies)
-		for depUID := range deps {
+		for depUID := range node.GetDeps(depsIsDependencies) {
 			depNode := globalMapByUID[depUID]
 			if depNode == nil {
 				continue
@@ -200,10 +235,7 @@ func Resolve(ctx context.Context, client steve.ResourceReader, clusterID, rootKi
 		}
 	}
 
-	return &Result{
-		NodeMap: nodeMap,
-		RootUID: rootUID,
-	}, nil
+	return nodeMap, nil
 }
 
 // applyRelationships applies the extracted relationship map to the node and global maps.

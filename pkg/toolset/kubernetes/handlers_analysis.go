@@ -4,6 +4,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
+	"strconv"
 	"strings"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
@@ -150,138 +152,156 @@ func nodeAnalysisHandler(ctx context.Context, client interface{}, params map[str
 	}
 	format := paramutil.ExtractFormat(params)
 
-	// Get node details
 	node, err := steveClient.GetResource(ctx, cluster, "node", "", name)
 	if err != nil {
 		return "", fmt.Errorf("failed to get node: %w", err)
 	}
 
+	result, err := buildNodeAnalysisResult(ctx, steveClient, cluster, node, name)
+	if err != nil {
+		return "", err
+	}
+
+	return formatNodeAnalysisResult(result, format)
+}
+
+// buildNodeAnalysisResult aggregates node metadata and the pods scheduled on it.
+func buildNodeAnalysisResult(ctx context.Context, client *steve.Client, cluster string, node *unstructured.Unstructured, name string) (*NodeAnalysisResult, error) {
 	result := &NodeAnalysisResult{
 		Node:      node,
-		Capacity:  make(map[string]string),
-		Allocated: make(map[string]string),
-		Taints:    []corev1.Taint{},
-		Labels:    make(map[string]string),
+		Capacity:  extractStringMap(node.Object, "status", "capacity"),
+		Allocated: extractStringMap(node.Object, "status", "allocatable"),
+		Taints:    extractNodeTaints(node.Object),
+		Labels:    node.GetLabels(),
 		Pods:      []NodePodInfo{},
 	}
 
-	// Extract capacity
-	if capacity, found, _ := unstructured.NestedMap(node.Object, "status", "capacity"); found {
-		for k, v := range capacity {
-			if s, ok := v.(string); ok {
-				result.Capacity[k] = s
-			}
-		}
-	}
-
-	// Extract allocatable (as allocated capacity)
-	if allocatable, found, _ := unstructured.NestedMap(node.Object, "status", "allocatable"); found {
-		for k, v := range allocatable {
-			if s, ok := v.(string); ok {
-				result.Allocated[k] = s
-			}
-		}
-	}
-
-	// Extract taints
-	if taints, found, _ := unstructured.NestedSlice(node.Object, "spec", "taints"); found {
-		for _, t := range taints {
-			taintMap, ok := t.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			taint := corev1.Taint{}
-			if key, ok := taintMap["key"].(string); ok {
-				taint.Key = key
-			}
-			if value, ok := taintMap["value"].(string); ok {
-				taint.Value = value
-			}
-			if effect, ok := taintMap["effect"].(string); ok {
-				taint.Effect = corev1.TaintEffect(effect)
-			}
-			result.Taints = append(result.Taints, taint)
-		}
-	}
-
-	// Extract labels
-	result.Labels = node.GetLabels()
-
-	// Get pods running on this node
-	pods, err := steveClient.ListResources(ctx, cluster, "pod", "", &steve.ListOptions{
+	pods, err := client.ListResources(ctx, cluster, "pod", "", &steve.ListOptions{
 		FieldSelector: "spec.nodeName=" + name,
 	})
 	if err != nil {
-		return "", fmt.Errorf("failed to list pods on node: %w", err)
+		return nil, fmt.Errorf("failed to list pods on node: %w", err)
 	}
 
-	// Process each pod
+	result.Pods = extractNodePods(pods)
+	return result, nil
+}
+
+// extractStringMap reads a nested string map from an unstructured object.
+func extractStringMap(obj map[string]interface{}, fields ...string) map[string]string {
+	result := make(map[string]string)
+	if m, found, _ := unstructured.NestedMap(obj, fields...); found {
+		for k, v := range m {
+			if s, ok := v.(string); ok {
+				result[k] = s
+			}
+		}
+	}
+	return result
+}
+
+// extractNodeTaints parses the node spec taints into typed Taint values.
+func extractNodeTaints(obj map[string]interface{}) []corev1.Taint {
+	taints, found, _ := unstructured.NestedSlice(obj, "spec", "taints")
+	if !found {
+		return []corev1.Taint{}
+	}
+
+	result := make([]corev1.Taint, 0, len(taints))
+	for _, t := range taints {
+		taintMap, ok := t.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		taint := corev1.Taint{}
+		if key, ok := taintMap["key"].(string); ok {
+			taint.Key = key
+		}
+		if value, ok := taintMap["value"].(string); ok {
+			taint.Value = value
+		}
+		if effect, ok := taintMap["effect"].(string); ok {
+			taint.Effect = corev1.TaintEffect(effect)
+		}
+		result = append(result, taint)
+	}
+	return result
+}
+
+// extractNodePods summarizes the pods running on a node.
+func extractNodePods(pods *unstructured.UnstructuredList) []NodePodInfo {
+	result := make([]NodePodInfo, 0, len(pods.Items))
 	for _, pod := range pods.Items {
 		podInfo := NodePodInfo{
 			Namespace: pod.GetNamespace(),
 			Name:      pod.GetName(),
 		}
 
-		// Get pod phase
 		if phase, found, _ := unstructured.NestedString(pod.Object, "status", "phase"); found {
 			podInfo.Phase = phase
 		}
 
-		// Extract container resource requests and limits
-		containers, found, _ := unstructured.NestedSlice(pod.Object, "spec", "containers")
-		if found {
-			var totalCPURequest, totalMemoryRequest, totalCPULimit, totalMemoryLimit int64
+		podInfo.CPURequest, podInfo.MemoryRequest, podInfo.CPULimit, podInfo.MemoryLimit = extractPodResourceUsage(pod.Object)
+		result = append(result, podInfo)
+	}
+	return result
+}
 
-			for _, c := range containers {
-				container, ok := c.(map[string]interface{})
-				if !ok {
-					continue
-				}
-
-				resources, found, _ := unstructured.NestedMap(container, "resources")
-				if !found {
-					continue
-				}
-
-				// Parse requests
-				if requests, found, _ := unstructured.NestedMap(resources, "requests"); found {
-					if cpu, ok := requests["cpu"].(string); ok {
-						totalCPURequest += parseResourceQuantity(cpu)
-					}
-					if memory, ok := requests["memory"].(string); ok {
-						totalMemoryRequest += parseResourceQuantity(memory)
-					}
-				}
-
-				// Parse limits
-				if limits, found, _ := unstructured.NestedMap(resources, "limits"); found {
-					if cpu, ok := limits["cpu"].(string); ok {
-						totalCPULimit += parseResourceQuantity(cpu)
-					}
-					if memory, ok := limits["memory"].(string); ok {
-						totalMemoryLimit += parseResourceQuantity(memory)
-					}
-				}
-			}
-
-			if totalCPURequest > 0 {
-				podInfo.CPURequest = formatResourceQuantity(totalCPURequest, "cpu")
-			}
-			if totalMemoryRequest > 0 {
-				podInfo.MemoryRequest = formatResourceQuantity(totalMemoryRequest, "memory")
-			}
-			if totalCPULimit > 0 {
-				podInfo.CPULimit = formatResourceQuantity(totalCPULimit, "cpu")
-			}
-			if totalMemoryLimit > 0 {
-				podInfo.MemoryLimit = formatResourceQuantity(totalMemoryLimit, "memory")
-			}
-		}
-
-		result.Pods = append(result.Pods, podInfo)
+// extractPodResourceUsage returns aggregated CPU/memory requests and limits for a pod.
+func extractPodResourceUsage(obj map[string]interface{}) (cpuRequest, memoryRequest, cpuLimit, memoryLimit string) {
+	containers, found, _ := unstructured.NestedSlice(obj, "spec", "containers")
+	if !found {
+		return
 	}
 
-	// Format output
+	var totalCPURequest, totalMemoryRequest, totalCPULimit, totalMemoryLimit int64
+	for _, c := range containers {
+		container, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+
+		resources, found, _ := unstructured.NestedMap(container, "resources")
+		if !found {
+			continue
+		}
+
+		totalCPURequest += resourceQuantityFromMap(resources, "requests", "cpu")
+		totalMemoryRequest += resourceQuantityFromMap(resources, "requests", "memory")
+		totalCPULimit += resourceQuantityFromMap(resources, "limits", "cpu")
+		totalMemoryLimit += resourceQuantityFromMap(resources, "limits", "memory")
+	}
+
+	if totalCPURequest > 0 {
+		cpuRequest = formatResourceQuantity(totalCPURequest, "cpu")
+	}
+	if totalMemoryRequest > 0 {
+		memoryRequest = formatResourceQuantity(totalMemoryRequest, "memory")
+	}
+	if totalCPULimit > 0 {
+		cpuLimit = formatResourceQuantity(totalCPULimit, "cpu")
+	}
+	if totalMemoryLimit > 0 {
+		memoryLimit = formatResourceQuantity(totalMemoryLimit, "memory")
+	}
+	return
+}
+
+// resourceQuantityFromMap extracts a single resource quantity from a resources map.
+func resourceQuantityFromMap(resources map[string]interface{}, section, resource string) int64 {
+	sectionMap, found, _ := unstructured.NestedMap(resources, section)
+	if !found {
+		return 0
+	}
+	q, ok := sectionMap[resource].(string)
+	if !ok {
+		return 0
+	}
+	return parseResourceQuantity(q)
+}
+
+// formatNodeAnalysisResult renders the analysis result as JSON or YAML.
+func formatNodeAnalysisResult(result *NodeAnalysisResult, format string) (string, error) {
 	switch format {
 	case paramutil.FormatYAML:
 		data, err := yaml.Marshal(result)
@@ -298,89 +318,69 @@ func nodeAnalysisHandler(ctx context.Context, client interface{}, params map[str
 	}
 }
 
+// resourceUnit maps a Kubernetes quantity suffix to its scaling factor.
+type resourceUnit struct {
+	suffix string
+	factor int64
+}
+
+// resourceUnits orders suffixes from longest/most-specific to shortest to avoid
+// ambiguous matches (e.g., "Ki" must be checked before "K").
+var resourceUnits = []resourceUnit{
+	{"Ki", BytesPerKi},
+	{"Mi", BytesPerMi},
+	{"Gi", BytesPerGi},
+	{"Ti", BytesPerTi},
+	{"m", 1},
+	{"k", DecimalKilo},
+	{"K", DecimalKilo},
+	{"M", DecimalMega},
+	{"G", DecimalGiga},
+}
+
 // parseResourceQuantity parses a Kubernetes resource quantity string to a numeric value.
-// Supports millicores (m) for CPU and binary (Ki, Mi, Gi) and decimal (K, M, G) for memory.
+// Supports millicores (m) for CPU and binary (Ki, Mi, Gi, Ti) and decimal (K, M, G) for memory.
+// Decimal and exponential notation (e.g. 0.5Gi, 1e9) are also accepted.
 func parseResourceQuantity(q string) int64 {
 	q = strings.TrimSpace(q)
 	if q == "" {
 		return 0
 	}
 
-	// Handle millicores (e.g., "100m", "500m")
-	if strings.HasSuffix(q, "m") {
-		val, err := parseNumeric(q[:len(q)-1])
-		if err != nil {
-			return 0
+	for _, unit := range resourceUnits {
+		if strings.HasSuffix(q, unit.suffix) {
+			f, err := parseNumericFloat(q[:len(q)-len(unit.suffix)])
+			if err != nil {
+				return 0
+			}
+			return int64(math.Round(f * float64(unit.factor)))
 		}
-		return val // Keep as millicores
 	}
 
-	// Handle binary memory units
-	if strings.HasSuffix(q, "Ki") {
-		val, err := parseNumeric(q[:len(q)-2])
-		if err != nil {
-			return 0
-		}
-		return val * BytesPerKi
-	}
-	if strings.HasSuffix(q, "Mi") {
-		val, err := parseNumeric(q[:len(q)-2])
-		if err != nil {
-			return 0
-		}
-		return val * BytesPerMi
-	}
-	if strings.HasSuffix(q, "Gi") {
-		val, err := parseNumeric(q[:len(q)-2])
-		if err != nil {
-			return 0
-		}
-		return val * BytesPerGi
-	}
-	if strings.HasSuffix(q, "Ti") {
-		val, err := parseNumeric(q[:len(q)-2])
-		if err != nil {
-			return 0
-		}
-		return val * BytesPerTi
-	}
-
-	// Handle decimal memory units
-	if strings.HasSuffix(q, "k") || strings.HasSuffix(q, "K") {
-		val, err := parseNumeric(q[:len(q)-1])
-		if err != nil {
-			return 0
-		}
-		return val * DecimalKilo
-	}
-	if strings.HasSuffix(q, "M") {
-		val, err := parseNumeric(q[:len(q)-1])
-		if err != nil {
-			return 0
-		}
-		return val * DecimalMega
-	}
-	if strings.HasSuffix(q, "G") {
-		val, err := parseNumeric(q[:len(q)-1])
-		if err != nil {
-			return 0
-		}
-		return val * DecimalGiga
-	}
-
-	// Plain number
-	val, err := parseNumeric(q)
+	f, err := parseNumericFloat(q)
 	if err != nil {
 		return 0
 	}
-	return val
+	return int64(math.Round(f))
 }
 
 // parseNumeric parses a numeric string to int64.
 func parseNumeric(s string) (int64, error) {
-	var result int64
-	_, err := fmt.Sscanf(s, "%d", &result)
-	return result, err
+	f, err := parseNumericFloat(s)
+	if err != nil {
+		return 0, err
+	}
+	return int64(math.Round(f)), nil
+}
+
+// parseNumericFloat parses a numeric string to float64, accepting decimal and
+// exponential notation.
+func parseNumericFloat(s string) (float64, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return 0, fmt.Errorf("empty numeric string")
+	}
+	return strconv.ParseFloat(s, 64)
 }
 
 // formatResourceQuantity formats a numeric resource quantity back to a human-readable string.

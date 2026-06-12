@@ -98,74 +98,97 @@ func NewServer(configuration Configuration) (*Server, error) {
 
 // registerTools registers all available tools based on configuration
 func (s *Server) registerTools() error {
-	// Initialize toolsets
-	availableToolsets := map[string]toolset.Toolset{
-		"kubernetes": &kubernetes.Toolset{
-			ReadOnly:           s.configuration.ReadOnly,
-			DisableDestructive: s.configuration.DisableDestructive,
-		},
-		"rancher": &rancherToolset.Toolset{},
-	}
+	available := s.availableToolsets()
+	enabled := s.enabledToolsets(available)
 
-	// Determine which toolsets to enable
-	enabledToolsets := make([]toolset.Toolset, 0)
-	if len(s.configuration.Toolsets) > 0 {
-		// Use explicitly configured toolsets
-		for _, toolsetName := range s.configuration.Toolsets {
-			if ts, exists := availableToolsets[toolsetName]; exists {
-				enabledToolsets = append(enabledToolsets, ts)
-			}
-		}
-	} else {
-		// Use all available toolsets
-		for _, ts := range availableToolsets {
-			enabledToolsets = append(enabledToolsets, ts)
-		}
-	}
-
-	// Create combined client for toolsets that need both Norman and Steve clients
-	combinedClient := s.combinedClient
-
-	if err := validateUniqueToolNames(enabledToolsets, combinedClient); err != nil {
+	if err := validateUniqueToolNames(enabled, s.combinedClient); err != nil {
 		return err
 	}
 
-	// Register tools from each enabled toolset
-	for _, ts := range enabledToolsets {
-		tools := ts.GetTools(combinedClient)
-		for _, rawTool := range tools {
-			tool := applyDefaultAnnotations(ts.GetName(), rawTool)
-
-			if allowed, reason := s.capabilityAllowsTool(tool); !allowed {
-				logging.Info("Skipping tool %s: %s", tool.Tool.Name, reason)
-				continue
-			}
-
-			// Check config-flag-based gating for high-risk container operation tools.
-			if tool.Tool.Name == "kubernetes_upload_file" && !s.configuration.EnableContainerFileUpload {
-				continue
-			}
-			if tool.Tool.Name == "kubernetes_download_file" && !s.configuration.EnableContainerFileDownload {
-				continue
-			}
-			if tool.Tool.Name == "kubernetes_exec" && !s.configuration.EnableContainerExec {
-				continue
-			}
-
-			// Check if tool is enabled/disabled by configuration
-			if s.shouldEnableTool(tool.Tool.Name) {
-				// Create a configured tool handler that uses server configuration
-				configuredTool := s.configureTool(tool)
-				if err := s.registerTool(configuredTool); err != nil {
-					return fmt.Errorf("failed to register tool %s: %w", tool.Tool.Name, err)
-				}
-			}
+	for _, ts := range enabled {
+		if err := s.registerToolset(ts); err != nil {
+			return err
 		}
 	}
 
 	logging.Info("Capability summary: %s", s.capabilitySummary())
 	logging.Info("MCP server initialized with %d tools", len(s.enabledTools))
 	return nil
+}
+
+// availableToolsets returns all toolsets that can be registered.
+func (s *Server) availableToolsets() map[string]toolset.Toolset {
+	return map[string]toolset.Toolset{
+		"kubernetes": &kubernetes.Toolset{
+			ReadOnly:           s.configuration.ReadOnly,
+			DisableDestructive: s.configuration.DisableDestructive,
+		},
+		"rancher": &rancherToolset.Toolset{},
+	}
+}
+
+// enabledToolsets selects the toolsets that should be registered.
+// If no toolsets are configured, all available toolsets are used.
+func (s *Server) enabledToolsets(available map[string]toolset.Toolset) []toolset.Toolset {
+	if len(s.configuration.Toolsets) == 0 {
+		enabled := make([]toolset.Toolset, 0, len(available))
+		for _, ts := range available {
+			enabled = append(enabled, ts)
+		}
+		return enabled
+	}
+
+	enabled := make([]toolset.Toolset, 0, len(s.configuration.Toolsets))
+	for _, name := range s.configuration.Toolsets {
+		if ts, exists := available[name]; exists {
+			enabled = append(enabled, ts)
+		}
+	}
+	return enabled
+}
+
+// registerToolset registers all tools from a single toolset.
+func (s *Server) registerToolset(ts toolset.Toolset) error {
+	for _, rawTool := range ts.GetTools(s.combinedClient) {
+		tool := applyDefaultAnnotations(ts.GetName(), rawTool)
+		if !s.shouldRegisterTool(tool) {
+			continue
+		}
+
+		configuredTool := s.configureTool(tool)
+		if err := s.registerTool(configuredTool); err != nil {
+			return fmt.Errorf("failed to register tool %s: %w", tool.Tool.Name, err)
+		}
+	}
+	return nil
+}
+
+// shouldRegisterTool reports whether a tool passes capability, container-operation,
+// and enablement checks.
+func (s *Server) shouldRegisterTool(tool toolset.ServerTool) bool {
+	if allowed, reason := s.capabilityAllowsTool(tool); !allowed {
+		logging.Info("Skipping tool %s: %s", tool.Tool.Name, reason)
+		return false
+	}
+	if !s.containerOperationEnabled(tool.Tool.Name) {
+		return false
+	}
+	return s.shouldEnableTool(tool.Tool.Name)
+}
+
+// containerOperationEnabled reports whether a container operation tool is enabled
+// by configuration. Non-container tools are always enabled.
+func (s *Server) containerOperationEnabled(toolName string) bool {
+	switch toolName {
+	case "kubernetes_upload_file":
+		return s.configuration.EnableContainerFileUpload
+	case "kubernetes_download_file":
+		return s.configuration.EnableContainerFileDownload
+	case "kubernetes_exec":
+		return s.configuration.EnableContainerExec
+	default:
+		return true
+	}
 }
 
 // shouldEnableTool determines if a tool should be enabled based on configuration

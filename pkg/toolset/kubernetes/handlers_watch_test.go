@@ -104,6 +104,52 @@ func TestWatchDiffWithReader_RejectsLargeOutput(t *testing.T) {
 	}
 }
 
+func TestValidateWatchIteration_AcceptsValidList(t *testing.T) {
+	list := &unstructured.UnstructuredList{
+		Items: []unstructured.Unstructured{
+			newWatchTestObject("v1", "Pod", "default", "pod-1", 1),
+		},
+	}
+	if err := validateWatchIteration(list, MaxWatchItems); err != nil {
+		t.Fatalf("validateWatchIteration() returned unexpected error: %v", err)
+	}
+}
+
+func TestValidateWatchIteration_RejectsContinueToken(t *testing.T) {
+	list := &unstructured.UnstructuredList{}
+	list.SetContinue("token")
+	if err := validateWatchIteration(list, MaxWatchItems); err == nil || !strings.Contains(err.Error(), "per-iteration limit") {
+		t.Fatalf("expected per-iteration limit error, got %v", err)
+	}
+}
+
+func TestValidateWatchIteration_RejectsTooManyItems(t *testing.T) {
+	list := &unstructured.UnstructuredList{
+		Items: []unstructured.Unstructured{
+			newWatchTestObject("v1", "Pod", "default", "pod-1", 1),
+			newWatchTestObject("v1", "Pod", "default", "pod-2", 1),
+		},
+	}
+	if err := validateWatchIteration(list, 1); err == nil || !strings.Contains(err.Error(), "per-iteration limit") {
+		t.Fatalf("expected per-iteration limit error, got %v", err)
+	}
+}
+
+func TestBuildIterationOutput_ReturnsEmptyWhenNoDiffs(t *testing.T) {
+	output := buildIterationOutput(1, 0, 0, 0, nil)
+	if output != "" {
+		t.Fatalf("expected empty output, got %q", output)
+	}
+}
+
+func TestBuildIterationOutput_FormatsHeaderAndDiffs(t *testing.T) {
+	output := buildIterationOutput(2, 3, 1, 1, []string{"diff-a", "diff-b"})
+	want := "# iteration 2 resources=3 changes=1 deletions=1\n\ndiff-a\ndiff-b"
+	if output != want {
+		t.Fatalf("buildIterationOutput() = %q, want %q", output, want)
+	}
+}
+
 func TestWaitForNextIteration_RespectsContextCancellation(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()

@@ -29,85 +29,123 @@ func getPodRelationships(n *Node) *RelationshipMap {
 		return nil
 	}
 
-	ns := pod.Namespace
 	result := NewRelationshipMap()
+	addPodNodeRelationship(&pod, result)
+	addPodServiceAccountRelationship(&pod, result)
+	addPodImagePullSecretRelationships(&pod, result)
+	addPodVolumeRelationships(&pod, result)
+	addPodContainerEnvRelationships(&pod, result)
+	return result
+}
 
-	// Pod -> Node
-	if nodeName := pod.Spec.NodeName; nodeName != "" {
-		ref := ObjectReference{Kind: "Node", Name: nodeName}
-		result.AddDependencyByKey(ref.Key(), RelationshipPodNode)
+// addPodNodeRelationship records the Pod -> Node relationship.
+func addPodNodeRelationship(pod *corev1.Pod, result *RelationshipMap) {
+	if pod.Spec.NodeName == "" {
+		return
 	}
+	ref := ObjectReference{Kind: "Node", Name: pod.Spec.NodeName}
+	result.AddDependencyByKey(ref.Key(), RelationshipPodNode)
+}
 
-	// Pod -> ServiceAccount
-	if sa := pod.Spec.ServiceAccountName; sa != "" {
-		ref := ObjectReference{Kind: "ServiceAccount", Name: sa, Namespace: ns}
-		result.AddDependencyByKey(ref.Key(), RelationshipPodServiceAccount)
+// addPodServiceAccountRelationship records the Pod -> ServiceAccount relationship.
+func addPodServiceAccountRelationship(pod *corev1.Pod, result *RelationshipMap) {
+	if pod.Spec.ServiceAccountName == "" {
+		return
 	}
+	ref := ObjectReference{Kind: "ServiceAccount", Name: pod.Spec.ServiceAccountName, Namespace: pod.Namespace}
+	result.AddDependencyByKey(ref.Key(), RelationshipPodServiceAccount)
+}
 
-	// Pod -> ImagePullSecrets
+// addPodImagePullSecretRelationships records Pod -> Secret relationships for image pull secrets.
+func addPodImagePullSecretRelationships(pod *corev1.Pod, result *RelationshipMap) {
+	ns := pod.Namespace
 	for _, ips := range pod.Spec.ImagePullSecrets {
 		ref := ObjectReference{Kind: "Secret", Name: ips.Name, Namespace: ns}
 		result.AddDependencyByKey(ref.Key(), RelationshipPodImagePullSecret)
 	}
+}
 
-	// Pod -> Volumes (ConfigMap, Secret, PVC)
+// addPodVolumeRelationships records Pod -> Volume relationships (ConfigMap, Secret, PVC, Projected).
+func addPodVolumeRelationships(pod *corev1.Pod, result *RelationshipMap) {
+	ns := pod.Namespace
 	for _, v := range pod.Spec.Volumes {
-		vs := v.VolumeSource
-		switch {
-		case vs.ConfigMap != nil:
-			ref := ObjectReference{Kind: "ConfigMap", Name: vs.ConfigMap.Name, Namespace: ns}
-			result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
-		case vs.Secret != nil:
-			ref := ObjectReference{Kind: "Secret", Name: vs.Secret.SecretName, Namespace: ns}
-			result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
-		case vs.PersistentVolumeClaim != nil:
-			ref := ObjectReference{Kind: "PersistentVolumeClaim", Name: vs.PersistentVolumeClaim.ClaimName, Namespace: ns}
-			result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
-		case vs.Projected != nil:
-			for _, src := range vs.Projected.Sources {
-				switch {
-				case src.ConfigMap != nil:
-					ref := ObjectReference{Kind: "ConfigMap", Name: src.ConfigMap.Name, Namespace: ns}
-					result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
-				case src.Secret != nil:
-					ref := ObjectReference{Kind: "Secret", Name: src.Secret.Name, Namespace: ns}
-					result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
-				}
-			}
+		addVolumeSourceRelationship(v.VolumeSource, ns, result)
+	}
+}
+
+// addVolumeSourceRelationship records relationships for a single volume source.
+func addVolumeSourceRelationship(vs corev1.VolumeSource, ns string, result *RelationshipMap) {
+	switch {
+	case vs.ConfigMap != nil:
+		ref := ObjectReference{Kind: "ConfigMap", Name: vs.ConfigMap.Name, Namespace: ns}
+		result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
+	case vs.Secret != nil:
+		ref := ObjectReference{Kind: "Secret", Name: vs.Secret.SecretName, Namespace: ns}
+		result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
+	case vs.PersistentVolumeClaim != nil:
+		ref := ObjectReference{Kind: "PersistentVolumeClaim", Name: vs.PersistentVolumeClaim.ClaimName, Namespace: ns}
+		result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
+	case vs.Projected != nil:
+		for _, src := range vs.Projected.Sources {
+			addProjectedVolumeSourceRelationship(src, ns, result)
 		}
 	}
+}
 
-	// Pod -> Container Environment (ConfigMap/Secret refs)
-	var cList []corev1.Container
-	cList = append(cList, pod.Spec.InitContainers...)
-	cList = append(cList, pod.Spec.Containers...)
-	for _, c := range cList {
+// addProjectedVolumeSourceRelationship records relationships for a projected volume source.
+func addProjectedVolumeSourceRelationship(src corev1.VolumeProjection, ns string, result *RelationshipMap) {
+	switch {
+	case src.ConfigMap != nil:
+		ref := ObjectReference{Kind: "ConfigMap", Name: src.ConfigMap.Name, Namespace: ns}
+		result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
+	case src.Secret != nil:
+		ref := ObjectReference{Kind: "Secret", Name: src.Secret.Name, Namespace: ns}
+		result.AddDependencyByKey(ref.Key(), RelationshipPodVolume)
+	}
+}
+
+// addPodContainerEnvRelationships records Container -> ConfigMap/Secret relationships from env.
+func addPodContainerEnvRelationships(pod *corev1.Pod, result *RelationshipMap) {
+	ns := pod.Namespace
+	containers := make([]corev1.Container, 0, len(pod.Spec.InitContainers)+len(pod.Spec.Containers))
+	containers = append(containers, pod.Spec.InitContainers...)
+	containers = append(containers, pod.Spec.Containers...)
+
+	for _, c := range containers {
 		for _, env := range c.EnvFrom {
-			switch {
-			case env.ConfigMapRef != nil:
-				ref := ObjectReference{Kind: "ConfigMap", Name: env.ConfigMapRef.Name, Namespace: ns}
-				result.AddDependencyByKey(ref.Key(), RelationshipPodContainerEnv)
-			case env.SecretRef != nil:
-				ref := ObjectReference{Kind: "Secret", Name: env.SecretRef.Name, Namespace: ns}
-				result.AddDependencyByKey(ref.Key(), RelationshipPodContainerEnv)
-			}
+			addEnvFromRelationship(env, ns, result)
 		}
 		for _, env := range c.Env {
-			if env.ValueFrom == nil {
-				continue
-			}
-			switch {
-			case env.ValueFrom.ConfigMapKeyRef != nil:
-				ref := ObjectReference{Kind: "ConfigMap", Name: env.ValueFrom.ConfigMapKeyRef.Name, Namespace: ns}
-				result.AddDependencyByKey(ref.Key(), RelationshipPodContainerEnv)
-			case env.ValueFrom.SecretKeyRef != nil:
-				ref := ObjectReference{Kind: "Secret", Name: env.ValueFrom.SecretKeyRef.Name, Namespace: ns}
-				result.AddDependencyByKey(ref.Key(), RelationshipPodContainerEnv)
-			}
+			addEnvValueRelationship(env, ns, result)
 		}
 	}
+}
 
-	return result
+// addEnvFromRelationship records relationships from an EnvFromSource.
+func addEnvFromRelationship(env corev1.EnvFromSource, ns string, result *RelationshipMap) {
+	switch {
+	case env.ConfigMapRef != nil:
+		ref := ObjectReference{Kind: "ConfigMap", Name: env.ConfigMapRef.Name, Namespace: ns}
+		result.AddDependencyByKey(ref.Key(), RelationshipPodContainerEnv)
+	case env.SecretRef != nil:
+		ref := ObjectReference{Kind: "Secret", Name: env.SecretRef.Name, Namespace: ns}
+		result.AddDependencyByKey(ref.Key(), RelationshipPodContainerEnv)
+	}
+}
+
+// addEnvValueRelationship records relationships from an EnvVar valueFrom.
+func addEnvValueRelationship(env corev1.EnvVar, ns string, result *RelationshipMap) {
+	if env.ValueFrom == nil {
+		return
+	}
+	switch {
+	case env.ValueFrom.ConfigMapKeyRef != nil:
+		ref := ObjectReference{Kind: "ConfigMap", Name: env.ValueFrom.ConfigMapKeyRef.Name, Namespace: ns}
+		result.AddDependencyByKey(ref.Key(), RelationshipPodContainerEnv)
+	case env.ValueFrom.SecretKeyRef != nil:
+		ref := ObjectReference{Kind: "Secret", Name: env.ValueFrom.SecretKeyRef.Name, Namespace: ns}
+		result.AddDependencyByKey(ref.Key(), RelationshipPodContainerEnv)
+	}
 }
 
 // getServiceRelationships extracts relationships for a Service.
@@ -283,9 +321,14 @@ func getRoleBindingRelationships(n *Node) *RelationshipMap {
 	}
 
 	// RoleBinding -> Subjects (ServiceAccounts)
+	// A missing subject namespace defaults to the RoleBinding's own namespace.
 	for _, s := range rb.Subjects {
-		if s.Kind == rbacv1.ServiceAccountKind && s.APIGroup == corev1.GroupName && s.Namespace != "" {
-			ref := ObjectReference{Kind: "ServiceAccount", Namespace: s.Namespace, Name: s.Name}
+		if s.Kind == rbacv1.ServiceAccountKind && s.APIGroup == corev1.GroupName {
+			saNS := s.Namespace
+			if saNS == "" {
+				saNS = ns
+			}
+			ref := ObjectReference{Kind: "ServiceAccount", Namespace: saNS, Name: s.Name}
 			result.AddDependentByKey(ref.Key(), RelationshipRoleBindingSubject)
 		}
 	}
@@ -378,35 +421,35 @@ func getEventRelationships(n *Node) *RelationshipMap {
 	return result
 }
 
+// extractorKey identifies the GroupVersionKind used to dispatch relationship extractors.
+type extractorKey struct {
+	group string
+	kind  string
+}
+
+// relationshipExtractors maps a GVK to its extractor. Extractors that need the
+// global UID map receive it; others ignore it.
+var relationshipExtractors = map[extractorKey]func(*Node, map[types.UID]*Node) *RelationshipMap{
+	{"", "Pod"}:                                         func(n *Node, _ map[types.UID]*Node) *RelationshipMap { return getPodRelationships(n) },
+	{"", "Service"}:                                     func(n *Node, byUID map[types.UID]*Node) *RelationshipMap { return getServiceRelationships(n, byUID) },
+	{"networking.k8s.io", "Ingress"}:                    func(n *Node, _ map[types.UID]*Node) *RelationshipMap { return getIngressRelationships(n) },
+	{"networking.k8s.io", "IngressClass"}:               func(n *Node, _ map[types.UID]*Node) *RelationshipMap { return getIngressClassRelationships(n) },
+	{"", "PersistentVolume"}:                            func(n *Node, _ map[types.UID]*Node) *RelationshipMap { return getPVRelationships(n) },
+	{"", "PersistentVolumeClaim"}:                       func(n *Node, _ map[types.UID]*Node) *RelationshipMap { return getPVCRelationships(n) },
+	{"rbac.authorization.k8s.io", "RoleBinding"}:        func(n *Node, _ map[types.UID]*Node) *RelationshipMap { return getRoleBindingRelationships(n) },
+	{"rbac.authorization.k8s.io", "ClusterRoleBinding"}: func(n *Node, _ map[types.UID]*Node) *RelationshipMap { return getClusterRoleBindingRelationships(n) },
+	{"policy", "PodDisruptionBudget"}:                   func(n *Node, byUID map[types.UID]*Node) *RelationshipMap { return getPDBRelationships(n, byUID) },
+	{"", "Event"}:                                       func(n *Node, _ map[types.UID]*Node) *RelationshipMap { return getEventRelationships(n) },
+	{"events.k8s.io", "Event"}:                          func(n *Node, _ map[types.UID]*Node) *RelationshipMap { return getEventRelationships(n) },
+}
+
 // extractRelationships determines the appropriate relationship extractor for a node
 // and returns the resulting RelationshipMap.
 func extractRelationships(node *Node, globalMapByUID map[types.UID]*Node) *RelationshipMap {
 	gvk := node.GroupVersionKind()
-	group := gvk.Group
-	kind := gvk.Kind
-
-	switch {
-	case group == "" && kind == "Pod":
-		return getPodRelationships(node)
-	case group == "" && kind == "Service":
-		return getServiceRelationships(node, globalMapByUID)
-	case group == "networking.k8s.io" && kind == "Ingress":
-		return getIngressRelationships(node)
-	case group == "networking.k8s.io" && kind == "IngressClass":
-		return getIngressClassRelationships(node)
-	case group == "" && kind == "PersistentVolume":
-		return getPVRelationships(node)
-	case group == "" && kind == "PersistentVolumeClaim":
-		return getPVCRelationships(node)
-	case group == "rbac.authorization.k8s.io" && kind == "RoleBinding":
-		return getRoleBindingRelationships(node)
-	case group == "rbac.authorization.k8s.io" && kind == "ClusterRoleBinding":
-		return getClusterRoleBindingRelationships(node)
-	case group == "policy" && kind == "PodDisruptionBudget":
-		return getPDBRelationships(node, globalMapByUID)
-	case (group == "" || group == "events.k8s.io") && kind == "Event":
-		return getEventRelationships(node)
-	default:
+	extractor, ok := relationshipExtractors[extractorKey{group: gvk.Group, kind: gvk.Kind}]
+	if !ok {
 		return nil
 	}
+	return extractor(node, globalMapByUID)
 }

@@ -222,7 +222,9 @@ func extractNodeInfo(node unstructured.Unstructured) *NodeInfo {
 			info.Memory.Capacity = resourceQuantityToBytes(mem)
 		}
 		if pods, ok := capacity["pods"].(string); ok {
-			info.PodCount.Capacity, _ = strconv.ParseInt(pods, 10, 64)
+			if v, err := strconv.ParseInt(pods, 10, 64); err == nil {
+				info.PodCount.Capacity = v
+			}
 		}
 	}
 
@@ -235,7 +237,9 @@ func extractNodeInfo(node unstructured.Unstructured) *NodeInfo {
 			info.Memory.Allocatable = resourceQuantityToBytes(mem)
 		}
 		if pods, ok := allocatable["pods"].(string); ok {
-			info.PodCount.Allocatable, _ = strconv.ParseInt(pods, 10, 64)
+			if v, err := strconv.ParseInt(pods, 10, 64); err == nil {
+				info.PodCount.Allocatable = v
+			}
 		}
 	}
 
@@ -299,8 +303,13 @@ func shouldProcessPod(pod unstructured.Unstructured, nodeInfoMap map[string]*Nod
 	return ok
 }
 
-// processSinglePod processes a single pod and adds its resources to the node
+// processSinglePod processes a single pod and adds its resources to the node.
+// It is a no-op when nodeInfo is nil.
 func processSinglePod(pod unstructured.Unstructured, nodeInfo *NodeInfo, showPods, showContainers bool) {
+	if nodeInfo == nil {
+		return
+	}
+
 	nodeInfo.PodCount.Requested++
 
 	podInfo := PodInfo{
@@ -541,21 +550,29 @@ func matchLabels(labels, selector map[string]string) bool {
 	return true
 }
 
-// resourceQuantityToMilli parses a resource quantity string and returns millivalue
+// resourceQuantityToMilli parses a resource quantity string and returns millivalue.
+// Invalid quantities are treated as zero instead of panicking.
 func resourceQuantityToMilli(q string) int64 {
 	if q == "" {
 		return 0
 	}
-	qty := resource.MustParse(q)
+	qty, err := resource.ParseQuantity(q)
+	if err != nil {
+		return 0
+	}
 	return qty.MilliValue()
 }
 
-// resourceQuantityToBytes parses a resource quantity string and returns bytes
+// resourceQuantityToBytes parses a resource quantity string and returns bytes.
+// Invalid quantities are treated as zero instead of panicking.
 func resourceQuantityToBytes(q string) int64 {
 	if q == "" {
 		return 0
 	}
-	qty := resource.MustParse(q)
+	qty, err := resource.ParseQuantity(q)
+	if err != nil {
+		return 0
+	}
 	return qty.Value()
 }
 

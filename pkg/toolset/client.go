@@ -3,6 +3,8 @@
 package toolset
 
 import (
+	"context"
+
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
@@ -10,8 +12,42 @@ import (
 
 // CombinedClient holds both Norman and Steve clients.
 type CombinedClient struct {
-	Norman *norman.Client
-	Steve  *steve.Client
+	Norman    *norman.Client
+	Steve     *steve.Client
+	closeable bool
+}
+
+// NewCombinedClient creates a CombinedClient. When closeable is false, Close is a no-op.
+func NewCombinedClient(normanClient *norman.Client, steveClient *steve.Client, closeable bool) *CombinedClient {
+	return &CombinedClient{
+		Norman:    normanClient,
+		Steve:     steveClient,
+		closeable: closeable,
+	}
+}
+
+// Close releases request-scoped resources when the client is closeable.
+// For static clients it is a no-op so shared connection pools are not closed.
+func (c *CombinedClient) Close() {
+	if c == nil || !c.closeable {
+		return
+	}
+	if c.Norman != nil {
+		c.Norman.Close()
+	}
+	if c.Steve != nil {
+		c.Steve.Close()
+	}
+}
+
+// IsCloseable reports whether Close() will release request-scoped resources.
+func (c *CombinedClient) IsCloseable() bool {
+	return c != nil && c.closeable
+}
+
+// ClientResolver resolves a CombinedClient for the current request.
+type ClientResolver interface {
+	Resolve(ctx context.Context) (*CombinedClient, error)
 }
 
 // ValidateNormanClient validates and returns a configured Norman client.

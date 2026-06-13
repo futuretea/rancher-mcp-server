@@ -20,11 +20,12 @@ type StaticConfig struct {
 	LogLevel int `mapstructure:"log_level"`
 
 	// Rancher configuration
-	RancherServerURL   string `mapstructure:"rancher_server_url"`
-	RancherToken       string `mapstructure:"rancher_token"`
-	RancherAccessKey   string `mapstructure:"rancher_access_key"`
-	RancherSecretKey   string `mapstructure:"rancher_secret_key"`
-	RancherTLSInsecure bool   `mapstructure:"rancher_tls_insecure"`
+	RancherServerURL        string `mapstructure:"rancher_server_url"`
+	RancherToken            string `mapstructure:"rancher_token"`
+	RancherAccessKey        string `mapstructure:"rancher_access_key"`
+	RancherSecretKey        string `mapstructure:"rancher_secret_key"`
+	RancherTLSInsecure      bool   `mapstructure:"rancher_tls_insecure"`
+	RancherRequestTokenAuth bool   `mapstructure:"rancher_request_token_auth"`
 
 	// Security configuration
 	ReadOnly           bool `mapstructure:"read_only"`
@@ -74,7 +75,22 @@ func (c *StaticConfig) Validate() error {
 		if !strings.HasPrefix(c.RancherServerURL, "http://") && !strings.HasPrefix(c.RancherServerURL, "https://") {
 			return fmt.Errorf("rancher_server_url must start with http:// or https://, got %s", c.RancherServerURL)
 		}
+	}
 
+	if c.RancherRequestTokenAuth {
+		if c.RancherServerURL == "" {
+			return fmt.Errorf("rancher_server_url is required when rancher_request_token_auth is enabled")
+		}
+
+		if c.RancherToken != "" || c.RancherAccessKey != "" || c.RancherSecretKey != "" {
+			return fmt.Errorf("rancher_request_token_auth cannot be combined with rancher_token, rancher_access_key, or rancher_secret_key")
+		}
+
+		return nil
+	}
+
+	// Static credential mode validation (unchanged)
+	if c.RancherServerURL != "" {
 		// Check authentication methods
 		hasTokenAuth := c.RancherToken != ""
 		hasKeyAuth := c.RancherAccessKey != "" && c.RancherSecretKey != ""

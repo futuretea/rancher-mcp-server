@@ -116,6 +116,7 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--rancher-access-key` | Rancher access key | |
 | `--rancher-secret-key` | Rancher secret key | |
 | `--rancher-tls-insecure` | 跳过 TLS 验证 | `false` |
+| `--rancher-request-token-auth` | 使用每个 HTTP/SSE 请求的 `Authorization: Bearer <token>` 头代替静态凭据 | `false` |
 | `--read-only` | 禁用写操作 | `true` |
 | `--disable-destructive` | 禁用删除操作 | `false` |
 | `--show-sensitive-data` | 全局管理员标志，允许显示敏感数据 | `false` |
@@ -139,10 +140,20 @@ port: 0  # 0 for stdio, or set a port like 8080 for HTTP/SSE
 log_level: 5
 
 rancher_server_url: https://your-rancher-server.com
+
+# 认证方式：选择以下其中一种。
+
+# 方式 1：静态 Bearer Token
 rancher_token: your-bearer-token
-# Or use Access Key/Secret Key:
+# 或使用 Access Key/Secret Key：
 # rancher_access_key: your-access-key
 # rancher_secret_key: your-secret-key
+
+# 方式 2：每请求 token（仅 HTTP/SSE 模式）
+# 启用后，服务端会从每个 HTTP/SSE 请求的 Authorization: Bearer <token> 头中读取 token
+# 并转发给 Rancher。此时上方静态凭据必须为空，且上游网关必须转发 Authorization 头。
+# rancher_request_token_auth: true
+
 # rancher_tls_insecure: false
 
 read_only: true  # default: true
@@ -212,6 +223,49 @@ rancher-mcp-server --port 8080 \
   --sse-base-url https://your-domain.com:8080 \
   --rancher-server-url https://your-rancher-server.com \
   --rancher-token your-token
+```
+
+### 每请求 Rancher Token 认证
+
+在 HTTP/SSE 模式下，如果上游网关已对用户完成认证，可启用 `--rancher-request-token-auth`，使服务端不再存储静态 Rancher 凭据。服务端会从每个传入的 HTTP/SSE 请求中读取 `Authorization: Bearer <token>` 头，并使用该 token 访问 Rancher API。
+
+要求：
+- 仅限 HTTP/SSE 模式（`--port` 必须大于 `0`；与 stdio 模式互斥）
+- 上游网关或代理必须在每次请求 `/mcp`、`/sse`、`/message` 时转发 `Authorization` 头
+- 不能与 `--rancher-token`、`--rancher-access-key`、`--rancher-secret-key` 同时使用
+
+示例：
+
+```shell
+rancher-mcp-server --port 8080 \
+  --rancher-request-token-auth \
+  --rancher-server-url https://your-rancher-server.com
+```
+
+#### 网关示例
+
+上游网关必须转发 `Authorization` 头。最小配置示例：
+
+**nginx：**
+
+```nginx
+location /mcp/ {
+    proxy_pass http://rancher-mcp-server:8080/mcp/;
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+**Traefik：**
+
+```yaml
+http:
+  middlewares:
+    forward-auth:
+      headers:
+        customRequestHeaders:
+          Authorization: "{http.request.header.Authorization}"
 ```
 
 ## 工具与功能 <a id="tools-and-functionalities"></a>

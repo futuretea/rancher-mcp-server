@@ -32,12 +32,18 @@ log_level: 5  # Log level 0-9 (default: 5, Info)
 # Rancher configuration
 rancher_server_url: https://your-rancher-server.com
 
-# Authentication method 1: Bearer Token
+# Authentication method 1: Static Bearer Token
 rancher_token: your-bearer-token-here
 
 # Authentication method 2: Access Key/Secret Key (choose one)
 # rancher_access_key: your-access-key-here
 # rancher_secret_key: your-secret-key-here
+
+# Authentication method 3: Per-request token (HTTP/SSE mode only)
+# When enabled, the server reads the Authorization: Bearer <token> header from each
+# HTTP/SSE request and uses it to access Rancher. Static credentials above must be
+# empty, and the upstream gateway/proxy must forward the Authorization header.
+# rancher_request_token_auth: false
 
 # TLS configuration
 # rancher_tls_insecure: false  # Skip TLS verification for self-signed certs (default: false)

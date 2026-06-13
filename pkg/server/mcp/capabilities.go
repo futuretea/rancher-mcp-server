@@ -21,29 +21,51 @@ type HealthStatus struct {
 	Capabilities map[string]CapabilityStatus `json:"capabilities"`
 }
 
+// HasRancherCapability reports whether the server is configured to access Rancher.
+// It is true in static credential mode or in per-request token mode when a Rancher
+// server URL is configured. HasRancherConfig semantics remain unchanged.
+func (c *Configuration) HasRancherCapability() bool {
+	if c == nil || c.StaticConfig == nil {
+		return false
+	}
+	if c.HasRancherConfig() {
+		return true
+	}
+	return c.RancherRequestTokenAuth && c.RancherServerURL != ""
+}
+
 func (s *Server) capabilityStatuses() map[string]CapabilityStatus {
+	hasCapability := s.configuration != nil && s.configuration.HasRancherCapability()
 	hasConfig := s.configuration != nil && s.configuration.HasRancherConfig()
-	rancherAvailable := hasConfig && s.normanClient != nil && s.normanClient.IsUsable()
-	kubernetesAvailable := hasConfig && s.steveClient != nil
+
+	rancherAvailable := hasCapability && (s.configuration.RancherRequestTokenAuth || (s.normanClient != nil && s.normanClient.IsUsable()))
+	kubernetesAvailable := hasCapability && (s.configuration.RancherRequestTokenAuth || s.steveClient != nil)
 
 	rancherStatus := CapabilityStatus{
-		Configured: hasConfig,
+		Configured: hasCapability,
 		Available:  rancherAvailable,
 	}
-	if !hasConfig {
+	if !hasCapability {
 		rancherStatus.Reason = "rancher configuration missing"
 	} else if !rancherAvailable {
 		rancherStatus.Reason = "rancher client unavailable"
 	}
 
 	kubernetesStatus := CapabilityStatus{
-		Configured: hasConfig,
+		Configured: hasCapability,
 		Available:  kubernetesAvailable,
 	}
-	if !hasConfig {
+	if !hasCapability {
 		kubernetesStatus.Reason = "rancher configuration missing"
 	} else if !kubernetesAvailable {
 		kubernetesStatus.Reason = "kubernetes client unavailable"
+	}
+
+	// Suppress misleading "unavailable" reasons in dynamic mode where availability
+	// reflects configuration readiness rather than pre-created client usability.
+	if hasCapability && !hasConfig {
+		rancherStatus.Reason = ""
+		kubernetesStatus.Reason = ""
 	}
 
 	return map[string]CapabilityStatus{

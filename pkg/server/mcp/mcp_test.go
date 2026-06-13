@@ -1,10 +1,44 @@
 package mcp
 
 import (
+	"context"
+	"encoding/json"
+	"errors"
+	"expvar"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
+	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/core/config"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
+	"github.com/mark3labs/mcp-go/mcp"
+	"github.com/rancher/norman/types"
 )
+
+func startRancherSchemaServer(t *testing.T) *httptest.Server {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		schemas := types.SchemaCollection{
+			Data: []types.Schema{
+				{
+					ID:      "cluster",
+					Type:    "/meta/schemas/schema",
+					Links:   map[string]string{},
+					Version: types.APIVersion{Path: "/v3", Version: "v3"},
+				},
+			},
+		}
+
+		w.Header().Set("X-API-Schemas", "http://"+r.Host+"/v3/schemas")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(schemas)
+	}))
+	t.Cleanup(server.Close)
+	return server
+}
 
 func TestNewServer(t *testing.T) {
 	cfg := &config.StaticConfig{
@@ -158,5 +192,160 @@ func TestGetHealthStatusWithoutRancherConfig(t *testing.T) {
 	}
 	if kubernetesStatus.Configured || kubernetesStatus.Available {
 		t.Fatalf("expected kubernetes capability to be unconfigured and unavailable, got %+v", kubernetesStatus)
+	}
+}
+
+func TestMakeToolHandler_ResolvesAndClosesClient(t *testing.T) {
+	server := startRancherSchemaServer(t)
+
+	normanClient, err := norman.NewClientWithToken(server.URL, "token", true)
+	if err != nil {
+		t.Fatalf("failed to create Norman client: %v", err)
+	}
+	steveClient := steve.NewClientWithToken(server.URL, "token", true)
+
+	// Use closeable=false to match production static-mode clients, which must
+	// remain usable across multiple tool calls.
+	staticClient := toolset.NewCombinedClient(normanClient, steveClient, false)
+
+	s := &Server{
+		configuration:  &Configuration{},
+		clientResolver: &staticResolver{client: staticClient},
+	}
+
+	handlerCalled := false
+	tool := toolset.ServerTool{
+		Tool: mcp.Tool{Name: "test_tool"},
+		Handler: func(_ context.Context, _ interface{}, _ map[string]interface{}) (string, error) {
+			handlerCalled = true
+			return "ok", nil
+		},
+	}
+
+	mcpHandler := s.makeToolHandler(tool)
+	_, err = mcpHandler(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+
+	if !handlerCalled {
+		t.Fatal("expected tool handler to be called")
+	}
+	if !normanClient.IsUsable() {
+		t.Fatal("expected static Norman client to remain usable after handler")
+	}
+}
+
+// stubResolver is a test resolver that returns a fixed CombinedClient.
+type stubResolver struct {
+	client *toolset.CombinedClient
+}
+
+func (r *stubResolver) Resolve(_ context.Context) (*toolset.CombinedClient, error) {
+	return r.client, nil
+}
+
+func TestMakeToolHandler_RequestScopedClientClosesAndDecrementsActiveCount(t *testing.T) {
+	server := startRancherSchemaServer(t)
+
+	normanClient, err := norman.NewClientWithToken(server.URL, "token", true)
+	if err != nil {
+		t.Fatalf("failed to create Norman client: %v", err)
+	}
+	steveClient := steve.NewClientWithToken(server.URL, "token", true)
+
+	closeableClient := toolset.NewCombinedClient(normanClient, steveClient, true)
+	metrics := NewExpvarMetrics()
+	metrics.(*expvarMetrics).activeClientCount.Set(0)
+
+	s := &Server{
+		configuration:  &Configuration{},
+		clientResolver: &stubResolver{client: closeableClient},
+		metrics:        metrics,
+	}
+
+	tool := toolset.ServerTool{
+		Tool:    mcp.Tool{Name: "test_tool"},
+		Handler: func(_ context.Context, _ interface{}, _ map[string]interface{}) (string, error) { return "", nil },
+	}
+
+	mcpHandler := s.makeToolHandler(tool)
+	_, err = mcpHandler(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("handler returned error: %v", err)
+	}
+
+	if normanClient.IsUsable() {
+		t.Fatal("expected Norman client to be closed after handler")
+	}
+	if active := expvar.Get("active_client_count").String(); active != "0" {
+		t.Fatalf("expected active_client_count to return to 0, got %s", active)
+	}
+}
+
+func TestMakeToolHandler_RequestScopedClientClosesOnHandlerError(t *testing.T) {
+	server := startRancherSchemaServer(t)
+
+	normanClient, err := norman.NewClientWithToken(server.URL, "token", true)
+	if err != nil {
+		t.Fatalf("failed to create Norman client: %v", err)
+	}
+	steveClient := steve.NewClientWithToken(server.URL, "token", true)
+
+	closeableClient := toolset.NewCombinedClient(normanClient, steveClient, true)
+	metrics := NewExpvarMetrics()
+	metrics.(*expvarMetrics).activeClientCount.Set(0)
+
+	s := &Server{
+		configuration:  &Configuration{},
+		clientResolver: &stubResolver{client: closeableClient},
+		metrics:        metrics,
+	}
+
+	tool := toolset.ServerTool{
+		Tool: mcp.Tool{Name: "test_tool"},
+		Handler: func(_ context.Context, _ interface{}, _ map[string]interface{}) (string, error) {
+			return "", errors.New("handler error")
+		},
+	}
+
+	mcpHandler := s.makeToolHandler(tool)
+	result, err := mcpHandler(context.Background(), mcp.CallToolRequest{})
+	if err != nil {
+		t.Fatalf("handler returned transport error: %v", err)
+	}
+	if !result.IsError {
+		t.Fatal("expected tool result to be an error")
+	}
+
+	if normanClient.IsUsable() {
+		t.Fatal("expected Norman client to be closed after handler error")
+	}
+	if active := expvar.Get("active_client_count").String(); active != "0" {
+		t.Fatalf("expected active_client_count to return to 0 after handler error, got %s", active)
+	}
+}
+
+func TestContextFunc_PlacesAuthorizationInContext(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "Bearer context-token")
+
+	ctx := contextFunc(context.Background(), req)
+	token, err := bearerTokenFromContext(ctx)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if token != "context-token" {
+		t.Fatalf("expected context-token, got %q", token)
+	}
+}
+
+func TestContextFunc_NoAuthorizationLeavesContextUnchanged(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	base := context.WithValue(context.Background(), authorizationKey, "existing-value")
+
+	ctx := contextFunc(base, req)
+	if ctx != base {
+		t.Fatal("expected context to be unchanged when Authorization header is absent")
 	}
 }

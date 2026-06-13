@@ -5,6 +5,7 @@ package norman
 import (
 	"context"
 	"fmt"
+	"net/http"
 
 	"github.com/rancher/norman/clientbase"
 	"github.com/rancher/norman/types"
@@ -40,14 +41,21 @@ func NewClient(cfg *config.StaticConfig) (*Client, error) {
 		return &Client{}, nil
 	}
 
+	client, err := NewClientWithToken(cfg.RancherServerURL, cfg.RancherToken, cfg.RancherTLSInsecure)
+	if err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+// NewClientWithToken creates a new Norman API client bound to a single request token.
+func NewClientWithToken(serverURL, token string, insecure bool) (*Client, error) {
 	// Create management client configuration
 	// Use GetNormanURL to ensure /v3 suffix regardless of user input
 	clientOpts := &clientbase.ClientOpts{
-		URL:       urlutil.GetNormanURL(cfg.RancherServerURL),
-		AccessKey: cfg.RancherAccessKey,
-		SecretKey: cfg.RancherSecretKey,
-		TokenKey:  cfg.RancherToken,
-		Insecure:  cfg.RancherTLSInsecure,
+		URL:      urlutil.GetNormanURL(serverURL),
+		TokenKey: token,
+		Insecure: insecure,
 	}
 
 	// Create the management client
@@ -59,6 +67,21 @@ func NewClient(cfg *config.StaticConfig) (*Client, error) {
 	return &Client{
 		management: management,
 	}, nil
+}
+
+// Close releases resources held by the client. After Close the client must not be used.
+func (c *Client) Close() {
+	if c == nil {
+		return
+	}
+	if c.management != nil {
+		if c.management.Ops != nil && c.management.Ops.Client != nil {
+			if transport, ok := c.management.Ops.Client.Transport.(*http.Transport); ok {
+				transport.CloseIdleConnections()
+			}
+		}
+	}
+	c.management = nil
 }
 
 // ListClusters returns all clusters

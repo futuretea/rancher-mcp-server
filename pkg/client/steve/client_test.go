@@ -114,3 +114,40 @@ func TestGetClientset_ReusesClientsetAcrossConcurrentCalls(t *testing.T) {
 func interfacePointer(value interface{}) uintptr {
 	return reflect.ValueOf(value).Pointer()
 }
+
+func TestNewClientWithToken_BindsToken(t *testing.T) {
+	client := NewClientWithToken("https://example.com", "request-token", true)
+
+	if client.serverURL != "https://example.com" {
+		t.Errorf("expected server URL https://example.com, got %q", client.serverURL)
+	}
+	if client.token != "request-token" {
+		t.Errorf("expected token request-token, got %q", client.token)
+	}
+	if client.accessKey != "" || client.secretKey != "" {
+		t.Error("expected accessKey and secretKey to be empty")
+	}
+	if !client.insecure {
+		t.Error("expected insecure to be true")
+	}
+}
+
+func TestSteveClientClose_ClearsCaches(t *testing.T) {
+	client := NewClient("https://example.com", "token", "", "", false)
+
+	first, err := client.getDynamicClient("cluster-a")
+	if err != nil {
+		t.Fatalf("getDynamicClient() returned unexpected error: %v", err)
+	}
+
+	client.Close()
+
+	second, err := client.getDynamicClient("cluster-a")
+	if err != nil {
+		t.Fatalf("getDynamicClient() after Close returned unexpected error: %v", err)
+	}
+
+	if interfacePointer(first) == interfacePointer(second) {
+		t.Fatal("expected Close to clear dynamic client cache")
+	}
+}

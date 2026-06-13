@@ -4,6 +4,7 @@ package mcp
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"sort"
@@ -39,6 +40,8 @@ type Server struct {
 	normanClient   *norman.Client
 	steveClient    *steve.Client
 	combinedClient *toolset.CombinedClient
+	clientResolver toolset.ClientResolver
+	metrics        Metrics
 }
 
 // NewServer creates a new MCP server with the given configuration
@@ -56,36 +59,50 @@ func NewServer(configuration Configuration) (*Server, error) {
 		server.WithLogging(),
 	)
 
-	// Initialize Norman client (for Rancher v3 API)
-	normanClient, err := norman.NewClient(configuration.StaticConfig)
-	if err != nil {
-		// Log the error but continue without Norman client
-		logging.Warn("Failed to create Norman client: %v", err)
-		logging.Warn("Rancher tools will not be available")
-	}
-
-	// Initialize Steve client (for Steve API / Kubernetes resources)
-	var steveClient *steve.Client
-	if configuration.HasRancherConfig() {
-		steveClient = steve.NewClient(
-			configuration.RancherServerURL,
-			configuration.RancherToken,
-			configuration.RancherAccessKey,
-			configuration.RancherSecretKey,
-			configuration.RancherTLSInsecure,
-		)
-		logging.Info("Steve client initialized for Kubernetes resources")
-	}
-
 	s := &Server{
 		configuration: &configuration,
 		server:        server.NewMCPServer(version.BinaryName, version.Version, serverOptions...),
-		normanClient:  normanClient,
-		steveClient:   steveClient,
-		combinedClient: &toolset.CombinedClient{
-			Norman: normanClient,
-			Steve:  steveClient,
-		},
+		metrics:       NewExpvarMetrics(),
+	}
+
+	if configuration.RancherRequestTokenAuth {
+		logging.Info("auth mode: per-request token (RancherRequestTokenAuth=true)")
+		logging.Info("rancher server URL: %s", configuration.RancherServerURL)
+
+		s.clientResolver = &requestTokenResolver{
+			serverURL:     configuration.RancherServerURL,
+			insecure:      configuration.RancherTLSInsecure,
+			steveFactory:  steve.NewClientWithToken,
+			normanFactory: norman.NewClientWithToken,
+			metrics:       s.metrics,
+		}
+		s.combinedClient = toolset.NewCombinedClient(nil, nil, false)
+	} else {
+		// Initialize Norman client (for Rancher v3 API)
+		normanClient, err := norman.NewClient(configuration.StaticConfig)
+		if err != nil {
+			// Log the error but continue without Norman client
+			logging.Warn("Failed to create Norman client: %v", err)
+			logging.Warn("Rancher tools will not be available")
+		}
+
+		// Initialize Steve client (for Steve API / Kubernetes resources)
+		var steveClient *steve.Client
+		if configuration.HasRancherConfig() {
+			steveClient = steve.NewClient(
+				configuration.RancherServerURL,
+				configuration.RancherToken,
+				configuration.RancherAccessKey,
+				configuration.RancherSecretKey,
+				configuration.RancherTLSInsecure,
+			)
+			logging.Info("Steve client initialized for Kubernetes resources")
+		}
+
+		s.normanClient = normanClient
+		s.steveClient = steveClient
+		s.combinedClient = toolset.NewCombinedClient(normanClient, steveClient, false)
+		s.clientResolver = &staticResolver{client: s.combinedClient}
 	}
 
 	// Register tools
@@ -279,6 +296,24 @@ func (s *Server) makeToolHandler(tool toolset.ServerTool) server.ToolHandlerFunc
 	return server.ToolHandlerFunc(func(ctx context.Context, request mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 		logging.Debug("Tool %s called with param keys: %v", tool.Tool.Name, toolArgumentKeys(request.Params.Arguments))
 
+		resolvedClient, err := s.clientResolver.Resolve(ctx)
+		if err != nil {
+			return NewTextResult("", err), nil
+		}
+		if resolvedClient == nil {
+			return NewTextResult("", errors.New("resolver returned nil client")), nil
+		}
+		requestScoped := resolvedClient.IsCloseable()
+		if requestScoped && s.metrics != nil {
+			s.metrics.IncrementActiveClientCount()
+		}
+		defer func() {
+			resolvedClient.Close()
+			if requestScoped && s.metrics != nil {
+				s.metrics.DecrementActiveClientCount()
+			}
+		}()
+
 		// Convert arguments to the format expected by our tool handlers
 		params := make(map[string]interface{})
 		if arguments, ok := request.Params.Arguments.(map[string]interface{}); ok {
@@ -287,7 +322,7 @@ func (s *Server) makeToolHandler(tool toolset.ServerTool) server.ToolHandlerFunc
 			}
 		}
 
-		result, err := tool.Handler(ctx, s.combinedClient, params)
+		result, err := tool.Handler(ctx, resolvedClient, params)
 		return NewTextResult(result, err), nil
 	})
 }

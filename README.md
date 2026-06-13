@@ -116,6 +116,7 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--rancher-access-key` | Rancher access key | |
 | `--rancher-secret-key` | Rancher secret key | |
 | `--rancher-tls-insecure` | Skip TLS verification | `false` |
+| `--rancher-request-token-auth` | Use the `Authorization: Bearer <token>` header from each HTTP/SSE request instead of static credentials | `false` |
 | `--read-only` | Disable write operations | `true` |
 | `--disable-destructive` | Disable delete operations | `false` |
 | `--show-sensitive-data` | Global admin flag to allow sensitive data visibility | `false` |
@@ -139,10 +140,21 @@ port: 0  # 0 for stdio, or set a port like 8080 for HTTP/SSE
 log_level: 5
 
 rancher_server_url: https://your-rancher-server.com
+
+# Authentication: choose ONE of the following methods.
+
+# Method 1: Static bearer token
 rancher_token: your-bearer-token
 # Or use Access Key/Secret Key:
 # rancher_access_key: your-access-key
 # rancher_secret_key: your-secret-key
+
+# Method 2: Per-request token (HTTP/SSE mode only)
+# When enabled, the server reads the Authorization: Bearer <token> header from
+# each HTTP/SSE request and forwards it to Rancher. Static credentials above
+# must be empty, and the upstream gateway must forward the Authorization header.
+# rancher_request_token_auth: true
+
 # rancher_tls_insecure: false
 
 read_only: true  # default: true
@@ -212,6 +224,49 @@ rancher-mcp-server --port 8080 \
   --sse-base-url https://your-domain.com:8080 \
   --rancher-server-url https://your-rancher-server.com \
   --rancher-token your-token
+```
+
+### Per-Request Rancher Token Authentication
+
+When running in HTTP/SSE mode behind a gateway that authenticates users, you can use `--rancher-request-token-auth` so the server does not store static Rancher credentials. Instead, it reads the `Authorization: Bearer <token>` header from each incoming HTTP/SSE request and uses that token for the Rancher API.
+
+Requirements:
+- HTTP/SSE mode only (`--port` must be greater than `0`; incompatible with stdio mode)
+- The upstream gateway or proxy must forward the `Authorization` header on every request to `/mcp`, `/sse`, and `/message`
+- Cannot be combined with `--rancher-token`, `--rancher-access-key`, or `--rancher-secret-key`
+
+Example:
+
+```shell
+rancher-mcp-server --port 8080 \
+  --rancher-request-token-auth \
+  --rancher-server-url https://your-rancher-server.com
+```
+
+#### Gateway Examples
+
+The upstream gateway must forward the `Authorization` header. Minimal examples:
+
+**nginx:**
+
+```nginx
+location /mcp/ {
+    proxy_pass http://rancher-mcp-server:8080/mcp/;
+    proxy_set_header Authorization $http_authorization;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+}
+```
+
+**Traefik:**
+
+```yaml
+http:
+  middlewares:
+    forward-auth:
+      headers:
+        customRequestHeaders:
+          Authorization: "{http.request.header.Authorization}"
 ```
 
 ## Tools and Functionalities <a id="tools-and-functionalities"></a>

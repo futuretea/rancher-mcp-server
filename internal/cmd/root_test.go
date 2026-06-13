@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"strings"
 	"testing"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/core/config"
 )
 
 func TestVersionCommand(t *testing.T) {
@@ -128,6 +130,61 @@ func TestHTTPMode(t *testing.T) {
 	execFlag := cmd.Flags().Lookup("enable-container-exec")
 	if execFlag == nil {
 		t.Error("Command should have an enable-container-exec flag")
+	}
+}
+
+func TestValidateRequestTokenAuthMode_StdioRejected(t *testing.T) {
+	cfg := &config.StaticConfig{
+		Port:                    0,
+		RancherRequestTokenAuth: true,
+	}
+	if err := validateRequestTokenAuthMode(cfg); err == nil {
+		t.Fatal("expected stdio mode with request token auth to be rejected")
+	}
+}
+
+func TestValidateRequestTokenAuthMode_HTTPSAllowed(t *testing.T) {
+	cfg := &config.StaticConfig{
+		Port:                    8080,
+		RancherRequestTokenAuth: true,
+	}
+	if err := validateRequestTokenAuthMode(cfg); err != nil {
+		t.Fatalf("expected HTTP/SSE mode with request token auth to be allowed, got: %v", err)
+	}
+}
+
+func TestRequestTokenAuthFlagDefined(t *testing.T) {
+	streams := IOStreams{
+		In:     &bytes.Buffer{},
+		Out:    &bytes.Buffer{},
+		ErrOut: &bytes.Buffer{},
+	}
+
+	cmd := NewMCPServer(streams)
+	if cmd.Flags().Lookup("rancher-request-token-auth") == nil {
+		t.Error("Command should have a rancher-request-token-auth flag")
+	}
+}
+
+func TestStdioRequestTokenAuthRejectedByCommand(t *testing.T) {
+	streams := IOStreams{
+		In:     &bytes.Buffer{},
+		Out:    &bytes.Buffer{},
+		ErrOut: &bytes.Buffer{},
+	}
+
+	cmd := NewMCPServer(streams)
+	cmd.SetArgs([]string{
+		"--rancher-request-token-auth",
+		"--rancher-server-url", "https://rancher.example.com",
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected command to fail in stdio mode with request token auth")
+	}
+	if !strings.Contains(err.Error(), "rancher_request_token_auth is not supported in stdio mode") {
+		t.Fatalf("expected stdio rejection message, got: %v", err)
 	}
 }
 

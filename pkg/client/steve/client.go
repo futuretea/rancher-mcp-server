@@ -4,7 +4,9 @@ package steve
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
+	"net/http"
 	"sync"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/util/url"
@@ -40,6 +42,7 @@ type Client struct {
 	cacheMu        sync.Mutex
 	dynamicClients map[string]dynamic.Interface
 	clientsets     map[string]kubernetes.Interface
+	transports     map[string]*http.Transport
 }
 
 // NewClient creates a new Steve API client.
@@ -52,7 +55,27 @@ func NewClient(serverURL, token, accessKey, secretKey string, insecure bool) *Cl
 		insecure:       insecure,
 		dynamicClients: make(map[string]dynamic.Interface),
 		clientsets:     make(map[string]kubernetes.Interface),
+		transports:     make(map[string]*http.Transport),
 	}
+}
+
+// NewClientWithToken creates a new Steve API client bound to a single request token.
+func NewClientWithToken(serverURL, token string, insecure bool) *Client {
+	return NewClient(serverURL, token, "", "", insecure)
+}
+
+// Close releases resources held by the client. After Close the client must not be used.
+func (c *Client) Close() {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	for _, transport := range c.transports {
+		if transport != nil {
+			transport.CloseIdleConnections()
+		}
+	}
+	c.dynamicClients = nil
+	c.clientsets = nil
+	c.transports = nil
 }
 
 // ListOptions contains options for listing resources.
@@ -93,12 +116,29 @@ func (c *Client) createRestConfig(clusterID string) (*rest.Config, error) {
 	}
 	kubeconfig.CurrentContext = "context"
 
-	return clientcmd.NewNonInteractiveClientConfig(
+	restConfig, err := clientcmd.NewNonInteractiveClientConfig(
 		*kubeconfig,
 		kubeconfig.CurrentContext,
 		&clientcmd.ConfigOverrides{},
 		nil,
 	).ClientConfig()
+	if err != nil {
+		return nil, err
+	}
+
+	transport := &http.Transport{
+		TLSClientConfig: &tls.Config{InsecureSkipVerify: c.insecure},
+	}
+	// A custom transport conflicts with rest.Config TLS flags; clear them and
+	// rely on the transport for TLS behavior.
+	restConfig.Insecure = false
+	restConfig.TLSClientConfig = rest.TLSClientConfig{}
+	restConfig.Transport = transport
+
+	// Caller holds cacheMu, so the transports map is guaranteed to be initialized.
+	c.transports[clusterID] = transport
+
+	return restConfig, nil
 }
 
 // getDynamicClient creates a dynamic Kubernetes client for the given cluster.
@@ -153,6 +193,9 @@ func (c *Client) ensureCachesLocked() {
 	}
 	if c.clientsets == nil {
 		c.clientsets = make(map[string]kubernetes.Interface)
+	}
+	if c.transports == nil {
+		c.transports = make(map[string]*http.Transport)
 	}
 }
 

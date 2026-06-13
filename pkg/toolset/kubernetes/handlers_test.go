@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"strings"
 	"testing"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
@@ -134,7 +135,7 @@ func TestFormatAsTable(t *testing.T) {
 		if result == "" || result == "No resources found" {
 			t.Fatal("expected table output")
 		}
-		if !containsStr(result, "nginx") || !containsStr(result, "NAME") {
+		if !strings.Contains(result, "nginx") || !strings.Contains(result, "NAME") {
 			t.Errorf("expected table with headers and data, got: %s", result)
 		}
 	})
@@ -173,11 +174,3 @@ func TestParseMaxFileSize(t *testing.T) {
 	})
 }
 
-func containsStr(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

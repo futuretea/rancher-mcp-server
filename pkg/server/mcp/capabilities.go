@@ -34,6 +34,19 @@ func (c *Configuration) HasRancherCapability() bool {
 	return c.RancherRequestTokenAuth && c.RancherServerURL != ""
 }
 
+func buildCapabilityStatus(configured, available bool, missingReason, unavailableReason string) CapabilityStatus {
+	status := CapabilityStatus{
+		Configured: configured,
+		Available:  available,
+	}
+	if !configured {
+		status.Reason = missingReason
+	} else if !available {
+		status.Reason = unavailableReason
+	}
+	return status
+}
+
 func (s *Server) capabilityStatuses() map[string]CapabilityStatus {
 	hasCapability := s.configuration != nil && s.configuration.HasRancherCapability()
 	hasConfig := s.configuration != nil && s.configuration.HasRancherConfig()
@@ -41,25 +54,8 @@ func (s *Server) capabilityStatuses() map[string]CapabilityStatus {
 	rancherAvailable := hasCapability && (s.configuration.RancherRequestTokenAuth || (s.normanClient != nil && s.normanClient.IsUsable()))
 	kubernetesAvailable := hasCapability && (s.configuration.RancherRequestTokenAuth || s.steveClient != nil)
 
-	rancherStatus := CapabilityStatus{
-		Configured: hasCapability,
-		Available:  rancherAvailable,
-	}
-	if !hasCapability {
-		rancherStatus.Reason = "rancher configuration missing"
-	} else if !rancherAvailable {
-		rancherStatus.Reason = "rancher client unavailable"
-	}
-
-	kubernetesStatus := CapabilityStatus{
-		Configured: hasCapability,
-		Available:  kubernetesAvailable,
-	}
-	if !hasCapability {
-		kubernetesStatus.Reason = "rancher configuration missing"
-	} else if !kubernetesAvailable {
-		kubernetesStatus.Reason = "kubernetes client unavailable"
-	}
+	rancherStatus := buildCapabilityStatus(hasCapability, rancherAvailable, "rancher configuration missing", "rancher client unavailable")
+	kubernetesStatus := buildCapabilityStatus(hasCapability, kubernetesAvailable, "rancher configuration missing", "kubernetes client unavailable")
 
 	// Suppress misleading "unavailable" reasons in dynamic mode where availability
 	// reflects configuration readiness rather than pre-created client usability.

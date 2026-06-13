@@ -191,17 +191,17 @@ func formatAllResourcesAsTable(items []steve.AllResourceItem) string {
 	return b.String()
 }
 
-// formatAllResourcesAsJSON formats all resources as JSON.
-func formatAllResourcesAsJSON(items []steve.AllResourceItem) (string, error) {
-	// Create a simplified structure for output
-	type simpleItem struct {
-		Name       string                 `json:"name"`
-		Namespace  string                 `json:"namespace,omitempty"`
-		Kind       string                 `json:"kind"`
-		APIVersion string                 `json:"apiVersion"`
-		Resource   map[string]interface{} `json:"resource,omitempty"`
-	}
+// simpleItem is the simplified representation used for JSON and YAML output.
+type simpleItem struct {
+	Name       string                 `json:"name" yaml:"name"`
+	Namespace  string                 `json:"namespace,omitempty" yaml:"namespace,omitempty"`
+	Kind       string                 `json:"kind" yaml:"kind"`
+	APIVersion string                 `json:"apiVersion" yaml:"apiVersion"`
+	Resource   map[string]interface{} `json:"resource,omitempty" yaml:"resource,omitempty"`
+}
 
+// toSimpleItems converts AllResourceItem values to the simplified output type.
+func toSimpleItems(items []steve.AllResourceItem) []simpleItem {
 	output := make([]simpleItem, 0, len(items))
 	for _, item := range items {
 		si := simpleItem{
@@ -215,8 +215,12 @@ func formatAllResourcesAsJSON(items []steve.AllResourceItem) (string, error) {
 		}
 		output = append(output, si)
 	}
+	return output
+}
 
-	data, err := json.MarshalIndent(output, "", "  ")
+// formatAllResourcesAsJSON formats all resources as JSON.
+func formatAllResourcesAsJSON(items []steve.AllResourceItem) (string, error) {
+	data, err := json.MarshalIndent(toSimpleItems(items), "", "  ")
 	if err != nil {
 		return "", fmt.Errorf("failed to format as JSON: %w", err)
 	}
@@ -225,30 +229,7 @@ func formatAllResourcesAsJSON(items []steve.AllResourceItem) (string, error) {
 
 // formatAllResourcesAsYAML formats all resources as YAML.
 func formatAllResourcesAsYAML(items []steve.AllResourceItem) (string, error) {
-	// Create a simplified structure for output
-	type simpleItem struct {
-		Name       string                 `yaml:"name"`
-		Namespace  string                 `yaml:"namespace,omitempty"`
-		Kind       string                 `yaml:"kind"`
-		APIVersion string                 `yaml:"apiVersion"`
-		Resource   map[string]interface{} `yaml:"resource,omitempty"`
-	}
-
-	output := make([]simpleItem, 0, len(items))
-	for _, item := range items {
-		si := simpleItem{
-			Name:       item.Name,
-			Namespace:  item.Namespace,
-			Kind:       item.Kind,
-			APIVersion: item.APIVersion,
-		}
-		if item.Resource != nil {
-			si.Resource = item.Resource.Object
-		}
-		output = append(output, si)
-	}
-
-	data, err := yaml.Marshal(output)
+	data, err := yaml.Marshal(toSimpleItems(items))
 	if err != nil {
 		return "", fmt.Errorf("failed to format as YAML: %w", err)
 	}

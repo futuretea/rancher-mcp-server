@@ -238,41 +238,40 @@ func traverseGraph(rootUID types.UID, direction string, maxDepth int, globalMapB
 	return nodeMap, nil
 }
 
+// applyRelationshipPair adds a symmetric dependency/dependent relationship between from and to.
+func applyRelationshipPair(from, to *Node, r Relationship) {
+	from.AddDependency(to.UID, r)
+	to.AddDependent(from.UID, r)
+}
+
 // applyRelationships applies the extracted relationship map to the node and global maps.
 func applyRelationships(node *Node, rmap *RelationshipMap, globalMapByUID map[types.UID]*Node, globalMapByKey map[ObjectReferenceKey]*Node) {
-	// Dependencies by ref
 	for k, rset := range rmap.DependenciesByRef {
 		if n, ok := globalMapByKey[k]; ok {
 			for r := range rset {
-				node.AddDependency(n.UID, r)
-				n.AddDependent(node.UID, r)
+				applyRelationshipPair(node, n, r)
 			}
 		}
 	}
-	// Dependents by ref
 	for k, rset := range rmap.DependentsByRef {
 		if n, ok := globalMapByKey[k]; ok {
 			for r := range rset {
-				n.AddDependency(node.UID, r)
-				node.AddDependent(n.UID, r)
+				applyRelationshipPair(n, node, r)
 			}
 		}
 	}
-	// Dependencies by UID
 	for uid, rset := range rmap.DependenciesByUID {
 		if n, ok := globalMapByUID[uid]; ok {
 			for r := range rset {
-				node.AddDependency(n.UID, r)
-				n.AddDependent(node.UID, r)
+				applyRelationshipPair(node, n, r)
 			}
 		}
 	}
-	// Dependents by UID (not currently used but included for completeness)
+	// Dependents by UID are not currently produced but kept for symmetry.
 	for uid, rset := range rmap.DependentsByUID {
 		if n, ok := globalMapByUID[uid]; ok {
 			for r := range rset {
-				n.AddDependency(node.UID, r)
-				node.AddDependent(n.UID, r)
+				applyRelationshipPair(n, node, r)
 			}
 		}
 	}

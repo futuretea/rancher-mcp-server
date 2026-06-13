@@ -11,9 +11,9 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/core/logging"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
-	"k8s.io/apimachinery/pkg/api/resource"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -159,10 +159,10 @@ func (a *Analyzer) getNodeMetrics(ctx context.Context, cluster string, nodeInfoM
 
 		if usage, found, _ := unstructured.NestedMap(metric.Object, "usage"); found {
 			if cpu, ok := usage["cpu"].(string); ok {
-				nodeInfo.CPU.Utilized = resourceQuantityToMilli(cpu)
+				nodeInfo.CPU.Utilized = formatutil.ResourceQuantityToMilli(cpu)
 			}
 			if mem, ok := usage["memory"].(string); ok {
-				nodeInfo.Memory.Utilized = resourceQuantityToBytes(mem)
+				nodeInfo.Memory.Utilized = formatutil.ResourceQuantityToBytes(mem)
 			}
 		}
 	}
@@ -216,10 +216,10 @@ func extractNodeInfo(node unstructured.Unstructured) *NodeInfo {
 	// Extract capacity
 	if capacity, found, _ := unstructured.NestedMap(node.Object, "status", "capacity"); found {
 		if cpu, ok := capacity["cpu"].(string); ok {
-			info.CPU.Capacity = resourceQuantityToMilli(cpu)
+			info.CPU.Capacity = formatutil.ResourceQuantityToMilli(cpu)
 		}
 		if mem, ok := capacity["memory"].(string); ok {
-			info.Memory.Capacity = resourceQuantityToBytes(mem)
+			info.Memory.Capacity = formatutil.ResourceQuantityToBytes(mem)
 		}
 		if pods, ok := capacity["pods"].(string); ok {
 			if v, err := strconv.ParseInt(pods, 10, 64); err == nil {
@@ -231,10 +231,10 @@ func extractNodeInfo(node unstructured.Unstructured) *NodeInfo {
 	// Extract allocatable
 	if allocatable, found, _ := unstructured.NestedMap(node.Object, "status", "allocatable"); found {
 		if cpu, ok := allocatable["cpu"].(string); ok {
-			info.CPU.Allocatable = resourceQuantityToMilli(cpu)
+			info.CPU.Allocatable = formatutil.ResourceQuantityToMilli(cpu)
 		}
 		if mem, ok := allocatable["memory"].(string); ok {
-			info.Memory.Allocatable = resourceQuantityToBytes(mem)
+			info.Memory.Allocatable = formatutil.ResourceQuantityToBytes(mem)
 		}
 		if pods, ok := allocatable["pods"].(string); ok {
 			if v, err := strconv.ParseInt(pods, 10, 64); err == nil {
@@ -402,11 +402,11 @@ func extractResourceRequests(resources map[string]interface{}, containerInfo *Co
 	}
 
 	if cpu, ok := requests["cpu"].(string); ok {
-		containerInfo.CPU.Requested = resourceQuantityToMilli(cpu)
+		containerInfo.CPU.Requested = formatutil.ResourceQuantityToMilli(cpu)
 		podInfo.CPU.Requested += containerInfo.CPU.Requested
 	}
 	if mem, ok := requests["memory"].(string); ok {
-		containerInfo.Memory.Requested = resourceQuantityToBytes(mem)
+		containerInfo.Memory.Requested = formatutil.ResourceQuantityToBytes(mem)
 		podInfo.Memory.Requested += containerInfo.Memory.Requested
 	}
 }
@@ -419,11 +419,11 @@ func extractResourceLimits(resources map[string]interface{}, containerInfo *Cont
 	}
 
 	if cpu, ok := limits["cpu"].(string); ok {
-		containerInfo.CPU.Limited = resourceQuantityToMilli(cpu)
+		containerInfo.CPU.Limited = formatutil.ResourceQuantityToMilli(cpu)
 		podInfo.CPU.Limited += containerInfo.CPU.Limited
 	}
 	if mem, ok := limits["memory"].(string); ok {
-		containerInfo.Memory.Limited = resourceQuantityToBytes(mem)
+		containerInfo.Memory.Limited = formatutil.ResourceQuantityToBytes(mem)
 		podInfo.Memory.Limited += containerInfo.Memory.Limited
 	}
 }
@@ -548,32 +548,6 @@ func matchLabels(labels, selector map[string]string) bool {
 		}
 	}
 	return true
-}
-
-// resourceQuantityToMilli parses a resource quantity string and returns millivalue.
-// Invalid quantities are treated as zero instead of panicking.
-func resourceQuantityToMilli(q string) int64 {
-	if q == "" {
-		return 0
-	}
-	qty, err := resource.ParseQuantity(q)
-	if err != nil {
-		return 0
-	}
-	return qty.MilliValue()
-}
-
-// resourceQuantityToBytes parses a resource quantity string and returns bytes.
-// Invalid quantities are treated as zero instead of panicking.
-func resourceQuantityToBytes(q string) int64 {
-	if q == "" {
-		return 0
-	}
-	qty, err := resource.ParseQuantity(q)
-	if err != nil {
-		return 0
-	}
-	return qty.Value()
 }
 
 // FormatResult formats the result according to the specified format

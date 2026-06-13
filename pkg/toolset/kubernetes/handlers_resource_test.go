@@ -77,8 +77,8 @@ func TestFormatResource(t *testing.T) {
 func TestFormatResourceList(t *testing.T) {
 	list := &unstructured.UnstructuredList{
 		Items: []unstructured.Unstructured{
-			newTestUnstructured("pod-1", "default", "Pod"),
-			newTestUnstructured("pod-2", "kube-system", "Pod"),
+			makeUnstructuredItem("pod-1", "default", "Pod"),
+			makeUnstructuredItem("pod-2", "kube-system", "Pod"),
 		},
 	}
 
@@ -114,11 +114,3 @@ func TestFormatAsTable_Empty(t *testing.T) {
 	}
 }
 
-func newTestUnstructured(name, namespace, kind string) unstructured.Unstructured {
-	u := unstructured.Unstructured{}
-	u.SetUnstructuredContent(map[string]interface{}{
-		"metadata": map[string]interface{}{"name": name, "namespace": namespace},
-	})
-	u.SetKind(kind)
-	return u
-}

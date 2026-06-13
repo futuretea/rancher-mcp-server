@@ -117,42 +117,14 @@ func getMultiPodLogs(ctx context.Context, client multiPodLogClient, cluster, nam
 		// If a specific container is requested, filter to that container only
 		if container != "" {
 			if containerLogs, ok := result.Logs[container]; ok {
-				filteredLogs := filterLogsByKeyword(containerLogs, keyword)
-				lines := strings.Split(filteredLogs, "\n")
-				for _, line := range lines {
-					if line == "" {
-						continue
-					}
-					ts, content := parseLogTimestamp(line)
-					allEntries = append(allEntries, LogEntry{
-						Timestamp: ts,
-						Content:   content,
-						Pod:       result.Pod,
-						Container: container,
-					})
-				}
+				appendLogEntries(&allEntries, containerLogs, result.Pod, container, keyword)
 			}
-		} else {
-			// Process all containers in this pod
-			for containerName, containerLogs := range result.Logs {
-				filteredLogs := containerLogs
-				if keyword != "" {
-					filteredLogs = filterLogsByKeyword(containerLogs, keyword)
-				}
-				lines := strings.Split(filteredLogs, "\n")
-				for _, line := range lines {
-					if line == "" {
-						continue
-					}
-					ts, content := parseLogTimestamp(line)
-					allEntries = append(allEntries, LogEntry{
-						Timestamp: ts,
-						Content:   content,
-						Pod:       result.Pod,
-						Container: containerName,
-					})
-				}
-			}
+			continue
+		}
+
+		// Process all containers in this pod
+		for containerName, containerLogs := range result.Logs {
+			appendLogEntries(&allEntries, containerLogs, result.Pod, containerName, keyword)
 		}
 	}
 
@@ -166,6 +138,24 @@ func getMultiPodLogs(ctx context.Context, client multiPodLogClient, cluster, nam
 		}
 		return fmt.Sprintf("[%s/%s] %s", entry.Pod, entry.Container, entry.Content)
 	}), nil
+}
+
+// appendLogEntries parses log lines, optionally filters by keyword, and appends them to entries.
+func appendLogEntries(entries *[]LogEntry, logs, pod, container, keyword string) {
+	filteredLogs := filterLogsByKeyword(logs, keyword)
+	lines := strings.Split(filteredLogs, "\n")
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+		ts, content := parseLogTimestamp(line)
+		*entries = append(*entries, LogEntry{
+			Timestamp: ts,
+			Content:   content,
+			Pod:       pod,
+			Container: container,
+		})
+	}
 }
 
 // getAllContainerLogs retrieves and formats logs from all containers in a pod.

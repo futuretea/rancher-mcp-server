@@ -203,7 +203,7 @@ func TestFormatRolloutHistory(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !containsStr(got, "REVISION") || !containsStr(got, "nginx-abc123") {
+		if !strings.Contains(got, "REVISION") || !strings.Contains(got, "nginx-abc123") {
 			t.Errorf("expected table output, got %q", got)
 		}
 	})
@@ -251,15 +251,15 @@ func TestFormatRolloutHistoryAsTable(t *testing.T) {
 			t.Fatal("expected table output")
 		}
 		// Should contain revision numbers
-		if !containsStr(got, "3") || !containsStr(got, "2") {
+		if !strings.Contains(got, "3") || !strings.Contains(got, "2") {
 			t.Errorf("expected revision numbers in output: %s", got)
 		}
 		// Empty change cause should show "-"
-		if !containsStr(got, "-") {
+		if !strings.Contains(got, "-") {
 			t.Errorf("expected '-' for empty change cause: %s", got)
 		}
 		// Should have a header
-		if !containsStr(got, "REVISION") {
+		if !strings.Contains(got, "REVISION") {
 			t.Errorf("expected REVISION header: %s", got)
 		}
 	})
@@ -372,10 +372,10 @@ func testRolloutHistoryTableOutput(t *testing.T, client *steve.Client) {
 	if err != nil {
 		t.Fatalf("rolloutHistoryHandler() error = %v", err)
 	}
-	if !containsStr(out, "nginx-2") || !containsStr(out, "scale up") {
+	if !strings.Contains(out, "nginx-2") || !strings.Contains(out, "scale up") {
 		t.Errorf("expected owned replicaset in output, got %q", out)
 	}
-	if containsStr(out, "nginx-1") {
+	if strings.Contains(out, "nginx-1") {
 		t.Errorf("unowned replicaset should not appear, got %q", out)
 	}
 }
@@ -415,7 +415,7 @@ func testRolloutHistoryCombinedClient(t *testing.T, client *steve.Client) {
 	if err != nil {
 		t.Fatalf("rolloutHistoryHandler() error = %v", err)
 	}
-	if !containsStr(out, "nginx-2") {
+	if !strings.Contains(out, "nginx-2") {
 		t.Errorf("expected output from combined client, got %q", out)
 	}
 }

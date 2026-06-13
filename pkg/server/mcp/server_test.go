@@ -213,9 +213,9 @@ func newStreamableMCPClient(tb testing.TB, serverURL, token string) *mcpclient.C
 	return client
 }
 
-func callListNamespaces(ctx context.Context, tb testing.TB, client *mcpclient.Client) *mcpgo.CallToolResult {
+func callListNamespaces(ctx context.Context, tb testing.TB, client *mcpclient.Client) (*mcpgo.CallToolResult, error) {
 	tb.Helper()
-	result, err := client.CallTool(ctx, mcpgo.CallToolRequest{
+	return client.CallTool(ctx, mcpgo.CallToolRequest{
 		Params: mcpgo.CallToolParams{
 			Name: "kubernetes_list",
 			Arguments: map[string]any{
@@ -225,10 +225,6 @@ func callListNamespaces(ctx context.Context, tb testing.TB, client *mcpclient.Cl
 			},
 		},
 	})
-	if err != nil {
-		tb.Fatalf("CallTool(kubernetes_list) failed: %v", err)
-	}
-	return result
 }
 
 // TestDynamicAuthHTTPToolCall verifies the full HTTP/SSE-style request-token
@@ -241,7 +237,10 @@ func TestDynamicAuthHTTPToolCall(t *testing.T) {
 	const token = "integration-token"
 	client := newStreamableMCPClient(t, mcpServer.URL, token)
 
-	result := callListNamespaces(context.Background(), t, client)
+	result, err := callListNamespaces(context.Background(), t, client)
+	if err != nil {
+		t.Fatalf("CallTool(kubernetes_list) failed: %v", err)
+	}
 	if result.IsError {
 		t.Fatalf("tool returned error: %v", result.Content)
 	}
@@ -303,7 +302,10 @@ func TestDynamicAuthSSEToolCall(t *testing.T) {
 		t.Fatalf("client.Initialize() failed: %v", err)
 	}
 
-	result := callListNamespaces(ctx, t, client)
+	result, err := callListNamespaces(ctx, t, client)
+	if err != nil {
+		t.Fatalf("CallTool(kubernetes_list) failed: %v", err)
+	}
 	if result.IsError {
 		t.Fatalf("tool returned error: %v", result.Content)
 	}
@@ -399,7 +401,10 @@ func TestDynamicAuthConcurrentToolCallsNoTokenLeakage(t *testing.T) {
 		defer wg.Done()
 		ctx := context.Background()
 		for i := 0; i < rounds; i++ {
-			callListNamespaces(ctx, t, client)
+			if _, err := callListNamespaces(ctx, t, client); err != nil {
+				t.Errorf("callListNamespaces failed: %v", err)
+				return
+			}
 		}
 	}
 

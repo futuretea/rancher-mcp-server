@@ -4,6 +4,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 )
 
 func TestFormatResult_JSON(t *testing.T) {
@@ -216,10 +218,10 @@ func TestFormatAge(t *testing.T) {
 }
 
 func TestTruncate(t *testing.T) {
-	if got := truncate("hello", 10); got != "hello" {
+	if got := formatutil.Truncate("hello", 10); got != "hello" {
 		t.Errorf("truncate('hello', 10) = %s, want 'hello'", got)
 	}
-	if got := truncate("hello world this is long", 10); got != "hello w..." {
+	if got := formatutil.Truncate("hello world this is long", 10); got != "hello w..." {
 		t.Errorf("truncate long string = %s, want 'hello w...'", got)
 	}
 }

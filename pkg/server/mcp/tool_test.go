@@ -36,7 +36,9 @@ func TestToolHandlerLogsArgumentKeysOnly(t *testing.T) {
 		logging.Initialize(0, io.Discard)
 	})
 
-	s := &Server{}
+	s := &Server{
+		clientResolver: &staticResolver{client: toolset.NewCombinedClient(nil, nil, false)},
+	}
 	handler := s.makeToolHandler(toolset.ServerTool{
 		Tool: mcp.Tool{Name: "test_tool"},
 		Handler: func(_ context.Context, _ interface{}, _ map[string]interface{}) (string, error) {

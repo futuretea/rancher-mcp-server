@@ -58,23 +58,31 @@ func (c *Client) ListAPIResources(_ context.Context, clusterID string) ([]APIRes
 		}
 
 		gv, _ := schema.ParseGroupVersion(groupVersion)
-		for _, r := range resources.APIResources {
-			if strings.Contains(r.Name, "/") {
-				continue
-			}
-			allResources = append(allResources, APIResourceInfo{
-				Name:         r.Name,
-				SingularName: r.SingularName,
-				Namespaced:   r.Namespaced,
-				Kind:         r.Kind,
-				Group:        gv.Group,
-				Version:      gv.Version,
-				Verbs:        r.Verbs,
-			})
-		}
+		allResources = append(allResources, convertAPIResources(resources.APIResources, gv.Group, gv.Version)...)
 	}
 
 	return allResources, nil
+}
+
+// convertAPIResources transforms discovery API resources into APIResourceInfo values,
+// filtering out sub-resources (names containing "/").
+func convertAPIResources(resources []metav1.APIResource, group, version string) []APIResourceInfo {
+	var result []APIResourceInfo
+	for _, r := range resources {
+		if strings.Contains(r.Name, "/") {
+			continue
+		}
+		result = append(result, APIResourceInfo{
+			Name:         r.Name,
+			SingularName: r.SingularName,
+			Namespaced:   r.Namespaced,
+			Kind:         r.Kind,
+			Group:        group,
+			Version:      version,
+			Verbs:        r.Verbs,
+		})
+	}
+	return result
 }
 
 func (c *Client) listCoreAPIResources(clientset kubernetes.Interface) ([]APIResourceInfo, error) {
@@ -83,22 +91,7 @@ func (c *Client) listCoreAPIResources(clientset kubernetes.Interface) ([]APIReso
 		return nil, fmt.Errorf("failed to discover core API resources: %w", err)
 	}
 
-	var allResources []APIResourceInfo
-	for _, r := range coreResources.APIResources {
-		if strings.Contains(r.Name, "/") {
-			continue
-		}
-		allResources = append(allResources, APIResourceInfo{
-			Name:         r.Name,
-			SingularName: r.SingularName,
-			Namespaced:   r.Namespaced,
-			Kind:         r.Kind,
-			Group:        "",
-			Version:      "v1",
-			Verbs:        r.Verbs,
-		})
-	}
-	return allResources, nil
+	return convertAPIResources(coreResources.APIResources, "", "v1"), nil
 }
 
 // GetAllOptions contains options for GetAllResources.

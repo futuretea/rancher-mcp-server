@@ -34,11 +34,12 @@ func bindFlags(cmd *cobra.Command) error {
 		"sse_base_url": "sse-base-url",
 		"log_level":    "log-level",
 		// Rancher configuration
-		"rancher_server_url":   "rancher-server-url",
-		"rancher_token":        "rancher-token",
-		"rancher_access_key":   "rancher-access-key",
-		"rancher_secret_key":   "rancher-secret-key",
-		"rancher_tls_insecure": "rancher-tls-insecure",
+		"rancher_server_url":         "rancher-server-url",
+		"rancher_token":              "rancher-token",
+		"rancher_access_key":         "rancher-access-key",
+		"rancher_secret_key":         "rancher-secret-key",
+		"rancher_tls_insecure":       "rancher-tls-insecure",
+		"rancher_request_token_auth": "rancher-request-token-auth",
 		// Security configuration
 		"read_only":           "read-only",
 		"disable_destructive": "disable-destructive",
@@ -109,6 +110,7 @@ for network access.`,
 	cmd.Flags().String("rancher-access-key", "", "Rancher access key")
 	cmd.Flags().String("rancher-secret-key", "", "Rancher secret key")
 	cmd.Flags().Bool("rancher-tls-insecure", false, "Rancher server tls insecure")
+	cmd.Flags().Bool("rancher-request-token-auth", false, "Use the Authorization Bearer token from each HTTP/SSE request to access Rancher")
 
 	// Security configuration flags
 	cmd.Flags().Bool("read-only", true, "Run in read-only mode")
@@ -140,6 +142,11 @@ func runServer(cfgFile string, streams IOStreams) error {
 	cfg, err := config.LoadConfig(cfgFile)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
+	}
+
+	// stdio mode cannot use per-request token auth because there is no HTTP request context
+	if err := validateRequestTokenAuthMode(cfg); err != nil {
+		return err
 	}
 
 	// Initialize logging early with configuration
@@ -180,6 +187,15 @@ func runServer(cfgFile string, streams IOStreams) error {
 
 	ctx := context.Background()
 	return internalhttp.Serve(ctx, server, cfg)
+}
+
+// validateRequestTokenAuthMode rejects the unsupported combination of stdio mode
+// and per-request Rancher token authentication.
+func validateRequestTokenAuthMode(cfg *config.StaticConfig) error {
+	if cfg.Port == 0 && cfg.RancherRequestTokenAuth {
+		return fmt.Errorf("rancher_request_token_auth is not supported in stdio mode")
+	}
+	return nil
 }
 
 // newVersionCommand creates the version command

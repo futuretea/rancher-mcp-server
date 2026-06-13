@@ -2,19 +2,21 @@ package capacity
 
 import (
 	"testing"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 )
 
 func TestCalcPercentage(t *testing.T) {
-	if got := calcPercentage(50, 100); got != 50.0 {
+	if got := formatutil.CalcPercentage(50, 100); got != 50.0 {
 		t.Errorf("expected 50%%, got %f", got)
 	}
-	if got := calcPercentage(0, 100); got != 0.0 {
+	if got := formatutil.CalcPercentage(0, 100); got != 0.0 {
 		t.Errorf("expected 0%%, got %f", got)
 	}
-	if got := calcPercentage(50, 0); got != 0.0 {
+	if got := formatutil.CalcPercentage(50, 0); got != 0.0 {
 		t.Errorf("expected 0%% for zero total, got %f", got)
 	}
-	if got := calcPercentage(25, 100); got != 25.0 {
+	if got := formatutil.CalcPercentage(25, 100); got != 25.0 {
 		t.Errorf("expected 25%%, got %f", got)
 	}
 }
@@ -180,11 +182,11 @@ func TestFormatLabels(t *testing.T) {
 }
 
 func TestToAnySlice(t *testing.T) {
-	got := toAnySlice([]string{"a", "b"})
+	got := formatutil.ToAnySlice([]string{"a", "b"})
 	if len(got) != 2 || got[0].(string) != "a" || got[1].(string) != "b" {
 		t.Errorf("expected [a b], got %v", got)
 	}
-	if got := toAnySlice(nil); len(got) != 0 {
+	if got := formatutil.ToAnySlice(nil); len(got) != 0 {
 		t.Errorf("expected empty for nil, got %v", got)
 	}
 }

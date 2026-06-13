@@ -20,11 +20,12 @@ type StaticConfig struct {
 	LogLevel int `mapstructure:"log_level"`
 
 	// Rancher configuration
-	RancherServerURL   string `mapstructure:"rancher_server_url"`
-	RancherToken       string `mapstructure:"rancher_token"`
-	RancherAccessKey   string `mapstructure:"rancher_access_key"`
-	RancherSecretKey   string `mapstructure:"rancher_secret_key"`
-	RancherTLSInsecure bool   `mapstructure:"rancher_tls_insecure"`
+	RancherServerURL        string `mapstructure:"rancher_server_url"`
+	RancherToken            string `mapstructure:"rancher_token"`
+	RancherAccessKey        string `mapstructure:"rancher_access_key"`
+	RancherSecretKey        string `mapstructure:"rancher_secret_key"`
+	RancherTLSInsecure      bool   `mapstructure:"rancher_tls_insecure"`
+	RancherRequestTokenAuth bool   `mapstructure:"rancher_request_token_auth"`
 
 	// Security configuration
 	ReadOnly           bool `mapstructure:"read_only"`
@@ -60,12 +61,10 @@ func (c *StaticConfig) Validate() error {
 	}
 
 	// Validate list output
-	validOutputs := map[string]bool{
-		"table": true,
-		"yaml":  true,
-		"json":  true,
-	}
-	if !validOutputs[strings.ToLower(c.ListOutput)] {
+	switch strings.ToLower(c.ListOutput) {
+	case "table", "yaml", "json":
+		// valid
+	default:
 		return fmt.Errorf("list_output must be one of: table, yaml, json, got %s", c.ListOutput)
 	}
 
@@ -74,21 +73,46 @@ func (c *StaticConfig) Validate() error {
 		if !strings.HasPrefix(c.RancherServerURL, "http://") && !strings.HasPrefix(c.RancherServerURL, "https://") {
 			return fmt.Errorf("rancher_server_url must start with http:// or https://, got %s", c.RancherServerURL)
 		}
+	}
 
-		// Check authentication methods
-		hasTokenAuth := c.RancherToken != ""
-		hasKeyAuth := c.RancherAccessKey != "" && c.RancherSecretKey != ""
+	if c.RancherRequestTokenAuth {
+		if c.RancherServerURL == "" {
+			return fmt.Errorf("rancher_server_url is required when rancher_request_token_auth is enabled")
+		}
 
-		if !hasTokenAuth && !hasKeyAuth {
+		if c.hasStaticCredentials() {
+			return fmt.Errorf("rancher_request_token_auth cannot be combined with rancher_token, rancher_access_key, or rancher_secret_key")
+		}
+
+		return nil
+	}
+
+	if c.RancherServerURL != "" {
+		if !c.hasTokenAuth() && !c.hasKeyAuth() {
 			return fmt.Errorf("rancher authentication required: either rancher_token or both rancher_access_key and rancher_secret_key must be provided")
 		}
 
-		if hasTokenAuth && hasKeyAuth {
+		if c.hasTokenAuth() && c.hasKeyAuth() {
 			return fmt.Errorf("cannot use both rancher_token and rancher_access_key/rancher_secret_key authentication methods")
 		}
 	}
 
 	return nil
+}
+
+// hasTokenAuth reports whether token-based authentication is configured.
+func (c *StaticConfig) hasTokenAuth() bool {
+	return c.RancherToken != ""
+}
+
+// hasKeyAuth reports whether access/secret key authentication is configured.
+func (c *StaticConfig) hasKeyAuth() bool {
+	return c.RancherAccessKey != "" && c.RancherSecretKey != ""
+}
+
+// hasStaticCredentials reports whether any static Rancher credential is set.
+func (c *StaticConfig) hasStaticCredentials() bool {
+	return c.RancherToken != "" || c.RancherAccessKey != "" || c.RancherSecretKey != ""
 }
 
 // LoadConfig loads configuration from file and environment variables using Viper
@@ -129,7 +153,7 @@ func LoadConfig(configPath string) (*StaticConfig, error) {
 
 // HasRancherConfig returns true if Rancher configuration is present
 func (c *StaticConfig) HasRancherConfig() bool {
-	return c.RancherServerURL != "" && (c.RancherToken != "" || (c.RancherAccessKey != "" && c.RancherSecretKey != ""))
+	return c.RancherServerURL != "" && (c.hasTokenAuth() || c.hasKeyAuth())
 }
 
 // GetPortString returns the port as a string in the format ":port"

@@ -77,20 +77,23 @@ func (d *Differ) Diff(obj *unstructured.Unstructured) (string, error) {
 	// Store a deep copy of the new object in the cache for future diffs.
 	d.cache[key] = obj.DeepCopy()
 
-	oldCopy := oldObj.DeepCopy()
-	newCopy := obj.DeepCopy()
+	return d.printer.Diff(d.prepareForDiff(oldObj), d.prepareForDiff(obj))
+}
+
+// prepareForDiff returns a deep copy of obj with the configured ignore rules
+// applied. The caller must ensure obj is non-nil.
+func (d *Differ) prepareForDiff(obj *unstructured.Unstructured) *unstructured.Unstructured {
+	out := obj.DeepCopy()
 
 	if d.ignoreStatus {
-		delete(oldCopy.Object, "status")
-		delete(newCopy.Object, "status")
+		delete(out.Object, "status")
 	}
 
 	if d.ignoreMeta {
-		trimMetadata(oldCopy)
-		trimMetadata(newCopy)
+		trimMetadata(out)
 	}
 
-	return d.printer.Diff(oldCopy, newCopy)
+	return out
 }
 
 // DiffDelete computes a diff that represents deletion of the object
@@ -110,20 +113,7 @@ func (d *Differ) DiffDelete(obj *unstructured.Unstructured) (string, error) {
 	// Remove from cache as it is considered deleted.
 	delete(d.cache, key)
 
-	oldCopy := oldObj.DeepCopy()
-	newCopy := newEmptyObject(obj)
-
-	if d.ignoreStatus {
-		delete(oldCopy.Object, "status")
-		delete(newCopy.Object, "status")
-	}
-
-	if d.ignoreMeta {
-		trimMetadata(oldCopy)
-		trimMetadata(newCopy)
-	}
-
-	return d.printer.Diff(oldCopy, newCopy)
+	return d.printer.Diff(d.prepareForDiff(oldObj), d.prepareForDiff(newEmptyObject(obj)))
 }
 
 // Diff computes a git-style diff between two objects and returns it as a string.
@@ -220,8 +210,8 @@ func (p *Printer) writeHeader(buf *bytes.Buffer, resource, name string) {
 		}
 	}
 
-	fmt.Fprintf(buf, "%s%s\n", timestamp, fmt.Sprintf("diff %s %s", resource, name))
-	fmt.Fprintf(buf, "%s\n", strings.Repeat("-", 80))
+	fmt.Fprintf(buf, "%sdiff %s %s\n", timestamp, resource, name)
+	fmt.Fprintln(buf, strings.Repeat("-", 80))
 }
 
 // isNewResource reports whether oldObj represents a resource that has no real
@@ -453,36 +443,27 @@ func printValue(buf *bytes.Buffer, path string, val interface{}, indent string, 
 	}
 
 	switch v := val.(type) {
-	case map[string]interface{}:
-		if path == "" {
-			for k, fieldVal := range v {
-				printDiff(buf, k, nil, fieldVal, indent)
-			}
-		} else {
-			b, _ := json.MarshalIndent(v, indent, "  ")
-			lines := strings.Split(string(b), "\n")
-			for _, line := range lines {
-				if line == "{" || line == "}" {
-					continue
-				}
-				fmt.Fprintf(buf, "%s%s%s\n", prefix, indent, line)
-			}
-		}
-	case []interface{}:
-		b, _ := json.MarshalIndent(v, indent, "  ")
-		lines := strings.Split(string(b), "\n")
-		for _, line := range lines {
-			if line == "[" || line == "]" {
-				continue
-			}
-			fmt.Fprintf(buf, "%s%s%s\n", prefix, indent, line)
-		}
+	case map[string]interface{}, []interface{}:
+		writeJSONLines(buf, prefix, indent, v)
 	default:
 		if path != "" {
 			fmt.Fprintf(buf, "%s%s%s: %v\n", prefix, indent, path, v)
 		} else {
 			fmt.Fprintf(buf, "%s%s%v\n", prefix, indent, v)
 		}
+	}
+}
+
+// writeJSONLines marshals val as indented JSON and writes each non-bracket
+// line to buf with the given prefix and indent.
+func writeJSONLines(buf *bytes.Buffer, prefix, indent string, val interface{}) {
+	b, _ := json.MarshalIndent(val, indent, "  ")
+	lines := strings.Split(string(b), "\n")
+	for _, line := range lines {
+		if line == "{" || line == "}" || line == "[" || line == "]" {
+			continue
+		}
+		fmt.Fprintf(buf, "%s%s%s\n", prefix, indent, line)
 	}
 }
 
@@ -495,13 +476,6 @@ func printSection(buf *bytes.Buffer, name string, val interface{}, isAdd bool) {
 
 	fmt.Fprintf(buf, "%s %s:\n", prefix, name)
 	if m, ok := val.(map[string]interface{}); ok {
-		b, _ := json.MarshalIndent(m, "  ", "  ")
-		lines := strings.Split(string(b), "\n")
-		for _, line := range lines {
-			if line == "{" || line == "}" {
-				continue
-			}
-			fmt.Fprintf(buf, "%s  %s\n", prefix, line)
-		}
+		writeJSONLines(buf, prefix, "  ", m)
 	}
 }

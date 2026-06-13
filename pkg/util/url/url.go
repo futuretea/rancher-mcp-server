@@ -6,8 +6,8 @@ import "strings"
 // NormalizeRancherURL handles both URL formats:
 // - "https://rancher.example.com/v3" -> strips /v3
 // - "https://rancher.example.com" -> uses as-is
-func NormalizeRancherURL(url string) string {
-	return strings.TrimSuffix(url, "/v3")
+func NormalizeRancherURL(rawURL string) string {
+	return strings.TrimSuffix(rawURL, "/v3")
 }
 
 // GetNormanURL returns URL with /v3 for Norman API

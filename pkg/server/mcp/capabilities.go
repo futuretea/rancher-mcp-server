@@ -21,29 +21,47 @@ type HealthStatus struct {
 	Capabilities map[string]CapabilityStatus `json:"capabilities"`
 }
 
+// HasRancherCapability reports whether the server is configured to access Rancher.
+// It is true in static credential mode or in per-request token mode when a Rancher
+// server URL is configured. HasRancherConfig semantics remain unchanged.
+func (c *Configuration) HasRancherCapability() bool {
+	if c == nil || c.StaticConfig == nil {
+		return false
+	}
+	if c.HasRancherConfig() {
+		return true
+	}
+	return c.RancherRequestTokenAuth && c.RancherServerURL != ""
+}
+
+func buildCapabilityStatus(configured, available bool, missingReason, unavailableReason string) CapabilityStatus {
+	status := CapabilityStatus{
+		Configured: configured,
+		Available:  available,
+	}
+	if !configured {
+		status.Reason = missingReason
+	} else if !available {
+		status.Reason = unavailableReason
+	}
+	return status
+}
+
 func (s *Server) capabilityStatuses() map[string]CapabilityStatus {
+	hasCapability := s.configuration != nil && s.configuration.HasRancherCapability()
 	hasConfig := s.configuration != nil && s.configuration.HasRancherConfig()
-	rancherAvailable := hasConfig && s.normanClient != nil && s.normanClient.IsUsable()
-	kubernetesAvailable := hasConfig && s.steveClient != nil
 
-	rancherStatus := CapabilityStatus{
-		Configured: hasConfig,
-		Available:  rancherAvailable,
-	}
-	if !hasConfig {
-		rancherStatus.Reason = "rancher configuration missing"
-	} else if !rancherAvailable {
-		rancherStatus.Reason = "rancher client unavailable"
-	}
+	rancherAvailable := hasCapability && (s.configuration.RancherRequestTokenAuth || (s.normanClient != nil && s.normanClient.IsUsable()))
+	kubernetesAvailable := hasCapability && (s.configuration.RancherRequestTokenAuth || s.steveClient != nil)
 
-	kubernetesStatus := CapabilityStatus{
-		Configured: hasConfig,
-		Available:  kubernetesAvailable,
-	}
-	if !hasConfig {
-		kubernetesStatus.Reason = "rancher configuration missing"
-	} else if !kubernetesAvailable {
-		kubernetesStatus.Reason = "kubernetes client unavailable"
+	rancherStatus := buildCapabilityStatus(hasCapability, rancherAvailable, "rancher configuration missing", "rancher client unavailable")
+	kubernetesStatus := buildCapabilityStatus(hasCapability, kubernetesAvailable, "rancher configuration missing", "kubernetes client unavailable")
+
+	// Suppress misleading "unavailable" reasons in dynamic mode where availability
+	// reflects configuration readiness rather than pre-created client usability.
+	if hasCapability && !hasConfig {
+		rancherStatus.Reason = ""
+		kubernetesStatus.Reason = ""
 	}
 
 	return map[string]CapabilityStatus{

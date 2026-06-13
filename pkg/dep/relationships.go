@@ -21,6 +21,17 @@ func getNestedString(obj map[string]interface{}, fields ...string) string {
 	return val
 }
 
+// matchPodsInNamespace returns Pod nodes in namespace whose labels match selector.
+func matchPodsInNamespace(globalMapByUID map[types.UID]*Node, namespace string, selector labels.Selector) []*Node {
+	var pods []*Node
+	for _, node := range globalMapByUID {
+		if node.Kind == "Pod" && node.Namespace == namespace && selector.Matches(labels.Set(node.GetLabels())) {
+			pods = append(pods, node)
+		}
+	}
+	return pods
+}
+
 // getPodRelationships extracts relationships for a Pod.
 // Covers: Node, ServiceAccount, volumes (ConfigMap/Secret/PVC), env (ConfigMap/Secret), imagePullSecrets.
 func getPodRelationships(n *Node) *RelationshipMap {
@@ -168,13 +179,8 @@ func getServiceRelationships(n *Node, globalMapByUID map[types.UID]*Node) *Relat
 		return nil
 	}
 
-	// Find matching pods
-	for _, node := range globalMapByUID {
-		if node.Kind == "Pod" && node.Namespace == ns {
-			if selector.Matches(labels.Set(node.GetLabels())) {
-				result.AddDependencyByKey(node.GetObjectReferenceKey(), RelationshipService)
-			}
-		}
+	for _, pod := range matchPodsInNamespace(globalMapByUID, ns, selector) {
+		result.AddDependencyByKey(pod.GetObjectReferenceKey(), RelationshipService)
 	}
 
 	return result
@@ -384,12 +390,8 @@ func getPDBRelationships(n *Node, globalMapByUID map[types.UID]*Node) *Relations
 		return nil
 	}
 
-	for _, node := range globalMapByUID {
-		if node.Kind == "Pod" && node.Namespace == ns {
-			if selector.Matches(labels.Set(node.GetLabels())) {
-				result.AddDependencyByKey(node.GetObjectReferenceKey(), RelationshipPodDisruptionBudget)
-			}
-		}
+	for _, pod := range matchPodsInNamespace(globalMapByUID, ns, selector) {
+		result.AddDependencyByKey(pod.GetObjectReferenceKey(), RelationshipPodDisruptionBudget)
 	}
 
 	return result

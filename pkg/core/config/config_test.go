@@ -151,3 +151,93 @@ func TestGetPortString(t *testing.T) {
 		t.Errorf("expected ':8080', got %q", s)
 	}
 }
+
+func TestValidate_DynamicModeOnlyServerURL(t *testing.T) {
+	c := &StaticConfig{
+		Port:                    8080,
+		ListOutput:              "json",
+		RancherServerURL:        "https://rancher.example.com",
+		RancherRequestTokenAuth: true,
+	}
+	if err := c.Validate(); err != nil {
+		t.Fatalf("expected dynamic mode with only server URL to be valid, got: %v", err)
+	}
+}
+
+func TestValidate_DynamicModeRejectsEmptyServerURL(t *testing.T) {
+	c := &StaticConfig{
+		Port:                    8080,
+		ListOutput:              "json",
+		RancherRequestTokenAuth: true,
+	}
+	if err := c.Validate(); err == nil {
+		t.Fatal("expected error for dynamic mode without rancher_server_url")
+	}
+}
+
+func TestValidate_DynamicModeRejectsStaticCredentials(t *testing.T) {
+	cases := []struct {
+		name string
+		cfg  *StaticConfig
+	}{
+		{
+			name: "token",
+			cfg: &StaticConfig{
+				Port:                    8080,
+				ListOutput:              "json",
+				RancherServerURL:        "https://rancher.example.com",
+				RancherRequestTokenAuth: true,
+				RancherToken:            "token-123",
+			},
+		},
+		{
+			name: "access key",
+			cfg: &StaticConfig{
+				Port:                    8080,
+				ListOutput:              "json",
+				RancherServerURL:        "https://rancher.example.com",
+				RancherRequestTokenAuth: true,
+				RancherAccessKey:        "ak",
+			},
+		},
+		{
+			name: "secret key",
+			cfg: &StaticConfig{
+				Port:                    8080,
+				ListOutput:              "json",
+				RancherServerURL:        "https://rancher.example.com",
+				RancherRequestTokenAuth: true,
+				RancherSecretKey:        "sk",
+			},
+		},
+		{
+			name: "access and secret key",
+			cfg: &StaticConfig{
+				Port:                    8080,
+				ListOutput:              "json",
+				RancherServerURL:        "https://rancher.example.com",
+				RancherRequestTokenAuth: true,
+				RancherAccessKey:        "ak",
+				RancherSecretKey:        "sk",
+			},
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := tc.cfg.Validate(); err == nil {
+				t.Fatal("expected error when combining dynamic mode with static credentials")
+			}
+		})
+	}
+}
+
+func TestHasRancherConfig_DynamicModeFalse(t *testing.T) {
+	c := &StaticConfig{
+		RancherServerURL:        "https://rancher.example.com",
+		RancherRequestTokenAuth: true,
+	}
+	if c.HasRancherConfig() {
+		t.Fatal("expected HasRancherConfig to remain false in dynamic mode")
+	}
+}

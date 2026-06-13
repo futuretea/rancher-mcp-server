@@ -28,13 +28,13 @@ func FormatTree(result *Result, depsIsDependencies bool) string {
 	fmt.Fprintf(&b, "%-12s %-50s %-8s %-12s %-6s %s\n",
 		"NAMESPACE", "NAME", "READY", "STATUS", "AGE", "RELATIONSHIPS")
 
-	printTreeNode(&b, result.NodeMap, rootNode, result.RootUID, depsIsDependencies, "", true, true, nil, map[types.UID]bool{})
+	printTreeNode(&b, result.NodeMap, rootNode, result.RootUID, depsIsDependencies, "", true, true, nil, map[types.UID]struct{}{})
 
 	return b.String()
 }
 
 // printTreeNode recursively prints a node and its children in tree format.
-func printTreeNode(b *strings.Builder, nodeMap NodeMap, node *Node, uid types.UID, depsIsDependencies bool, prefix string, isRoot, isLast bool, rels RelationshipSet, visited map[types.UID]bool) {
+func printTreeNode(b *strings.Builder, nodeMap NodeMap, node *Node, uid types.UID, depsIsDependencies bool, prefix string, isRoot, isLast bool, rels RelationshipSet, visited map[types.UID]struct{}) {
 	if node == nil {
 		return
 	}
@@ -70,10 +70,10 @@ func printTreeNode(b *strings.Builder, nodeMap NodeMap, node *Node, uid types.UI
 	)
 
 	// Stop recursion on cycle
-	if visited[uid] {
+	if _, ok := visited[uid]; ok {
 		return
 	}
-	visited[uid] = true
+	visited[uid] = struct{}{}
 
 	deps := node.GetDeps(depsIsDependencies)
 	children := sortedChildren(nodeMap, deps, uid)
@@ -114,7 +114,7 @@ func FormatJSON(result *Result, depsIsDependencies bool) (string, error) {
 		return "[]", nil
 	}
 
-	jsonTree := buildJSONTree(result.NodeMap, rootNode, result.RootUID, depsIsDependencies, nil, map[types.UID]bool{})
+	jsonTree := buildJSONTree(result.NodeMap, rootNode, result.RootUID, depsIsDependencies, nil, map[types.UID]struct{}{})
 
 	data, err := json.MarshalIndent(jsonTree, "", "  ")
 	if err != nil {
@@ -124,19 +124,19 @@ func FormatJSON(result *Result, depsIsDependencies bool) (string, error) {
 }
 
 // buildJSONTree recursively builds the JSON tree structure.
-func buildJSONTree(nodeMap NodeMap, node *Node, uid types.UID, depsIsDependencies bool, rels RelationshipSet, visited map[types.UID]bool) *JSONNode {
+func buildJSONTree(nodeMap NodeMap, node *Node, uid types.UID, depsIsDependencies bool, rels RelationshipSet, visited map[types.UID]struct{}) *JSONNode {
 	if node == nil {
 		return nil
 	}
 
-	if visited[uid] {
+	if _, ok := visited[uid]; ok {
 		return &JSONNode{
 			Kind:      node.Kind,
 			Namespace: node.Namespace,
 			Name:      node.Name,
 		}
 	}
-	visited[uid] = true
+	visited[uid] = struct{}{}
 
 	jn := &JSONNode{
 		Kind:      node.Kind,
@@ -159,6 +159,24 @@ func buildJSONTree(nodeMap NodeMap, node *Node, uid types.UID, depsIsDependencie
 	}
 
 	return jn
+}
+
+// findCondition returns the first unstructured condition with the requested type.
+func findCondition(content map[string]interface{}, conditionType string) (map[string]interface{}, bool) {
+	conditions, found, _ := unstructuredv1.NestedSlice(content, "status", "conditions")
+	if !found {
+		return nil, false
+	}
+	for _, c := range conditions {
+		cMap, ok := c.(map[string]interface{})
+		if !ok {
+			continue
+		}
+		if cType, _ := cMap["type"].(string); cType == conditionType {
+			return cMap, true
+		}
+	}
+	return nil, false
 }
 
 // getNodeReady extracts the ready status from a node.
@@ -190,18 +208,9 @@ func getNodeReady(n *Node) string {
 	}
 
 	// Fallback: check Ready condition
-	conditions, found, _ := unstructuredv1.NestedSlice(content, "status", "conditions")
-	if found {
-		for _, c := range conditions {
-			cMap, ok := c.(map[string]interface{})
-			if !ok {
-				continue
-			}
-			if cType, _ := cMap["type"].(string); cType == "Ready" {
-				if status, _ := cMap["status"].(string); status != "" {
-					return status
-				}
-			}
+	if cMap, ok := findCondition(content, "Ready"); ok {
+		if status, _ := cMap["status"].(string); status != "" {
+			return status
 		}
 	}
 
@@ -219,18 +228,9 @@ func getNodeStatus(n *Node) string {
 			return phase
 		}
 	case "Node":
-		conditions, found, _ := unstructuredv1.NestedSlice(content, "status", "conditions")
-		if found {
-			for _, c := range conditions {
-				cMap, ok := c.(map[string]interface{})
-				if !ok {
-					continue
-				}
-				if cType, _ := cMap["type"].(string); cType == "Ready" {
-					if reason, _ := cMap["reason"].(string); reason != "" {
-						return reason
-					}
-				}
+		if cMap, ok := findCondition(content, "Ready"); ok {
+			if reason, _ := cMap["reason"].(string); reason != "" {
+				return reason
 			}
 		}
 	}

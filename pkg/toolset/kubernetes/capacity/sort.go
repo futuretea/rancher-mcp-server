@@ -3,6 +3,8 @@ package capacity
 import (
 	"sort"
 	"strings"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 )
 
 // SortNodes sorts nodes by the specified field.
@@ -28,31 +30,31 @@ var sortComparators = map[string]func(a, b NodeInfo) bool{
 	"mem.limit":      func(a, b NodeInfo) bool { return a.Memory.Limited > b.Memory.Limited },
 	"memory.limit":   func(a, b NodeInfo) bool { return a.Memory.Limited > b.Memory.Limited },
 	"cpu.util.percentage": func(a, b NodeInfo) bool {
-		return calcPercentage(a.CPU.Utilized, a.CPU.Allocatable) > calcPercentage(b.CPU.Utilized, b.CPU.Allocatable)
+		return formatutil.CalcPercentage(a.CPU.Utilized, a.CPU.Allocatable) > formatutil.CalcPercentage(b.CPU.Utilized, b.CPU.Allocatable)
 	},
 	"mem.util.percentage": func(a, b NodeInfo) bool {
-		return calcPercentage(a.Memory.Utilized, a.Memory.Allocatable) > calcPercentage(b.Memory.Utilized, b.Memory.Allocatable)
+		return formatutil.CalcPercentage(a.Memory.Utilized, a.Memory.Allocatable) > formatutil.CalcPercentage(b.Memory.Utilized, b.Memory.Allocatable)
 	},
 	"memory.util.percentage": func(a, b NodeInfo) bool {
-		return calcPercentage(a.Memory.Utilized, a.Memory.Allocatable) > calcPercentage(b.Memory.Utilized, b.Memory.Allocatable)
+		return formatutil.CalcPercentage(a.Memory.Utilized, a.Memory.Allocatable) > formatutil.CalcPercentage(b.Memory.Utilized, b.Memory.Allocatable)
 	},
 	"cpu.request.percentage": func(a, b NodeInfo) bool {
-		return calcPercentage(a.CPU.Requested, a.CPU.Allocatable) > calcPercentage(b.CPU.Requested, b.CPU.Allocatable)
+		return formatutil.CalcPercentage(a.CPU.Requested, a.CPU.Allocatable) > formatutil.CalcPercentage(b.CPU.Requested, b.CPU.Allocatable)
 	},
 	"mem.request.percentage": func(a, b NodeInfo) bool {
-		return calcPercentage(a.Memory.Requested, a.Memory.Allocatable) > calcPercentage(b.Memory.Requested, b.Memory.Allocatable)
+		return formatutil.CalcPercentage(a.Memory.Requested, a.Memory.Allocatable) > formatutil.CalcPercentage(b.Memory.Requested, b.Memory.Allocatable)
 	},
 	"memory.request.percentage": func(a, b NodeInfo) bool {
-		return calcPercentage(a.Memory.Requested, a.Memory.Allocatable) > calcPercentage(b.Memory.Requested, b.Memory.Allocatable)
+		return formatutil.CalcPercentage(a.Memory.Requested, a.Memory.Allocatable) > formatutil.CalcPercentage(b.Memory.Requested, b.Memory.Allocatable)
 	},
 	"cpu.limit.percentage": func(a, b NodeInfo) bool {
-		return calcPercentage(a.CPU.Limited, a.CPU.Allocatable) > calcPercentage(b.CPU.Limited, b.CPU.Allocatable)
+		return formatutil.CalcPercentage(a.CPU.Limited, a.CPU.Allocatable) > formatutil.CalcPercentage(b.CPU.Limited, b.CPU.Allocatable)
 	},
 	"mem.limit.percentage": func(a, b NodeInfo) bool {
-		return calcPercentage(a.Memory.Limited, a.Memory.Allocatable) > calcPercentage(b.Memory.Limited, b.Memory.Allocatable)
+		return formatutil.CalcPercentage(a.Memory.Limited, a.Memory.Allocatable) > formatutil.CalcPercentage(b.Memory.Limited, b.Memory.Allocatable)
 	},
 	"memory.limit.percentage": func(a, b NodeInfo) bool {
-		return calcPercentage(a.Memory.Limited, a.Memory.Allocatable) > calcPercentage(b.Memory.Limited, b.Memory.Allocatable)
+		return formatutil.CalcPercentage(a.Memory.Limited, a.Memory.Allocatable) > formatutil.CalcPercentage(b.Memory.Limited, b.Memory.Allocatable)
 	},
 	"pod.count": func(a, b NodeInfo) bool { return a.PodCount.Requested > b.PodCount.Requested },
 	"name":      sortByName,
@@ -60,12 +62,4 @@ var sortComparators = map[string]func(a, b NodeInfo) bool{
 
 func sortByName(a, b NodeInfo) bool {
 	return strings.ToLower(a.Name) < strings.ToLower(b.Name)
-}
-
-// calcPercentage calculates percentage with zero check
-func calcPercentage(value, total int64) float64 {
-	if total <= 0 {
-		return 0
-	}
-	return float64(value) / float64(total) * 100
 }

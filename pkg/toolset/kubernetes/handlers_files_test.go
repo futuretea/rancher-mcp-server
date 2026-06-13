@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"strings"
 	"testing"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
@@ -71,7 +72,7 @@ func TestHandleDownloadFile_MissingRequiredParams(t *testing.T) {
 				t.Errorf("handleDownloadFile() expected error for %s, got nil", tt.wantErrPart)
 				return
 			}
-			if !containsString(err.Error(), tt.wantErrPart) {
+			if !strings.Contains(err.Error(), tt.wantErrPart) {
 				t.Errorf("handleDownloadFile() error = %v, want error containing %q", err, tt.wantErrPart)
 			}
 		})
@@ -120,7 +121,7 @@ func TestHandleDownloadFile_InvalidClientType(t *testing.T) {
 			// Should be ErrSteveNotConfigured or similar
 			if err != paramutil.ErrSteveNotConfigured {
 				// Also check if it wraps the error
-				if !containsString(err.Error(), "not configured") && !containsString(err.Error(), "client") {
+				if !strings.Contains(err.Error(), "not configured") && !strings.Contains(err.Error(), "client") {
 					t.Errorf("handleDownloadFile() error = %v, want client configuration error", err)
 				}
 			}
@@ -146,7 +147,7 @@ func TestHandleDownloadFile_InvalidMaxFileSize(t *testing.T) {
 		t.Error("handleDownloadFile() expected error for invalid maxFileSize, got nil")
 		return
 	}
-	if !containsString(err.Error(), "maxFileSize") {
+	if !strings.Contains(err.Error(), "maxFileSize") {
 		t.Errorf("handleDownloadFile() error = %v, want error about maxFileSize", err)
 	}
 }
@@ -206,7 +207,7 @@ func TestHandleUploadFile_MissingRequiredParams(t *testing.T) {
 				t.Errorf("handleUploadFile() expected error for %s, got nil", tt.wantErrPart)
 				return
 			}
-			if !containsString(err.Error(), tt.wantErrPart) {
+			if !strings.Contains(err.Error(), tt.wantErrPart) {
 				t.Errorf("handleUploadFile() error = %v, want error containing %q", err, tt.wantErrPart)
 			}
 		})
@@ -273,7 +274,7 @@ func TestHandleUploadFile_InvalidClientType(t *testing.T) {
 				return
 			}
 			if err != paramutil.ErrSteveNotConfigured {
-				if !containsString(err.Error(), "not configured") && !containsString(err.Error(), "client") {
+				if !strings.Contains(err.Error(), "not configured") && !strings.Contains(err.Error(), "client") {
 					t.Errorf("handleUploadFile() error = %v, want client configuration error", err)
 				}
 			}
@@ -319,7 +320,7 @@ func TestHandleUploadFile_InvalidBase64Content(t *testing.T) {
 				t.Error("handleUploadFile() expected error for invalid base64, got nil")
 				return
 			}
-			if !containsString(err.Error(), "base64") {
+			if !strings.Contains(err.Error(), "base64") {
 				t.Errorf("handleUploadFile() error = %v, want error about base64 decoding", err)
 			}
 		})
@@ -345,7 +346,7 @@ func TestHandleUploadFile_InvalidMaxFileSize(t *testing.T) {
 		t.Error("handleUploadFile() expected error for invalid maxFileSize, got nil")
 		return
 	}
-	if !containsString(err.Error(), "maxFileSize") {
+	if !strings.Contains(err.Error(), "maxFileSize") {
 		t.Errorf("handleUploadFile() error = %v, want error about maxFileSize", err)
 	}
 }
@@ -376,7 +377,7 @@ func TestHandleUploadFile_ContentExceedsMaxFileSize(t *testing.T) {
 		t.Error("handleUploadFile() expected error for content exceeding maxFileSize, got nil")
 		return
 	}
-	if !containsString(err.Error(), "exceeds") {
+	if !strings.Contains(err.Error(), "exceeds") {
 		t.Errorf("handleUploadFile() error = %v, want error about size exceeding limit", err)
 	}
 }
@@ -402,7 +403,7 @@ func TestHandleUploadFile_ValidBase64Content(t *testing.T) {
 	_, err := handleUploadFile(context.Background(), mockClient, params)
 	// We expect an error because we don't have a real cluster
 	// But the error should NOT be about base64 decoding
-	if err != nil && containsString(err.Error(), "base64") {
+	if err != nil && strings.Contains(err.Error(), "base64") {
 		t.Errorf("handleUploadFile() incorrectly reported base64 error for valid content: %v", err)
 	}
 }
@@ -574,17 +575,3 @@ func TestHandleUploadFile_ReadOnlyFalse(t *testing.T) {
 	}
 }
 
-// containsString is a helper function to check if a string contains a substring.
-func containsString(s, substr string) bool {
-	return len(s) >= len(substr) && (s == substr || len(substr) == 0 ||
-		(len(s) > 0 && len(substr) > 0 && findSubstring(s, substr)))
-}
-
-func findSubstring(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

@@ -3,6 +3,7 @@ package capacity
 import (
 	"testing"
 
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 	corev1 "k8s.io/api/core/v1"
 )
 
@@ -90,9 +91,9 @@ func TestResourceQuantityToMilli(t *testing.T) {
 		{"0.5", 500},
 	}
 	for _, tt := range tests {
-		got := resourceQuantityToMilli(tt.q)
+		got := formatutil.ResourceQuantityToMilli(tt.q)
 		if got != tt.want {
-			t.Errorf("resourceQuantityToMilli(%q) = %d, want %d", tt.q, got, tt.want)
+			t.Errorf("formatutil.ResourceQuantityToMilli(%q) = %d, want %d", tt.q, got, tt.want)
 		}
 	}
 }
@@ -108,9 +109,9 @@ func TestResourceQuantityToBytes(t *testing.T) {
 		{"1Gi", 1073741824},
 	}
 	for _, tt := range tests {
-		got := resourceQuantityToBytes(tt.q)
+		got := formatutil.ResourceQuantityToBytes(tt.q)
 		if got != tt.want {
-			t.Errorf("resourceQuantityToBytes(%q) = %d, want %d", tt.q, got, tt.want)
+			t.Errorf("formatutil.ResourceQuantityToBytes(%q) = %d, want %d", tt.q, got, tt.want)
 		}
 	}
 }
@@ -350,7 +351,7 @@ func TestResourceQuantityToMilli_Invalid(t *testing.T) {
 		}
 	}()
 
-	if got := resourceQuantityToMilli("not-a-quantity"); got != 0 {
+	if got := formatutil.ResourceQuantityToMilli("not-a-quantity"); got != 0 {
 		t.Errorf("expected 0 for invalid quantity, got %d", got)
 	}
 }
@@ -362,7 +363,7 @@ func TestResourceQuantityToBytes_Invalid(t *testing.T) {
 		}
 	}()
 
-	if got := resourceQuantityToBytes("bad-bytes"); got != 0 {
+	if got := formatutil.ResourceQuantityToBytes("bad-bytes"); got != 0 {
 		t.Errorf("expected 0 for invalid quantity, got %d", got)
 	}
 }

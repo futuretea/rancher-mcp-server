@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"slices"
 	"sort"
 
 	"github.com/mark3labs/mcp-go/mcp"
@@ -49,15 +50,13 @@ func NewServer(configuration Configuration) (*Server, error) {
 	// Note: Logging is initialized in root.go before calling NewServer
 	// to properly handle stdio vs HTTP/SSE mode
 
-	var serverOptions []server.ServerOption
-
-	// Configure server capabilities
-	serverOptions = append(serverOptions,
+	// Configure server capabilities.
+	serverOptions := []server.ServerOption{
 		server.WithResourceCapabilities(true, true),
 		server.WithPromptCapabilities(true),
 		server.WithToolCapabilities(true),
 		server.WithLogging(),
-	)
+	}
 
 	s := &Server{
 		configuration: &configuration,
@@ -208,27 +207,19 @@ func (s *Server) containerOperationEnabled(toolName string) bool {
 	}
 }
 
-// shouldEnableTool determines if a tool should be enabled based on configuration
+// shouldEnableTool determines if a tool should be enabled based on configuration.
 func (s *Server) shouldEnableTool(toolName string) bool {
-	// Check if tool is explicitly disabled
-	for _, disabledTool := range s.configuration.DisabledTools {
-		if disabledTool == toolName {
-			return false
-		}
-	}
-
-	// Check if tool is explicitly enabled
-	if len(s.configuration.EnabledTools) > 0 {
-		for _, enabledTool := range s.configuration.EnabledTools {
-			if enabledTool == toolName {
-				return true
-			}
-		}
-		// If enabled tools are specified and this tool is not in the list, disable it
+	// Check if tool is explicitly disabled.
+	if slices.Contains(s.configuration.DisabledTools, toolName) {
 		return false
 	}
 
-	// Default: enable the tool
+	// If an allowlist is configured, only those tools are enabled.
+	if len(s.configuration.EnabledTools) > 0 {
+		return slices.Contains(s.configuration.EnabledTools, toolName)
+	}
+
+	// Default: enable the tool.
 	return true
 }
 

@@ -1,6 +1,7 @@
 package dep
 
 import (
+	"strings"
 	"testing"
 	"time"
 
@@ -279,7 +280,7 @@ func TestFormatTree(t *testing.T) {
 			t.Fatalf("expected tree output, got %q", got)
 		}
 		// Check header and node line present
-		if !contains(got, "NAMESPACE") || !contains(got, "nginx") {
+		if !strings.Contains(got, "NAMESPACE") || !strings.Contains(got, "nginx") {
 			t.Errorf("expected tree to contain 'NAMESPACE' and 'nginx', got: %s", got)
 		}
 	})
@@ -332,17 +333,8 @@ func TestFormatJSON(t *testing.T) {
 		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		if !contains(got, `"kind"`) || !contains(got, `"nginx"`) {
+		if !strings.Contains(got, `"kind"`) || !strings.Contains(got, `"nginx"`) {
 			t.Errorf("expected JSON to contain kind and name, got: %s", got)
 		}
 	})
-}
-
-func contains(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
 }

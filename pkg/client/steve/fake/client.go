@@ -28,15 +28,19 @@ func NewClient() *Client {
 	}
 }
 
+func normalizeKind(kind string) string {
+	return strings.ToLower(strings.TrimSpace(kind))
+}
+
 // AddResource pre-loads a test resource into the fake.
 func (c *Client) AddResource(obj *unstructured.Unstructured) {
-	kind := strings.ToLower(strings.TrimSpace(obj.GetKind()))
+	kind := normalizeKind(obj.GetKind())
 	c.resources[kind] = append(c.resources[kind], obj)
 }
 
 // GetResource looks up a resource by kind, namespace, and name.
 func (c *Client) GetResource(_ context.Context, _ string, kind, namespace, name string) (*unstructured.Unstructured, error) {
-	normalizedKind := strings.ToLower(strings.TrimSpace(kind))
+	normalizedKind := normalizeKind(kind)
 	for _, r := range c.resources[normalizedKind] {
 		if r.GetName() == name && (namespace == "" || r.GetNamespace() == namespace) {
 			return r, nil
@@ -47,7 +51,7 @@ func (c *Client) GetResource(_ context.Context, _ string, kind, namespace, name 
 
 // ListResources lists resources by kind, filtered by namespace and label selector.
 func (c *Client) ListResources(_ context.Context, _ string, kind, namespace string, opts *steve.ListOptions) (*unstructured.UnstructuredList, error) {
-	normalizedKind := strings.ToLower(strings.TrimSpace(kind))
+	normalizedKind := normalizeKind(kind)
 
 	var sel labels.Selector
 	if opts != nil && opts.LabelSelector != "" {

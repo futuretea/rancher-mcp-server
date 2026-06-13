@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -116,20 +117,20 @@ func aggregatePodResources(pod unstructured.Unstructured, item *SummaryItem) {
 		// Requests
 		if requests, found, _ := unstructured.NestedMap(resources, "requests"); found {
 			if cpu, ok := requests["cpu"].(string); ok {
-				item.CPUReq += resourceQuantityToMilli(cpu)
+				item.CPUReq += formatutil.ResourceQuantityToMilli(cpu)
 			}
 			if mem, ok := requests["memory"].(string); ok {
-				item.MemReq += resourceQuantityToBytes(mem)
+				item.MemReq += formatutil.ResourceQuantityToBytes(mem)
 			}
 		}
 
 		// Limits
 		if limits, found, _ := unstructured.NestedMap(resources, "limits"); found {
 			if cpu, ok := limits["cpu"].(string); ok {
-				item.CPULimit += resourceQuantityToMilli(cpu)
+				item.CPULimit += formatutil.ResourceQuantityToMilli(cpu)
 			}
 			if mem, ok := limits["memory"].(string); ok {
-				item.MemLimit += resourceQuantityToBytes(mem)
+				item.MemLimit += formatutil.ResourceQuantityToBytes(mem)
 			}
 		}
 	}

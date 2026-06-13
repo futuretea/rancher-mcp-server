@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"strings"
 	"testing"
 
 	clientexec "k8s.io/client-go/util/exec"
@@ -66,7 +67,7 @@ func TestParseExecCommand(t *testing.T) {
 				if err == nil {
 					t.Fatalf("parseExecCommand() expected error containing %q, got nil", tt.wantErr)
 				}
-				if !containsString(err.Error(), tt.wantErr) {
+				if !strings.Contains(err.Error(), tt.wantErr) {
 					t.Fatalf("parseExecCommand() error = %v, want containing %q", err, tt.wantErr)
 				}
 				return
@@ -145,7 +146,7 @@ func TestHandleExec_MissingRequiredParams(t *testing.T) {
 			if err == nil {
 				t.Fatalf("handleExec() expected error containing %q, got nil", tt.wantErrPart)
 			}
-			if !containsString(err.Error(), tt.wantErrPart) {
+			if !strings.Contains(err.Error(), tt.wantErrPart) {
 				t.Fatalf("handleExec() error = %v, want containing %q", err, tt.wantErrPart)
 			}
 		})
@@ -187,7 +188,7 @@ func TestExecTransportErrorIncludesStderr(t *testing.T) {
 	if err == nil {
 		t.Fatal("execTransportError() returned nil")
 	}
-	if !containsString(err.Error(), "permission denied") {
+	if !strings.Contains(err.Error(), "permission denied") {
 		t.Fatalf("execTransportError() = %v, want stderr context", err)
 	}
 }

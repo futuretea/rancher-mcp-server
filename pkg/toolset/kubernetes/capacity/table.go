@@ -3,6 +3,8 @@ package capacity
 import (
 	"fmt"
 	"strings"
+
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 )
 
 const (
@@ -31,24 +33,24 @@ func FormatAsTable(result Result, showAvailable bool) string {
 
 // writeNodeSummary writes the node and cluster summary table
 func writeNodeSummary(b *strings.Builder, result Result, showAvailable bool) {
-	tb := newTableBuilder("%-25s", "NAME")
+	tb := formatutil.NewTableBuilder("%-25s", "NAME")
 
 	if !result.HideRequests {
-		tb.addColumn("%-12s", "CPU REQUEST", "MEM REQUEST")
+		tb.AddColumn("%-12s", "CPU REQUEST", "MEM REQUEST")
 	}
 	if !result.HideLimits {
-		tb.addColumn("%-12s", "CPU LIMIT", "MEM LIMIT")
+		tb.AddColumn("%-12s", "CPU LIMIT", "MEM LIMIT")
 	}
 	if result.ShowPodCount {
-		tb.addColumn("%-6s", "PODS")
+		tb.AddColumn("%-6s", "PODS")
 	}
 	if result.ShowLabels {
-		tb.addColumn("%-s", "LABELS")
+		tb.AddColumn("%-s", "LABELS")
 	}
 
 	fmt.Fprintf(b, "NODE\n")
-	tb.writeHeader(b)
-	tb.writeSeparator(b)
+	tb.WriteHeader(b)
+	tb.WriteSeparator(b)
 
 	for _, node := range result.Nodes {
 		row := []interface{}{truncate(node.Name, 25)}
@@ -64,12 +66,12 @@ func writeNodeSummary(b *strings.Builder, result Result, showAvailable bool) {
 		if result.ShowLabels {
 			row = append(row, formatLabels(node.Labels))
 		}
-		tb.writeRow(b, row)
+		tb.WriteRow(b, row)
 	}
 
 	fmt.Fprintf(b, "\nCLUSTER\n")
-	tb.writeHeader(b)
-	tb.writeSeparator(b)
+	tb.WriteHeader(b)
+	tb.WriteSeparator(b)
 
 	row := []interface{}{result.Cluster.Name}
 	if !result.HideRequests {
@@ -84,7 +86,7 @@ func writeNodeSummary(b *strings.Builder, result Result, showAvailable bool) {
 	if result.ShowLabels {
 		row = append(row, "")
 	}
-	tb.writeRow(b, row)
+	tb.WriteRow(b, row)
 }
 
 // writeUtilizationSection writes the utilization section
@@ -97,9 +99,9 @@ func writeUtilizationSection(b *strings.Builder, nodes []NodeInfo) {
 		fmt.Fprintf(b, "%-25s %-12s %-11.1f%% %-12s %-11.1f%%\n",
 			truncate(node.Name, 25),
 			formatCPU(node.CPU.Allocatable, true),
-			calcPercentage(node.CPU.Utilized, node.CPU.Allocatable),
+			formatutil.CalcPercentage(node.CPU.Utilized, node.CPU.Allocatable),
 			formatMemory(node.Memory.Allocatable, true),
-			calcPercentage(node.Memory.Utilized, node.Memory.Allocatable),
+			formatutil.CalcPercentage(node.Memory.Utilized, node.Memory.Allocatable),
 		)
 	}
 }
@@ -115,17 +117,17 @@ func writePodsSection(b *strings.Builder, result Result, showAvailable bool) {
 
 		fmt.Fprintf(b, "\n%s (%d pods)\n", node.Name, len(node.Pods))
 
-		tb := newTableBuilder("  %-40s", "POD")
-		tb.addColumn("%-10s", "NAMESPACE")
+		tb := formatutil.NewTableBuilder("  %-40s", "POD")
+		tb.AddColumn("%-10s", "NAMESPACE")
 		if !result.HideRequests {
-			tb.addColumn("%-12s", "CPU REQUEST", "MEM REQUEST")
+			tb.AddColumn("%-12s", "CPU REQUEST", "MEM REQUEST")
 		}
 		if !result.HideLimits {
-			tb.addColumn("%-12s", "CPU LIMIT", "MEM LIMIT")
+			tb.AddColumn("%-12s", "CPU LIMIT", "MEM LIMIT")
 		}
 
-		tb.writeHeader(b)
-		tb.writeSeparator(b)
+		tb.WriteHeader(b)
+		tb.WriteSeparator(b)
 
 		for _, pod := range node.Pods {
 			row := []interface{}{truncate(pod.Name, 40), truncate(pod.Namespace, 10)}
@@ -135,7 +137,7 @@ func writePodsSection(b *strings.Builder, result Result, showAvailable bool) {
 			if !result.HideLimits {
 				row = append(row, formatCPU(pod.CPU.Limited, showAvailable), formatMemory(pod.Memory.Limited, showAvailable))
 			}
-			tb.writeRow(b, row)
+			tb.WriteRow(b, row)
 
 			if result.ShowContainers {
 				writeContainers(b, pod.Containers, result, showAvailable)
@@ -150,12 +152,12 @@ func writeContainers(b *strings.Builder, containers []ContainerInfo, result Resu
 		return
 	}
 
-	tb := newTableBuilder("  %-38s", "[C]")
+	tb := formatutil.NewTableBuilder("  %-38s", "[C]")
 	if !result.HideRequests {
-		tb.addColumn("%-12s", "CPU REQUEST", "MEM REQUEST")
+		tb.AddColumn("%-12s", "CPU REQUEST", "MEM REQUEST")
 	}
 	if !result.HideLimits {
-		tb.addColumn("%-12s", "CPU LIMIT", "MEM LIMIT")
+		tb.AddColumn("%-12s", "CPU LIMIT", "MEM LIMIT")
 	}
 
 	for _, c := range containers {
@@ -170,53 +172,8 @@ func writeContainers(b *strings.Builder, containers []ContainerInfo, result Resu
 		if !result.HideLimits {
 			row = append(row, formatCPU(c.CPU.Limited, showAvailable), formatMemory(c.Memory.Limited, showAvailable))
 		}
-		tb.writeRow(b, row)
+		tb.WriteRow(b, row)
 	}
-}
-
-// tableBuilder helps build formatted tables
-type tableBuilder struct {
-	formats []string
-	headers []string
-}
-
-func newTableBuilder(format, header string) *tableBuilder {
-	return &tableBuilder{
-		formats: []string{format},
-		headers: []string{header},
-	}
-}
-
-func (tb *tableBuilder) addColumn(format string, headers ...string) {
-	for range headers {
-		tb.formats = append(tb.formats, format)
-	}
-	tb.headers = append(tb.headers, headers...)
-}
-
-func (tb *tableBuilder) writeHeader(b *strings.Builder) {
-	fmt.Fprintf(b, strings.Join(tb.formats, " ")+"\n", toAnySlice(tb.headers)...)
-}
-
-func (tb *tableBuilder) writeSeparator(b *strings.Builder) {
-	separators := make([]string, len(tb.headers))
-	for i, h := range tb.headers {
-		separators[i] = strings.Repeat("-", len(h))
-	}
-	fmt.Fprintf(b, strings.Join(tb.formats, " ")+"\n", toAnySlice(separators)...)
-}
-
-func (tb *tableBuilder) writeRow(b *strings.Builder, values []interface{}) {
-	fmt.Fprintf(b, strings.Join(tb.formats, " ")+"\n", values...)
-}
-
-// toAnySlice converts a string slice to any slice
-func toAnySlice(ss []string) []any {
-	result := make([]any, len(ss))
-	for i, s := range ss {
-		result[i] = s
-	}
-	return result
 }
 
 // formatLabels formats node labels as a string

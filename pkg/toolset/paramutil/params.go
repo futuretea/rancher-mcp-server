@@ -52,32 +52,32 @@ func ValidateFormat(format string) error {
 	}
 }
 
+// toInt64 converts a numeric interface value to int64.
+// It returns false if the value is not a supported numeric type.
+func toInt64(v interface{}) (int64, bool) {
+	switch n := v.(type) {
+	case float64:
+		return int64(n), true
+	case int64:
+		return n, true
+	case int:
+		return int64(n), true
+	}
+	return 0, false
+}
+
 // ExtractOptionalInt64 extracts an optional int64 parameter
 func ExtractOptionalInt64(params map[string]interface{}, key string) *int64 {
-	if v, ok := params[key].(float64); ok {
-		val := int64(v)
-		return &val
-	}
-	if v, ok := params[key].(int64); ok {
+	if v, ok := toInt64(params[key]); ok {
 		return &v
-	}
-	if v, ok := params[key].(int); ok {
-		val := int64(v)
-		return &val
 	}
 	return nil
 }
 
 // ExtractInt64 extracts an int64 parameter with a default value
 func ExtractInt64(params map[string]interface{}, key string, defaultValue int64) int64 {
-	if v, ok := params[key].(float64); ok {
-		return int64(v)
-	}
-	if v, ok := params[key].(int64); ok {
+	if v, ok := toInt64(params[key]); ok {
 		return v
-	}
-	if v, ok := params[key].(int); ok {
-		return int64(v)
 	}
 	return defaultValue
 }

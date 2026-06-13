@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 	"gopkg.in/yaml.v3"
 )
 
@@ -39,62 +39,6 @@ func FormatResult(v interface{}, format string) (string, error) {
 		}
 		return string(data), nil
 	}
-}
-
-// --- Table formatting helpers ---
-
-type tableBuilder struct {
-	formats []string
-	headers []string
-}
-
-func newTableBuilder(format, header string) *tableBuilder {
-	return &tableBuilder{
-		formats: []string{format},
-		headers: []string{header},
-	}
-}
-
-func (tb *tableBuilder) addColumn(format string, headers ...string) {
-	for range headers {
-		tb.formats = append(tb.formats, format)
-	}
-	tb.headers = append(tb.headers, headers...)
-}
-
-func (tb *tableBuilder) writeHeader(b *strings.Builder) {
-	fmt.Fprintf(b, strings.Join(tb.formats, " ")+"\n", toAnySlice(tb.headers)...)
-}
-
-func (tb *tableBuilder) writeSeparator(b *strings.Builder) {
-	separators := make([]string, len(tb.headers))
-	for i, h := range tb.headers {
-		separators[i] = strings.Repeat("-", len(h))
-	}
-	fmt.Fprintf(b, strings.Join(tb.formats, " ")+"\n", toAnySlice(separators)...)
-}
-
-func (tb *tableBuilder) writeRow(b *strings.Builder, values []interface{}) {
-	fmt.Fprintf(b, strings.Join(tb.formats, " ")+"\n", values...)
-}
-
-func toAnySlice(ss []string) []any {
-	result := make([]any, len(ss))
-	for i, s := range ss {
-		result[i] = s
-	}
-	return result
-}
-
-func truncate(s string, maxLen int) string {
-	if utf8.RuneCountInString(s) <= maxLen {
-		return s
-	}
-	runes := []rune(s)
-	if maxLen <= 3 {
-		return string(runes[:maxLen])
-	}
-	return string(runes[:maxLen-3]) + "..."
 }
 
 // formatCPU formats CPU value (millicores) to string
@@ -152,28 +96,28 @@ func formatTopAsTable(r *TopResult) string {
 	}
 	var b strings.Builder
 
-	tb := newTableBuilder("%-40s", "NAME")
-	tb.addColumn("%-15s", "NAMESPACE")
-	tb.addColumn("%-12s", "CPU.REQ")
-	tb.addColumn("%-12s", "CPU.UTIL")
-	tb.addColumn("%-12s", "MEM.REQ")
-	tb.addColumn("%-12s", "MEM.UTIL")
-	tb.addColumn("%-10s", "RESTARTS")
+	tb := formatutil.NewTableBuilder("%-40s", "NAME")
+	tb.AddColumn("%-15s", "NAMESPACE")
+	tb.AddColumn("%-12s", "CPU.REQ")
+	tb.AddColumn("%-12s", "CPU.UTIL")
+	tb.AddColumn("%-12s", "MEM.REQ")
+	tb.AddColumn("%-12s", "MEM.UTIL")
+	tb.AddColumn("%-10s", "RESTARTS")
 
-	tb.writeHeader(&b)
-	tb.writeSeparator(&b)
+	tb.WriteHeader(&b)
+	tb.WriteSeparator(&b)
 
 	for _, item := range r.Items {
 		row := []interface{}{
-			truncate(item.Name, 40),
-			truncate(item.Namespace, 15),
+			formatutil.Truncate(item.Name, 40),
+			formatutil.Truncate(item.Namespace, 15),
 			formatCPU(item.CPUReq),
 			formatCPU(item.CPUUtil),
 			formatMemory(item.MemReq),
 			formatMemory(item.MemUtil),
 			fmt.Sprintf("%d", item.Restarts),
 		}
-		tb.writeRow(&b, row)
+		tb.WriteRow(&b, row)
 	}
 
 	return b.String()
@@ -187,30 +131,30 @@ func formatWorkloadAsTable(r *WorkloadResult) string {
 	}
 	var b strings.Builder
 
-	tb := newTableBuilder("%-40s", "NAME")
-	tb.addColumn("%-15s", "NAMESPACE")
-	tb.addColumn("%-15s", "KIND")
-	tb.addColumn("%-10s", "READY")
-	tb.addColumn("%-12s", "UNAVAILABLE")
-	tb.addColumn("%-10s", "UPDATED")
-	tb.addColumn("%-10s", "AGE")
-	tb.addColumn("%-10s", "STATUS")
+	tb := formatutil.NewTableBuilder("%-40s", "NAME")
+	tb.AddColumn("%-15s", "NAMESPACE")
+	tb.AddColumn("%-15s", "KIND")
+	tb.AddColumn("%-10s", "READY")
+	tb.AddColumn("%-12s", "UNAVAILABLE")
+	tb.AddColumn("%-10s", "UPDATED")
+	tb.AddColumn("%-10s", "AGE")
+	tb.AddColumn("%-10s", "STATUS")
 
-	tb.writeHeader(&b)
-	tb.writeSeparator(&b)
+	tb.WriteHeader(&b)
+	tb.WriteSeparator(&b)
 
 	for _, item := range r.Items {
 		row := []interface{}{
-			truncate(item.Name, 40),
-			truncate(item.Namespace, 15),
-			truncate(item.Kind, 15),
+			formatutil.Truncate(item.Name, 40),
+			formatutil.Truncate(item.Namespace, 15),
+			formatutil.Truncate(item.Kind, 15),
 			fmt.Sprintf("%d/%d", item.Ready, item.Desired),
 			fmt.Sprintf("%d", item.Unavailable),
 			fmt.Sprintf("%d", item.Updated),
 			item.Age,
 			item.Status,
 		}
-		tb.writeRow(&b, row)
+		tb.WriteRow(&b, row)
 	}
 
 	return b.String()
@@ -224,26 +168,26 @@ func formatSummaryAsTable(r *SummaryResult) string {
 	}
 	var b strings.Builder
 
-	tb := newTableBuilder("%-25s", "GROUP")
-	tb.addColumn("%-8s", "PODS")
-	tb.addColumn("%-12s", "CPU.REQ")
-	tb.addColumn("%-12s", "CPU.LIM")
-	tb.addColumn("%-12s", "MEM.REQ")
-	tb.addColumn("%-12s", "MEM.LIM")
+	tb := formatutil.NewTableBuilder("%-25s", "GROUP")
+	tb.AddColumn("%-8s", "PODS")
+	tb.AddColumn("%-12s", "CPU.REQ")
+	tb.AddColumn("%-12s", "CPU.LIM")
+	tb.AddColumn("%-12s", "MEM.REQ")
+	tb.AddColumn("%-12s", "MEM.LIM")
 
-	tb.writeHeader(&b)
-	tb.writeSeparator(&b)
+	tb.WriteHeader(&b)
+	tb.WriteSeparator(&b)
 
 	for _, item := range r.Items {
 		row := []interface{}{
-			truncate(item.Group, 25),
+			formatutil.Truncate(item.Group, 25),
 			fmt.Sprintf("%d", item.PodCount),
 			formatCPU(item.CPUReq),
 			formatCPU(item.CPULimit),
 			formatMemory(item.MemReq),
 			formatMemory(item.MemLimit),
 		}
-		tb.writeRow(&b, row)
+		tb.WriteRow(&b, row)
 	}
 
 	return b.String()
@@ -257,24 +201,24 @@ func formatEventAsTable(r *EventResult) string {
 	}
 	var b strings.Builder
 
-	tb := newTableBuilder("%-25s", "REASON")
-	tb.addColumn("%-15s", "KIND")
-	tb.addColumn("%-15s", "NAMESPACE")
-	tb.addColumn("%-8s", "COUNT")
-	tb.addColumn("%-15s", "LAST_SEEN")
+	tb := formatutil.NewTableBuilder("%-25s", "REASON")
+	tb.AddColumn("%-15s", "KIND")
+	tb.AddColumn("%-15s", "NAMESPACE")
+	tb.AddColumn("%-8s", "COUNT")
+	tb.AddColumn("%-15s", "LAST_SEEN")
 
-	tb.writeHeader(&b)
-	tb.writeSeparator(&b)
+	tb.WriteHeader(&b)
+	tb.WriteSeparator(&b)
 
 	for _, item := range r.Items {
 		row := []interface{}{
-			truncate(item.Reason, 25),
-			truncate(item.Kind, 15),
-			truncate(item.Namespace, 15),
+			formatutil.Truncate(item.Reason, 25),
+			formatutil.Truncate(item.Kind, 15),
+			formatutil.Truncate(item.Namespace, 15),
 			fmt.Sprintf("%d", item.Count),
 			formatAge(item.LastSeen),
 		}
-		tb.writeRow(&b, row)
+		tb.WriteRow(&b, row)
 	}
 
 	return b.String()

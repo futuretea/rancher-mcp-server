@@ -3,6 +3,7 @@ package mcp
 import (
 	"expvar"
 	"runtime"
+	"sync/atomic"
 	"time"
 )
 
@@ -24,6 +25,8 @@ type expvarMetrics struct {
 	rancherRequestErrors *expvar.Int
 	resolveCount         *expvar.Int
 	resolveTotalMs       *expvar.Int
+	resolveCountAtomic   int64
+	resolveTotalMsAtomic int64
 }
 
 // NewExpvarMetrics creates a Metrics implementation backed by expvar.
@@ -63,8 +66,8 @@ func (m *expvarMetrics) RecordClientResolveDuration(duration time.Duration) {
 		return
 	}
 	ms := duration.Milliseconds()
-	count := m.resolveCount.Value() + 1
-	total := m.resolveTotalMs.Value() + ms
+	count := atomic.AddInt64(&m.resolveCountAtomic, 1)
+	total := atomic.AddInt64(&m.resolveTotalMsAtomic, ms)
 	m.resolveCount.Set(count)
 	m.resolveTotalMs.Set(total)
 	m.resolveDuration.Set(float64(total) / float64(count))

@@ -270,15 +270,22 @@ func (c *Client) discoverDottedGVR(clusterID, dottedKind string) (schema.GroupVe
 	return schema.GroupVersionResource{}, fmt.Errorf("resource %s not found", dottedKind)
 }
 
+// normalizedResourceNames returns the lowercased, trimmed singular, plural and kind
+// names for a discovered API resource. An empty SingularName falls back to Kind.
+func normalizedResourceNames(r metav1.APIResource) (singular, resource, kind string) {
+	singular = strings.ToLower(strings.TrimSpace(r.SingularName))
+	resource = strings.ToLower(strings.TrimSpace(r.Name))
+	kind = strings.ToLower(strings.TrimSpace(r.Kind))
+	if singular == "" {
+		singular = kind
+	}
+	return
+}
+
 // matchesResourceName checks if an API resource matches the given name
 // by comparing against its singular name, plural name, or lowercased Kind.
 func matchesResourceName(r metav1.APIResource, name string) bool {
 	name = strings.ToLower(strings.TrimSpace(name))
-	singularName := strings.ToLower(strings.TrimSpace(r.SingularName))
-	resourceName := strings.ToLower(strings.TrimSpace(r.Name))
-	kindName := strings.ToLower(strings.TrimSpace(r.Kind))
-	if singularName == "" {
-		singularName = kindName
-	}
+	singularName, resourceName, kindName := normalizedResourceNames(r)
 	return singularName == name || resourceName == name || kindName == name
 }

@@ -117,6 +117,9 @@ func (n *Node) AddDependent(uid types.UID, r Relationship) {
 
 // GetDeps returns either Dependencies or Dependents based on direction.
 func (n *Node) GetDeps(depsIsDependencies bool) map[types.UID]RelationshipSet {
+	if n == nil {
+		return nil
+	}
 	if depsIsDependencies {
 		return n.Dependencies
 	}

@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve/fake"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
@@ -304,53 +305,53 @@ func TestTopAnalyzerBuildResult_ClampsLimitToMaxItems(t *testing.T) {
 }
 
 func TestCalcPercentage(t *testing.T) {
-	if got := calcPercentage(50, 100); got != 50.0 {
-		t.Errorf("calcPercentage(50, 100) = %f, want 50.0", got)
+	if got := formatutil.CalcPercentage(50, 100); got != 50.0 {
+		t.Errorf("formatutil.CalcPercentage(50, 100) = %f, want 50.0", got)
 	}
-	if got := calcPercentage(0, 0); got != 0.0 {
-		t.Errorf("calcPercentage(0, 0) = %f, want 0.0", got)
+	if got := formatutil.CalcPercentage(0, 0); got != 0.0 {
+		t.Errorf("formatutil.CalcPercentage(0, 0) = %f, want 0.0", got)
 	}
 }
 
 func TestResourceQuantityToMilli(t *testing.T) {
-	if got := resourceQuantityToMilli("500m"); got != 500 {
-		t.Errorf("resourceQuantityToMilli('500m') = %d, want 500", got)
+	if got := formatutil.ResourceQuantityToMilli("500m"); got != 500 {
+		t.Errorf("formatutil.ResourceQuantityToMilli('500m') = %d, want 500", got)
 	}
-	if got := resourceQuantityToMilli("2"); got != 2000 {
-		t.Errorf("resourceQuantityToMilli('2') = %d, want 2000", got)
+	if got := formatutil.ResourceQuantityToMilli("2"); got != 2000 {
+		t.Errorf("formatutil.ResourceQuantityToMilli('2') = %d, want 2000", got)
 	}
-	if got := resourceQuantityToMilli(""); got != 0 {
-		t.Errorf("resourceQuantityToMilli('') = %d, want 0", got)
+	if got := formatutil.ResourceQuantityToMilli(""); got != 0 {
+		t.Errorf("formatutil.ResourceQuantityToMilli('') = %d, want 0", got)
 	}
 }
 
 func TestResourceQuantityToBytes(t *testing.T) {
-	if got := resourceQuantityToBytes("1Gi"); got != 1024*1024*1024 {
-		t.Errorf("resourceQuantityToBytes('1Gi') = %d, want %d", got, 1024*1024*1024)
+	if got := formatutil.ResourceQuantityToBytes("1Gi"); got != 1024*1024*1024 {
+		t.Errorf("formatutil.ResourceQuantityToBytes('1Gi') = %d, want %d", got, 1024*1024*1024)
 	}
-	if got := resourceQuantityToBytes("512Mi"); got != 512*1024*1024 {
-		t.Errorf("resourceQuantityToBytes('512Mi') = %d, want %d", got, 512*1024*1024)
+	if got := formatutil.ResourceQuantityToBytes("512Mi"); got != 512*1024*1024 {
+		t.Errorf("formatutil.ResourceQuantityToBytes('512Mi') = %d, want %d", got, 512*1024*1024)
 	}
-	if got := resourceQuantityToBytes(""); got != 0 {
-		t.Errorf("resourceQuantityToBytes('') = %d, want 0", got)
+	if got := formatutil.ResourceQuantityToBytes(""); got != 0 {
+		t.Errorf("formatutil.ResourceQuantityToBytes('') = %d, want 0", got)
 	}
 }
 
 func TestResourceQuantityToMilli_Invalid(t *testing.T) {
-	if got := resourceQuantityToMilli("invalid"); got != 0 {
-		t.Errorf("resourceQuantityToMilli('invalid') = %d, want 0", got)
+	if got := formatutil.ResourceQuantityToMilli("invalid"); got != 0 {
+		t.Errorf("formatutil.ResourceQuantityToMilli('invalid') = %d, want 0", got)
 	}
 }
 
 func TestResourceQuantityToMilli_Negative(t *testing.T) {
-	if got := resourceQuantityToMilli("-1"); got != -1000 {
-		t.Errorf("resourceQuantityToMilli('-1') = %d, want -1000", got)
+	if got := formatutil.ResourceQuantityToMilli("-1"); got != -1000 {
+		t.Errorf("formatutil.ResourceQuantityToMilli('-1') = %d, want -1000", got)
 	}
 }
 
 func TestResourceQuantityToBytes_Invalid(t *testing.T) {
-	if got := resourceQuantityToBytes("not-a-size"); got != 0 {
-		t.Errorf("resourceQuantityToBytes('not-a-size') = %d, want 0", got)
+	if got := formatutil.ResourceQuantityToBytes("not-a-size"); got != 0 {
+		t.Errorf("formatutil.ResourceQuantityToBytes('not-a-size') = %d, want 0", got)
 	}
 }
 

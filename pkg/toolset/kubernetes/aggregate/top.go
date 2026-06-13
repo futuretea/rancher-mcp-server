@@ -8,7 +8,7 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/core/logging"
-	"k8s.io/apimachinery/pkg/api/resource"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/internal/formatutil"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
 
@@ -130,10 +130,10 @@ func (a *TopAnalyzer) fetchPodMetrics(ctx context.Context, cluster, namespace st
 				}
 				if usage, found, _ := unstructured.NestedMap(container, "usage"); found {
 					if cpu, ok := usage["cpu"].(string); ok {
-						pm.cpuUtil += resourceQuantityToMilli(cpu)
+						pm.cpuUtil += formatutil.ResourceQuantityToMilli(cpu)
 					}
 					if mem, ok := usage["memory"].(string); ok {
-						pm.memUtil += resourceQuantityToBytes(mem)
+						pm.memUtil += formatutil.ResourceQuantityToBytes(mem)
 					}
 				}
 			}
@@ -157,10 +157,10 @@ func (a *TopAnalyzer) fetchNodeMetrics(ctx context.Context, cluster string) (map
 		nm := &nodeMetrics{}
 		if usage, found, _ := unstructured.NestedMap(m.Object, "usage"); found {
 			if cpu, ok := usage["cpu"].(string); ok {
-				nm.cpuUtil = resourceQuantityToMilli(cpu)
+				nm.cpuUtil = formatutil.ResourceQuantityToMilli(cpu)
 			}
 			if mem, ok := usage["memory"].(string); ok {
-				nm.memUtil = resourceQuantityToBytes(mem)
+				nm.memUtil = formatutil.ResourceQuantityToBytes(mem)
 			}
 		}
 		result[name] = nm
@@ -216,7 +216,7 @@ func stringQuantityToMilli(v interface{}) int64 {
 	if !ok {
 		return 0
 	}
-	return resourceQuantityToMilli(s)
+	return formatutil.ResourceQuantityToMilli(s)
 }
 
 func stringQuantityToBytes(v interface{}) int64 {
@@ -224,7 +224,7 @@ func stringQuantityToBytes(v interface{}) int64 {
 	if !ok {
 		return 0
 	}
-	return resourceQuantityToBytes(s)
+	return formatutil.ResourceQuantityToBytes(s)
 }
 
 func sumPodRestartCounts(item *TopItem, obj map[string]interface{}) {
@@ -258,20 +258,20 @@ func extractNodeTopItem(node unstructured.Unstructured, metricsMap map[string]*n
 	// Extract capacity and allocatable
 	if capacity, found, _ := unstructured.NestedMap(node.Object, "status", "capacity"); found {
 		if cpu, ok := capacity["cpu"].(string); ok {
-			item.CPUReq = resourceQuantityToMilli(cpu) // Use CPUReq as capacity for nodes
+			item.CPUReq = formatutil.ResourceQuantityToMilli(cpu) // Use CPUReq as capacity for nodes
 		}
 		if mem, ok := capacity["memory"].(string); ok {
-			item.MemReq = resourceQuantityToBytes(mem) // Use MemReq as capacity for nodes
+			item.MemReq = formatutil.ResourceQuantityToBytes(mem) // Use MemReq as capacity for nodes
 		}
 	}
 
 	// Extract allocatable as limit
 	if allocatable, found, _ := unstructured.NestedMap(node.Object, "status", "allocatable"); found {
 		if cpu, ok := allocatable["cpu"].(string); ok {
-			item.CPULimit = resourceQuantityToMilli(cpu)
+			item.CPULimit = formatutil.ResourceQuantityToMilli(cpu)
 		}
 		if mem, ok := allocatable["memory"].(string); ok {
-			item.MemLimit = resourceQuantityToBytes(mem)
+			item.MemLimit = formatutil.ResourceQuantityToBytes(mem)
 		}
 	}
 
@@ -341,9 +341,9 @@ func sortTopItems(items []TopItem, sortBy string) {
 		case "mem.limit", "memory.limit":
 			return a.MemLimit > b.MemLimit
 		case "cpu.util.percentage":
-			return calcPercentage(a.CPUUtil, a.CPUReq) > calcPercentage(b.CPUUtil, b.CPUReq)
+			return formatutil.CalcPercentage(a.CPUUtil, a.CPUReq) > formatutil.CalcPercentage(b.CPUUtil, b.CPUReq)
 		case "mem.util.percentage", "memory.util.percentage":
-			return calcPercentage(a.MemUtil, a.MemReq) > calcPercentage(b.MemUtil, b.MemReq)
+			return formatutil.CalcPercentage(a.MemUtil, a.MemReq) > formatutil.CalcPercentage(b.MemUtil, b.MemReq)
 		case "restart.count":
 			return a.Restarts > b.Restarts
 		case "pod.count":
@@ -356,40 +356,6 @@ func sortTopItems(items []TopItem, sortBy string) {
 			return strings.ToLower(a.Name) < strings.ToLower(b.Name)
 		}
 	})
-}
-
-// calcPercentage calculates percentage with zero check
-func calcPercentage(value, total int64) float64 {
-	if total <= 0 {
-		return 0
-	}
-	return float64(value) / float64(total) * 100
-}
-
-// resourceQuantityToMilli parses a resource quantity string and returns millivalue.
-// Returns 0 for empty or unparseable input instead of panicking.
-func resourceQuantityToMilli(q string) int64 {
-	if q == "" {
-		return 0
-	}
-	qty, err := resource.ParseQuantity(q)
-	if err != nil {
-		return 0
-	}
-	return qty.MilliValue()
-}
-
-// resourceQuantityToBytes parses a resource quantity string and returns bytes.
-// Returns 0 for empty or unparseable input instead of panicking.
-func resourceQuantityToBytes(q string) int64 {
-	if q == "" {
-		return 0
-	}
-	qty, err := resource.ParseQuantity(q)
-	if err != nil {
-		return 0
-	}
-	return qty.Value()
 }
 
 // extractRestartCount extracts restart count from a map, handling int64/float64 types

@@ -19,6 +19,7 @@ import (
 
 const (
 	healthEndpoint     = "/healthz"
+	metricsEndpoint    = "/debug/vars"
 	mcpEndpoint        = "/mcp"
 	sseEndpoint        = "/sse"
 	sseMessageEndpoint = "/message"
@@ -80,6 +81,7 @@ func newHTTPServer(mcpServer *mcp.Server, staticConfig *config.StaticConfig) *ht
 	mux.Handle(sseEndpoint, sseServer)
 	mux.Handle(sseMessageEndpoint, sseServer)
 	mux.Handle(mcpEndpoint, streamableHTTPServer)
+	mux.Handle(metricsEndpoint, mcp.MetricsHandler())
 	mux.HandleFunc(healthEndpoint, func(w http.ResponseWriter, _ *http.Request) {
 		statusCode := http.StatusOK
 		if !mcpServer.IsHealthy() {

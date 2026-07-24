@@ -128,6 +128,7 @@ func (c *Client) createRestConfig(clusterID string) (*rest.Config, error) {
 
 	transport := &http.Transport{
 		TLSClientConfig: &tls.Config{InsecureSkipVerify: c.insecure},
+		Proxy:           http.ProxyFromEnvironment,
 	}
 	// A custom transport conflicts with rest.Config TLS flags; clear them and
 	// rely on the transport for TLS behavior.

@@ -1,6 +1,7 @@
 package steve
 
 import (
+	"net/http"
 	"reflect"
 	"sync"
 	"testing"
@@ -129,6 +130,26 @@ func TestNewClientWithToken_BindsToken(t *testing.T) {
 	}
 	if !client.insecure {
 		t.Error("expected insecure to be true")
+	}
+}
+
+func TestCreateRestConfigUsesEnvironmentProxy(t *testing.T) {
+	client := NewClient("https://example.com", "token", "", "", false)
+
+	restConfig, err := client.createRestConfig("cluster-a")
+	if err != nil {
+		t.Fatalf("createRestConfig() returned unexpected error: %v", err)
+	}
+
+	transport, ok := restConfig.Transport.(*http.Transport)
+	if !ok {
+		t.Fatalf("expected *http.Transport, got %T", restConfig.Transport)
+	}
+	if transport.Proxy == nil {
+		t.Fatal("expected transport to configure a proxy function")
+	}
+	if reflect.ValueOf(transport.Proxy).Pointer() != reflect.ValueOf(http.ProxyFromEnvironment).Pointer() {
+		t.Fatal("expected transport to use http.ProxyFromEnvironment")
 	}
 }
 

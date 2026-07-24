@@ -41,21 +41,29 @@ func NewClient(cfg *config.StaticConfig) (*Client, error) {
 		return &Client{}, nil
 	}
 
-	client, err := NewClientWithToken(cfg.RancherServerURL, cfg.RancherToken, cfg.RancherTLSInsecure)
-	if err != nil {
-		return nil, err
-	}
-	return client, nil
+	return newClient(
+		cfg.RancherServerURL,
+		cfg.RancherToken,
+		cfg.RancherAccessKey,
+		cfg.RancherSecretKey,
+		cfg.RancherTLSInsecure,
+	)
 }
 
 // NewClientWithToken creates a new Norman API client bound to a single request token.
 func NewClientWithToken(serverURL, token string, insecure bool) (*Client, error) {
+	return newClient(serverURL, token, "", "", insecure)
+}
+
+func newClient(serverURL, token, accessKey, secretKey string, insecure bool) (*Client, error) {
 	// Create management client configuration
 	// Use GetNormanURL to ensure /v3 suffix regardless of user input
 	clientOpts := &clientbase.ClientOpts{
-		URL:      urlutil.GetNormanURL(serverURL),
-		TokenKey: token,
-		Insecure: insecure,
+		URL:       urlutil.GetNormanURL(serverURL),
+		AccessKey: accessKey,
+		SecretKey: secretKey,
+		TokenKey:  token,
+		Insecure:  insecure,
 	}
 
 	// Create the management client

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"math"
 	"strings"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
@@ -321,13 +322,17 @@ func paginateResourceList(list *unstructured.UnstructuredList, limit, page int64
 		page = 1
 	}
 	total := int64(len(list.Items))
-	start := (page - 1) * limit
+	offset := page - 1
+	if offset > math.MaxInt64/limit {
+		return &unstructured.UnstructuredList{Object: list.Object, Items: []unstructured.Unstructured{}}
+	}
+	start := offset * limit
 	if start >= total {
 		return &unstructured.UnstructuredList{Object: list.Object, Items: []unstructured.Unstructured{}}
 	}
-	end := start + limit
-	if end > total {
-		end = total
+	remaining := total - start
+	if limit >= remaining {
+		return &unstructured.UnstructuredList{Object: list.Object, Items: list.Items[start:]}
 	}
-	return &unstructured.UnstructuredList{Object: list.Object, Items: list.Items[start:end]}
+	return &unstructured.UnstructuredList{Object: list.Object, Items: list.Items[start : start+limit]}
 }

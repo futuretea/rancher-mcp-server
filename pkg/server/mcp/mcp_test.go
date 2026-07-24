@@ -7,6 +7,7 @@ import (
 	"expvar"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
@@ -337,6 +338,17 @@ func TestContextFunc_PlacesAuthorizationInContext(t *testing.T) {
 	}
 	if token != "context-token" {
 		t.Fatalf("expected context-token, got %q", token)
+	}
+}
+
+func TestContextFunc_PreservesPresentEmptyAuthorization(t *testing.T) {
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.Header.Set("Authorization", "")
+	req.Header.Set("R_token", "fallback-token")
+
+	_, err := bearerTokenFromContext(contextFunc(context.Background(), req))
+	if err == nil || !strings.Contains(err.Error(), "malformed Authorization header") {
+		t.Fatalf("expected malformed Authorization error for a present empty header, got %v", err)
 	}
 }
 

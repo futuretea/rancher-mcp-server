@@ -3,6 +3,8 @@ module github.com/futuretea/rancher-mcp-server
 go 1.26.0
 
 require (
+	github.com/MicahParks/keyfunc/v3 v3.8.0
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/mark3labs/mcp-go v0.41.1
 	github.com/rancher/norman v0.7.0
 	github.com/rancher/rancher/pkg/client v0.0.0-20251010020652-47d600a5c30a
@@ -16,6 +18,7 @@ require (
 )
 
 require (
+	github.com/MicahParks/jwkset v0.11.0 // indirect
 	github.com/bahlo/generic-list-go v0.2.0 // indirect
 	github.com/buger/jsonparser v1.1.1 // indirect
 	github.com/davecgh/go-spew v1.1.2-0.20180830191138-d8f796af33cc // indirect

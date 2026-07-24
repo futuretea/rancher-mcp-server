@@ -34,12 +34,16 @@ func bindFlags(cmd *cobra.Command) error {
 		"sse_base_url": "sse-base-url",
 		"log_level":    "log-level",
 		// Rancher configuration
-		"rancher_server_url":         "rancher-server-url",
-		"rancher_token":              "rancher-token",
-		"rancher_access_key":         "rancher-access-key",
-		"rancher_secret_key":         "rancher-secret-key",
-		"rancher_tls_insecure":       "rancher-tls-insecure",
-		"rancher_request_token_auth": "rancher-request-token-auth",
+		"rancher_server_url":                     "rancher-server-url",
+		"rancher_token":                          "rancher-token",
+		"rancher_access_key":                     "rancher-access-key",
+		"rancher_secret_key":                     "rancher-secret-key",
+		"rancher_tls_insecure":                   "rancher-tls-insecure",
+		"rancher_request_token_auth":             "rancher-request-token-auth",
+		"rancher_oauth_token_auth":               "rancher-oauth-token-auth",
+		"rancher_oauth_authorization_server_url": "rancher-oauth-authorization-server-url",
+		"rancher_oauth_jwks_url":                 "rancher-oauth-jwks-url",
+		"rancher_oauth_resource_url":             "rancher-oauth-resource-url",
 		// Security configuration
 		"read_only":           "read-only",
 		"disable_destructive": "disable-destructive",
@@ -111,6 +115,10 @@ for network access.`,
 	cmd.Flags().String("rancher-secret-key", "", "Rancher secret key")
 	cmd.Flags().Bool("rancher-tls-insecure", false, "Rancher server tls insecure")
 	cmd.Flags().Bool("rancher-request-token-auth", false, "Use the Authorization Bearer token from each HTTP/SSE request to access Rancher")
+	cmd.Flags().Bool("rancher-oauth-token-auth", false, "Validate a Rancher OAuth Bearer token on each Streamable HTTP request")
+	cmd.Flags().String("rancher-oauth-authorization-server-url", "", "Rancher OAuth authorization server URL")
+	cmd.Flags().String("rancher-oauth-jwks-url", "", "Rancher OAuth JWKS URL")
+	cmd.Flags().String("rancher-oauth-resource-url", "", "Public root URL for Rancher OAuth metadata")
 
 	// Security configuration flags
 	cmd.Flags().Bool("read-only", true, "Run in read-only mode")
@@ -192,8 +200,14 @@ func runServer(cfgFile string, streams IOStreams) error {
 // validateRequestTokenAuthMode rejects the unsupported combination of stdio mode
 // and per-request Rancher token authentication.
 func validateRequestTokenAuthMode(cfg *config.StaticConfig) error {
-	if cfg.Port == 0 && cfg.RancherRequestTokenAuth {
+	if cfg.Port != 0 {
+		return nil
+	}
+	if cfg.RancherRequestTokenAuth {
 		return fmt.Errorf("rancher_request_token_auth is not supported in stdio mode")
+	}
+	if cfg.RancherOAuthTokenAuth {
+		return fmt.Errorf("rancher_oauth_token_auth is not supported in stdio mode")
 	}
 	return nil
 }

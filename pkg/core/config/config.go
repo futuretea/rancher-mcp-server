@@ -20,12 +20,16 @@ type StaticConfig struct {
 	LogLevel int `mapstructure:"log_level"`
 
 	// Rancher configuration
-	RancherServerURL        string `mapstructure:"rancher_server_url"`
-	RancherToken            string `mapstructure:"rancher_token"`
-	RancherAccessKey        string `mapstructure:"rancher_access_key"`
-	RancherSecretKey        string `mapstructure:"rancher_secret_key"`
-	RancherTLSInsecure      bool   `mapstructure:"rancher_tls_insecure"`
-	RancherRequestTokenAuth bool   `mapstructure:"rancher_request_token_auth"`
+	RancherServerURL                   string `mapstructure:"rancher_server_url"`
+	RancherToken                       string `mapstructure:"rancher_token"`
+	RancherAccessKey                   string `mapstructure:"rancher_access_key"`
+	RancherSecretKey                   string `mapstructure:"rancher_secret_key"`
+	RancherTLSInsecure                 bool   `mapstructure:"rancher_tls_insecure"`
+	RancherRequestTokenAuth            bool   `mapstructure:"rancher_request_token_auth"`
+	RancherOAuthTokenAuth              bool   `mapstructure:"rancher_oauth_token_auth"`
+	RancherOAuthAuthorizationServerURL string `mapstructure:"rancher_oauth_authorization_server_url"`
+	RancherOAuthJWKSURL                string `mapstructure:"rancher_oauth_jwks_url"`
+	RancherOAuthResourceURL            string `mapstructure:"rancher_oauth_resource_url"`
 
 	// Security configuration
 	ReadOnly           bool `mapstructure:"read_only"`
@@ -68,35 +72,78 @@ func (c *StaticConfig) Validate() error {
 		return fmt.Errorf("list_output must be one of: table, yaml, json, got %s", c.ListOutput)
 	}
 
-	// Validate Rancher configuration
-	if c.RancherServerURL != "" {
-		if !strings.HasPrefix(c.RancherServerURL, "http://") && !strings.HasPrefix(c.RancherServerURL, "https://") {
-			return fmt.Errorf("rancher_server_url must start with http:// or https://, got %s", c.RancherServerURL)
-		}
+	return c.validateRancherConfiguration()
+}
+
+func (c *StaticConfig) validateRancherConfiguration() error {
+	if err := c.validateRancherServerURL(); err != nil {
+		return err
 	}
 
+	switch {
+	case c.RancherOAuthTokenAuth:
+		return c.validateOAuthTokenAuth()
+	case c.RancherRequestTokenAuth:
+		return c.validateRequestTokenAuth()
+	default:
+		return c.validateStaticRancherAuth()
+	}
+}
+
+func (c *StaticConfig) validateRancherServerURL() error {
+	if c.RancherServerURL != "" && !strings.HasPrefix(c.RancherServerURL, "http://") && !strings.HasPrefix(c.RancherServerURL, "https://") {
+		return fmt.Errorf("rancher_server_url must start with http:// or https://, got %s", c.RancherServerURL)
+	}
+	return nil
+}
+
+func (c *StaticConfig) validateOAuthTokenAuth() error {
+	if c.RancherServerURL == "" {
+		return fmt.Errorf("rancher_server_url is required when rancher_oauth_token_auth is enabled")
+	}
 	if c.RancherRequestTokenAuth {
-		if c.RancherServerURL == "" {
-			return fmt.Errorf("rancher_server_url is required when rancher_request_token_auth is enabled")
+		return fmt.Errorf("rancher_oauth_token_auth cannot be combined with rancher_request_token_auth")
+	}
+	if c.hasStaticCredentials() {
+		return fmt.Errorf("rancher_oauth_token_auth cannot be combined with rancher_token, rancher_access_key, or rancher_secret_key")
+	}
+	for _, field := range []struct {
+		name  string
+		value string
+	}{
+		{"rancher_oauth_authorization_server_url", c.RancherOAuthAuthorizationServerURL},
+		{"rancher_oauth_jwks_url", c.RancherOAuthJWKSURL},
+		{"rancher_oauth_resource_url", c.RancherOAuthResourceURL},
+	} {
+		if field.value == "" {
+			return fmt.Errorf("%s is required when rancher_oauth_token_auth is enabled", field.name)
 		}
+	}
+	return nil
+}
 
-		if c.hasStaticCredentials() {
-			return fmt.Errorf("rancher_request_token_auth cannot be combined with rancher_token, rancher_access_key, or rancher_secret_key")
-		}
+func (c *StaticConfig) validateRequestTokenAuth() error {
+	if c.RancherServerURL == "" {
+		return fmt.Errorf("rancher_server_url is required when rancher_request_token_auth is enabled")
+	}
 
+	if c.hasStaticCredentials() {
+		return fmt.Errorf("rancher_request_token_auth cannot be combined with rancher_token, rancher_access_key, or rancher_secret_key")
+	}
+	return nil
+}
+
+func (c *StaticConfig) validateStaticRancherAuth() error {
+	if c.RancherServerURL == "" {
 		return nil
 	}
-
-	if c.RancherServerURL != "" {
-		if !c.hasTokenAuth() && !c.hasKeyAuth() {
-			return fmt.Errorf("rancher authentication required: either rancher_token or both rancher_access_key and rancher_secret_key must be provided")
-		}
-
-		if c.hasTokenAuth() && c.hasKeyAuth() {
-			return fmt.Errorf("cannot use both rancher_token and rancher_access_key/rancher_secret_key authentication methods")
-		}
+	if !c.hasTokenAuth() && !c.hasKeyAuth() {
+		return fmt.Errorf("rancher authentication required: either rancher_token or both rancher_access_key and rancher_secret_key must be provided")
 	}
 
+	if c.hasTokenAuth() && c.hasKeyAuth() {
+		return fmt.Errorf("cannot use both rancher_token and rancher_access_key/rancher_secret_key authentication methods")
+	}
 	return nil
 }
 

@@ -26,7 +26,10 @@ import (
 // contextKey is a custom type for context keys to avoid collisions.
 type contextKey string
 
-const authorizationKey contextKey = "Authorization"
+const (
+	authorizationKey contextKey = "Authorization"
+	rancherTokenKey  contextKey = "R_token"
+)
 
 // Configuration wraps the static configuration with additional runtime components
 type Configuration struct {
@@ -43,12 +46,21 @@ type Server struct {
 	combinedClient *toolset.CombinedClient
 	clientResolver toolset.ClientResolver
 	metrics        Metrics
+	oauthVerifier  *oauthTokenVerifier
 }
 
 // NewServer creates a new MCP server with the given configuration
 func NewServer(configuration Configuration) (*Server, error) {
 	// Note: Logging is initialized in root.go before calling NewServer
 	// to properly handle stdio vs HTTP/SSE mode
+	var oauthVerifier *oauthTokenVerifier
+	if configuration.RancherOAuthTokenAuth {
+		var err error
+		oauthVerifier, err = newOAuthTokenVerifier(configuration.StaticConfig)
+		if err != nil {
+			return nil, fmt.Errorf("initialize OAuth token verifier: %w", err)
+		}
+	}
 
 	// Configure server capabilities.
 	serverOptions := []server.ServerOption{
@@ -62,9 +74,22 @@ func NewServer(configuration Configuration) (*Server, error) {
 		configuration: &configuration,
 		server:        server.NewMCPServer(version.BinaryName, version.Version, serverOptions...),
 		metrics:       NewExpvarMetrics(),
+		oauthVerifier: oauthVerifier,
 	}
 
-	if configuration.RancherRequestTokenAuth {
+	if oauthVerifier != nil {
+		logging.Info("auth mode: Rancher OAuth token")
+		logging.Info("rancher server URL: %s", configuration.RancherServerURL)
+
+		s.clientResolver = &oauthTokenResolver{
+			serverURL:     configuration.RancherServerURL,
+			insecure:      configuration.RancherTLSInsecure,
+			steveFactory:  steve.NewClientWithToken,
+			normanFactory: norman.NewClientWithToken,
+			metrics:       s.metrics,
+		}
+		s.combinedClient = toolset.NewCombinedClient(nil, nil, false)
+	} else if configuration.RancherRequestTokenAuth {
 		logging.Info("auth mode: per-request token (RancherRequestTokenAuth=true)")
 		logging.Info("rancher server URL: %s", configuration.RancherServerURL)
 
@@ -265,8 +290,11 @@ func (s *Server) configureTool(tool toolset.ServerTool) toolset.ServerTool {
 }
 
 func contextFunc(ctx context.Context, r *http.Request) context.Context {
-	if authHeader := r.Header.Get("Authorization"); authHeader != "" {
-		return context.WithValue(ctx, authorizationKey, authHeader)
+	if _, authorizationPresent := r.Header[http.CanonicalHeaderKey("Authorization")]; authorizationPresent {
+		ctx = context.WithValue(ctx, authorizationKey, r.Header.Get("Authorization"))
+	}
+	if rancherToken := r.Header.Get("R_token"); rancherToken != "" {
+		ctx = context.WithValue(ctx, rancherTokenKey, rancherToken)
 	}
 	return ctx
 }
@@ -356,13 +384,34 @@ func (s *Server) ServeSse(baseURL string, httpServer *http.Server) *server.SSESe
 func (s *Server) ServeHTTP(httpServer *http.Server) *server.StreamableHTTPServer {
 	logging.Info("Starting MCP server in HTTP mode")
 
+	requestContext := contextFunc
+	if s.configuration.RancherOAuthTokenAuth {
+		requestContext = func(ctx context.Context, _ *http.Request) context.Context {
+			return ctx
+		}
+	}
+
 	options := []server.StreamableHTTPOption{
-		server.WithHTTPContextFunc(contextFunc),
+		server.WithHTTPContextFunc(requestContext),
 		server.WithStreamableHTTPServer(httpServer),
 		server.WithStateLess(true),
 	}
 
 	return server.NewStreamableHTTPServer(s.server, options...)
+}
+
+// ServeOAuthHTTP starts the Streamable HTTP handler protected by the configured OAuth verifier.
+func (s *Server) ServeOAuthHTTP(httpServer *http.Server) http.Handler {
+	streamableHTTPServer := s.ServeHTTP(httpServer)
+	if s.oauthVerifier == nil {
+		return streamableHTTPServer
+	}
+	return s.oauthVerifier.middleware(s.configuration.RancherOAuthResourceURL, streamableHTTPServer)
+}
+
+// OAuthProtectedResourceMetadataHandler returns the configured OAuth discovery handler.
+func (s *Server) OAuthProtectedResourceMetadataHandler() http.Handler {
+	return oauthProtectedResourceMetadataHandler(s.configuration.StaticConfig)
 }
 
 // GetEnabledTools returns the list of enabled tools

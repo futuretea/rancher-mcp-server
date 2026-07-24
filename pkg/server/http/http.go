@@ -23,6 +23,7 @@ const (
 	mcpEndpoint        = "/mcp"
 	sseEndpoint        = "/sse"
 	sseMessageEndpoint = "/message"
+	oauthMetadataPath  = "/.well-known/oauth-protected-resource"
 )
 
 func Serve(ctx context.Context, mcpServer *mcp.Server, staticConfig *config.StaticConfig) error {
@@ -36,7 +37,11 @@ func Serve(ctx context.Context, mcpServer *mcp.Server, staticConfig *config.Stat
 
 	serverErr := make(chan error, 1)
 	go func() {
-		logging.Info("Streaming and SSE HTTP servers starting on port %s and paths /mcp, /sse, /message", staticConfig.GetPortString())
+		paths := "/mcp, /sse, /message"
+		if staticConfig.RancherOAuthTokenAuth {
+			paths = "/.well-known/oauth-protected-resource, /mcp"
+		}
+		logging.Info("HTTP server starting on port %s and paths %s", staticConfig.GetPortString(), paths)
 		if err := httpServer.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			serverErr <- err
 		}
@@ -76,11 +81,16 @@ func newHTTPServer(mcpServer *mcp.Server, staticConfig *config.StaticConfig) *ht
 		Handler: wrappedMux,
 	}
 
-	sseServer := mcpServer.ServeSse(staticConfig.SSEBaseURL, httpServer)
-	streamableHTTPServer := mcpServer.ServeHTTP(httpServer)
-	mux.Handle(sseEndpoint, sseServer)
-	mux.Handle(sseMessageEndpoint, sseServer)
-	mux.Handle(mcpEndpoint, streamableHTTPServer)
+	if staticConfig.RancherOAuthTokenAuth {
+		mux.Handle(oauthMetadataPath, mcpServer.OAuthProtectedResourceMetadataHandler())
+		mux.Handle(mcpEndpoint, mcpServer.ServeOAuthHTTP(httpServer))
+	} else {
+		sseServer := mcpServer.ServeSse(staticConfig.SSEBaseURL, httpServer)
+		streamableHTTPServer := mcpServer.ServeHTTP(httpServer)
+		mux.Handle(sseEndpoint, sseServer)
+		mux.Handle(sseMessageEndpoint, sseServer)
+		mux.Handle(mcpEndpoint, streamableHTTPServer)
+	}
 	mux.Handle(metricsEndpoint, mcp.MetricsHandler())
 	mux.HandleFunc(healthEndpoint, func(w http.ResponseWriter, _ *http.Request) {
 		statusCode := http.StatusOK

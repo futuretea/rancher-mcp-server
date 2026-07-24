@@ -116,7 +116,11 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--rancher-access-key` | Rancher access key | |
 | `--rancher-secret-key` | Rancher secret key | |
 | `--rancher-tls-insecure` | Skip TLS verification | `false` |
-| `--rancher-request-token-auth` | Use the `Authorization: Bearer <token>` header from each HTTP/SSE request instead of static credentials | `false` |
+| `--rancher-request-token-auth` | Use `Authorization: Bearer <token>`, or raw `R_token` only when Authorization is absent, from each HTTP/SSE request instead of static credentials | `false` |
+| `--rancher-oauth-token-auth` | Verify a Rancher OAuth Bearer token before `/mcp` calls Rancher | `false` |
+| `--rancher-oauth-authorization-server-url` | Rancher OAuth authorization-server URL and JWT issuer | |
+| `--rancher-oauth-jwks-url` | Rancher OAuth JWKS URL loaded during server construction | |
+| `--rancher-oauth-resource-url` | Root public resource URL used by discovery metadata and the 401 challenge | |
 | `--read-only` | Disable write operations | `true` |
 | `--disable-destructive` | Disable delete operations | `false` |
 | `--show-sensitive-data` | Global admin flag to allow sensitive data visibility | `false` |
@@ -141,19 +145,30 @@ log_level: 5
 
 rancher_server_url: https://your-rancher-server.com
 
-# Authentication: choose ONE of the following methods.
+# Authentication: choose exactly one mode.
 
-# Method 1: Static bearer token
+# Mode 1: Static credentials
+# Static bearer token:
 rancher_token: your-bearer-token
 # Or use Access Key/Secret Key:
 # rancher_access_key: your-access-key
 # rancher_secret_key: your-secret-key
 
-# Method 2: Per-request token (HTTP/SSE mode only)
-# When enabled, the server reads the Authorization: Bearer <token> header from
-# each HTTP/SSE request and forwards it to Rancher. Static credentials above
-# must be empty, and the upstream gateway must forward the Authorization header.
+# Mode 2: Direct per-request token (HTTP/SSE mode only)
+# When enabled, the server uses Authorization: Bearer <token> from each HTTP/SSE
+# request. If Authorization is absent, it uses a non-empty raw R_token header instead.
+# A present malformed or empty Authorization header never falls back to R_token.
+# Static credentials above must be empty.
 # rancher_request_token_auth: true
+
+# Mode 3: Rancher OAuth token passthrough (Streamable HTTP /mcp only)
+# The client obtains its Rancher access token outside this service. The server
+# verifies the Bearer JWT before it calls Rancher and then passes that verified
+# token to Rancher APIs. Do not combine this with Modes 1 or 2.
+# rancher_oauth_token_auth: true
+# rancher_oauth_authorization_server_url: https://rancher.example.com/oidc
+# rancher_oauth_jwks_url: https://rancher.example.com/oidc/.well-known/jwks.json
+# rancher_oauth_resource_url: https://mcp.example.com
 
 # rancher_tls_insecure: false
 
@@ -217,6 +232,11 @@ Endpoints:
 - `/sse` - Server-Sent Events endpoint
 - `/message` - Message endpoint for SSE clients
 
+In Rancher OAuth token passthrough mode, `/mcp` and
+`/.well-known/oauth-protected-resource` are the MCP transport routes. `/sse`
+and `/message` return `404` in that mode; `/healthz` and `/debug/vars` remain
+available.
+
 With a public URL behind a proxy:
 
 ```shell
@@ -228,11 +248,11 @@ rancher-mcp-server --port 8080 \
 
 ### Per-Request Rancher Token Authentication
 
-When running in HTTP/SSE mode behind a gateway that authenticates users, you can use `--rancher-request-token-auth` so the server does not store static Rancher credentials. Instead, it reads the `Authorization: Bearer <token>` header from each incoming HTTP/SSE request and uses that token for the Rancher API.
+When running in HTTP/SSE mode behind a gateway that authenticates users, you can use `--rancher-request-token-auth` so the server does not store static Rancher credentials. It uses `Authorization: Bearer <token>` when that field is present; otherwise, it uses a non-empty raw `R_token` header for the Rancher API.
 
 Requirements:
 - HTTP/SSE mode only (`--port` must be greater than `0`; incompatible with stdio mode)
-- The upstream gateway or proxy must forward the `Authorization` header on every request to `/mcp`, `/sse`, and `/message`
+- The upstream gateway or proxy must forward either `Authorization` or `R_token` on every request to `/mcp`, `/sse`, and `/message`; a present malformed or empty Authorization field blocks `R_token` fallback
 - Cannot be combined with `--rancher-token`, `--rancher-access-key`, or `--rancher-secret-key`
 
 Example:
@@ -245,7 +265,7 @@ rancher-mcp-server --port 8080 \
 
 #### Gateway Examples
 
-The upstream gateway must forward the `Authorization` header. Minimal examples:
+The upstream gateway must forward the selected request-token header. Minimal examples use Authorization:
 
 **nginx:**
 
@@ -268,6 +288,49 @@ http:
         customRequestHeaders:
           Authorization: "{http.request.header.Authorization}"
 ```
+
+### Rancher OAuth Token Passthrough Authentication
+
+Rancher OAuth token passthrough is an opt-in alternative to static credentials
+and direct per-request tokens. An MCP client obtains a Rancher access token
+outside this service, sends it as `Authorization: Bearer <token>` to `/mcp`, and
+the server verifies its RS256 signature, issuer, present time claims with a
+ten-second leeway, and the `offline_access` and `rancher:mcp` scopes before
+constructing Rancher clients. Audience is not enforced and expiration is not required.
+Invalid or missing tokens receive `401 Unauthorized` with a
+`WWW-Authenticate` resource-metadata challenge and make no Rancher API calls.
+
+Use it only in Streamable HTTP mode:
+
+```shell
+rancher-mcp-server --port 8080 \
+  --rancher-server-url https://rancher.example.com \
+  --rancher-oauth-token-auth \
+  --rancher-oauth-authorization-server-url https://rancher.example.com/oidc \
+  --rancher-oauth-jwks-url https://rancher.example.com/oidc/.well-known/jwks.json \
+  --rancher-oauth-resource-url https://mcp.example.com
+```
+
+Requirements and limits:
+
+- The four OAuth fields are required when `--rancher-oauth-token-auth` is set.
+  OAuth mode cannot be combined with static credentials or
+  `--rancher-request-token-auth`, and it is rejected in stdio mode.
+- The removed audience YAML key and derived environment name are not newly rejected;
+  current configuration loading ignores unknown legacy inputs.
+- The resource URL must be the root public URL. Path-mounted deployments are
+  unsupported. The server does not validate URL format, URL path, or HTTPS;
+  deployment owns those settings.
+- OAuth mode registers `/mcp` and
+  `/.well-known/oauth-protected-resource` as its MCP transport routes. It does
+  not provide OAuth SSE or session-principal state, so `/sse` and `/message`
+  return `404`; `/healthz` and `/debug/vars` remain available.
+- This service never reads, forwards, stores, or logs Rancher browser cookies
+  such as `R_SESS`. It does not implement authorization-code exchange, token
+  exchange, refresh tokens, dynamic client registration, or JWKS rotation.
+- This is an explicitly accepted Rancher-token passthrough mode. It provides
+  reference-compatible metadata and a challenge, but does not claim generic
+  MCP OAuth or RFC 9728 interoperability.
 
 ## Tools and Functionalities <a id="tools-and-functionalities"></a>
 

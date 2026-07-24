@@ -31,8 +31,14 @@ type fakeRancherBackend struct {
 
 	mu       sync.Mutex
 	auths    []string
+	requests []rancherBackendRequest
 	schemaOK int64
 	listOK   int64
+}
+
+type rancherBackendRequest struct {
+	path          string
+	authorization string
 }
 
 func newFakeRancherBackend(tb testing.TB) *fakeRancherBackend {
@@ -48,10 +54,11 @@ func (f *fakeRancherBackend) URL() string {
 	return f.server.URL
 }
 
-func (f *fakeRancherBackend) recordAuth(auth string) {
+func (f *fakeRancherBackend) recordAuth(path, auth string) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.auths = append(f.auths, auth)
+	f.requests = append(f.requests, rancherBackendRequest{path: path, authorization: auth})
 }
 
 func (f *fakeRancherBackend) AuthHeaders() []string {
@@ -59,6 +66,14 @@ func (f *fakeRancherBackend) AuthHeaders() []string {
 	defer f.mu.Unlock()
 	out := make([]string, len(f.auths))
 	copy(out, f.auths)
+	return out
+}
+
+func (f *fakeRancherBackend) Requests() []rancherBackendRequest {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := make([]rancherBackendRequest, len(f.requests))
+	copy(out, f.requests)
 	return out
 }
 
@@ -85,7 +100,7 @@ func (f *fakeRancherBackend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Norman schema discovery: the management client fetches /v3 (or /v3/schemas).
 	if strings.HasPrefix(path, "/v3") {
-		f.recordAuth(auth)
+		f.recordAuth(path, auth)
 		atomic.AddInt64(&f.schemaOK, 1)
 		f.writeSchemaDiscovery(w, r)
 		return
@@ -93,7 +108,7 @@ func (f *fakeRancherBackend) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	// Steve namespace list: /k8s/clusters/{clusterID}/api/v1/namespaces
 	if strings.HasPrefix(path, "/k8s/clusters/") && strings.HasSuffix(path, "/api/v1/namespaces") {
-		f.recordAuth(auth)
+		f.recordAuth(path, auth)
 		atomic.AddInt64(&f.listOK, 1)
 		f.writeNamespaceList(w, r)
 		return
@@ -183,9 +198,12 @@ func newDynamicSSEMCPServer(tb testing.TB, backendURL string, toolsets []string)
 	return ts
 }
 
-func newStreamableMCPClient(tb testing.TB, serverURL, token string) *mcpclient.Client {
+func newStreamableMCPClient(tb testing.TB, serverURL, token string, rToken ...string) *mcpclient.Client {
 	baseURL := serverURL + "/mcp"
 	headers := map[string]string{"Authorization": "Bearer " + token}
+	if len(rToken) > 0 {
+		headers["R_token"] = rToken[0]
+	}
 	client, err := mcpclient.NewStreamableHttpClient(baseURL, mcptransport.WithHTTPHeaders(headers))
 	if err != nil {
 		tb.Fatalf("NewStreamableHttpClient(%q) failed: %v", baseURL, err)
@@ -214,12 +232,16 @@ func newStreamableMCPClient(tb testing.TB, serverURL, token string) *mcpclient.C
 }
 
 func callListNamespaces(ctx context.Context, tb testing.TB, client *mcpclient.Client) (*mcpgo.CallToolResult, error) {
+	return callListNamespacesForCluster(ctx, tb, client, "local")
+}
+
+func callListNamespacesForCluster(ctx context.Context, tb testing.TB, client *mcpclient.Client, cluster string) (*mcpgo.CallToolResult, error) {
 	tb.Helper()
 	return client.CallTool(ctx, mcpgo.CallToolRequest{
 		Params: mcpgo.CallToolParams{
 			Name: "kubernetes_list",
 			Arguments: map[string]any{
-				"cluster": "local",
+				"cluster": cluster,
 				"kind":    "namespace",
 				"format":  "json",
 			},
@@ -234,8 +256,11 @@ func TestDynamicAuthHTTPToolCall(t *testing.T) {
 	backend := newFakeRancherBackend(t)
 	mcpServer := newDynamicMCPServer(t, backend.URL(), []string{"kubernetes"})
 
-	const token = "integration-token"
-	client := newStreamableMCPClient(t, mcpServer.URL, token)
+	const (
+		token  = "integration-token"
+		rToken = "http-fallback-token"
+	)
+	client := newStreamableMCPClient(t, mcpServer.URL, token, rToken)
 
 	result, err := callListNamespaces(context.Background(), t, client)
 	if err != nil {
@@ -269,15 +294,14 @@ func TestDynamicAuthHTTPToolCall(t *testing.T) {
 	}
 }
 
-// TestDynamicAuthSSEToolCall verifies the SSE request-token path: the
-// Authorization header is propagated through the SSE handshake and each
-// subsequent tool call message.
+// TestDynamicAuthSSEToolCall verifies the SSE raw R_token fallback path when
+// the Authorization field is absent from the handshake and tool-call messages.
 func TestDynamicAuthSSEToolCall(t *testing.T) {
 	backend := newFakeRancherBackend(t)
 	mcpServer := newDynamicSSEMCPServer(t, backend.URL(), []string{"kubernetes"})
 
-	const token = "sse-integration-token"
-	headers := map[string]string{"Authorization": "Bearer " + token}
+	const token = "sse-r-token"
+	headers := map[string]string{"R_token": token}
 	client, err := mcpclient.NewSSEMCPClient(mcpServer.URL+"/sse", mcptransport.WithHeaders(headers))
 	if err != nil {
 		t.Fatalf("NewSSEMCPClient(%q) failed: %v", mcpServer.URL, err)

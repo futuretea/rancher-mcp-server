@@ -31,7 +31,11 @@ func (c *Configuration) HasRancherCapability() bool {
 	if c.HasRancherConfig() {
 		return true
 	}
-	return c.RancherRequestTokenAuth && c.RancherServerURL != ""
+	return c.usesRequestScopedRancherToken() && c.RancherServerURL != ""
+}
+
+func (c *Configuration) usesRequestScopedRancherToken() bool {
+	return c.RancherRequestTokenAuth || c.RancherOAuthTokenAuth
 }
 
 func buildCapabilityStatus(configured, available bool, missingReason, unavailableReason string) CapabilityStatus {
@@ -51,8 +55,9 @@ func (s *Server) capabilityStatuses() map[string]CapabilityStatus {
 	hasCapability := s.configuration != nil && s.configuration.HasRancherCapability()
 	hasConfig := s.configuration != nil && s.configuration.HasRancherConfig()
 
-	rancherAvailable := hasCapability && (s.configuration.RancherRequestTokenAuth || (s.normanClient != nil && s.normanClient.IsUsable()))
-	kubernetesAvailable := hasCapability && (s.configuration.RancherRequestTokenAuth || s.steveClient != nil)
+	requestScoped := s.configuration != nil && s.configuration.usesRequestScopedRancherToken()
+	rancherAvailable := hasCapability && (requestScoped || (s.normanClient != nil && s.normanClient.IsUsable()))
+	kubernetesAvailable := hasCapability && (requestScoped || s.steveClient != nil)
 
 	rancherStatus := buildCapabilityStatus(hasCapability, rancherAvailable, "rancher configuration missing", "rancher client unavailable")
 	kubernetesStatus := buildCapabilityStatus(hasCapability, kubernetesAvailable, "rancher configuration missing", "kubernetes client unavailable")

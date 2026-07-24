@@ -5,6 +5,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 )
 
 func TestGetDynamicClient_ReusesClientPerCluster(t *testing.T) {
@@ -133,7 +134,7 @@ func TestNewClientWithToken_BindsToken(t *testing.T) {
 	}
 }
 
-func TestCreateRestConfigUsesEnvironmentProxy(t *testing.T) {
+func TestCreateRestConfigUsesClientGoTransportDefaults(t *testing.T) {
 	client := NewClient("https://example.com", "token", "", "", false)
 
 	restConfig, err := client.createRestConfig("cluster-a")
@@ -148,8 +149,31 @@ func TestCreateRestConfigUsesEnvironmentProxy(t *testing.T) {
 	if transport.Proxy == nil {
 		t.Fatal("expected transport to configure a proxy function")
 	}
-	if reflect.ValueOf(transport.Proxy).Pointer() != reflect.ValueOf(http.ProxyFromEnvironment).Pointer() {
-		t.Fatal("expected transport to use http.ProxyFromEnvironment")
+	if transport.DialContext == nil {
+		t.Fatal("expected transport to configure a dialer")
+	}
+	if transport.TLSHandshakeTimeout != 10*time.Second {
+		t.Fatalf("expected a 10 second TLS handshake timeout, got %s", transport.TLSHandshakeTimeout)
+	}
+	if transport.IdleConnTimeout == 0 {
+		t.Fatal("expected transport to configure an idle connection timeout")
+	}
+}
+
+func TestCreateRestConfigReusesTransportPerCluster(t *testing.T) {
+	client := NewClient("https://example.com", "token", "", "", false)
+
+	first, err := client.createRestConfig("cluster-a")
+	if err != nil {
+		t.Fatalf("first createRestConfig() returned unexpected error: %v", err)
+	}
+	second, err := client.createRestConfig("cluster-a")
+	if err != nil {
+		t.Fatalf("second createRestConfig() returned unexpected error: %v", err)
+	}
+
+	if first.Transport != second.Transport {
+		t.Fatal("expected REST configs for the same cluster to share a transport")
 	}
 }
 

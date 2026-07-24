@@ -6,6 +6,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"k8s.io/client-go/rest"
 )
 
 func TestGetDynamicClient_ReusesClientPerCluster(t *testing.T) {
@@ -174,6 +176,41 @@ func TestCreateRestConfigReusesTransportPerCluster(t *testing.T) {
 
 	if first.Transport != second.Transport {
 		t.Fatal("expected REST configs for the same cluster to share a transport")
+	}
+}
+
+func TestCreateRestConfigReusesTransportAcrossConcurrentCalls(t *testing.T) {
+	client := NewClient("https://example.com", "token", "", "", false)
+
+	const workers = 8
+	configs := make([]*rest.Config, workers)
+	errs := make([]error, workers)
+	start := make(chan struct{})
+
+	var wg sync.WaitGroup
+	wg.Add(workers)
+	for i := 0; i < workers; i++ {
+		go func(index int) {
+			defer wg.Done()
+			<-start
+			configs[index], errs[index] = client.createRestConfig("cluster-a")
+		}(i)
+	}
+	close(start)
+	wg.Wait()
+
+	for _, err := range errs {
+		if err != nil {
+			t.Fatalf("concurrent createRestConfig() returned unexpected error: %v", err)
+		}
+	}
+	if len(client.transports) != 1 {
+		t.Fatalf("expected one cached transport, got %d", len(client.transports))
+	}
+	for i := 1; i < len(configs); i++ {
+		if configs[i].Transport != configs[0].Transport {
+			t.Fatal("expected concurrent REST configs to share a transport")
+		}
 	}
 }
 

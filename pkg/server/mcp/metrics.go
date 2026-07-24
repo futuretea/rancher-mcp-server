@@ -1,11 +1,22 @@
 package mcp
 
 import (
+	"encoding/json"
 	"expvar"
+	"net/http"
 	"runtime"
 	"sync/atomic"
 	"time"
 )
+
+var expvarMetricNames = []string{
+	"client_resolve_duration",
+	"client_resolve_memory_bytes",
+	"active_client_count",
+	"rancher_request_errors",
+	"client_resolve_duration_count",
+	"client_resolve_duration_total_ms",
+}
 
 // Metrics exposes observability for the per-request token resolution path.
 type Metrics interface {
@@ -41,6 +52,21 @@ func NewExpvarMetrics() Metrics {
 		resolveCount:         getOrCreateInt("client_resolve_duration_count"),
 		resolveTotalMs:       getOrCreateInt("client_resolve_duration_total_ms"),
 	}
+}
+
+// MetricsHandler returns an HTTP handler that exposes only this package's metrics.
+func MetricsHandler() http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		metrics := make(map[string]json.RawMessage, len(expvarMetricNames))
+		for _, name := range expvarMetricNames {
+			if metric := expvar.Get(name); metric != nil {
+				metrics[name] = json.RawMessage(metric.String())
+			}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(metrics)
+	})
 }
 
 func getOrCreateInt(name string) *expvar.Int {

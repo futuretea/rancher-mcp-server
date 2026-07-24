@@ -4,7 +4,6 @@ package steve
 
 import (
 	"context"
-	"crypto/tls"
 	"fmt"
 	"net/http"
 	"sync"
@@ -21,6 +20,7 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
+	"k8s.io/client-go/transport"
 )
 
 // ResourceReader is the read-only interface for querying Kubernetes resources.
@@ -126,18 +126,34 @@ func (c *Client) createRestConfig(clusterID string) (*rest.Config, error) {
 		return nil, err
 	}
 
-	transport := &http.Transport{
-		TLSClientConfig: &tls.Config{InsecureSkipVerify: c.insecure},
-		Proxy:           http.ProxyFromEnvironment,
+	httpTransport := c.transports[clusterID]
+	if httpTransport == nil {
+		transportConfig, err := restConfig.TransportConfig()
+		if err != nil {
+			return nil, fmt.Errorf("create transport config: %w", err)
+		}
+		transportConfig.BearerToken = ""
+		transportConfig.BearerTokenFile = ""
+		transportConfig.Username = ""
+		transportConfig.Password = ""
+
+		roundTripper, err := transport.New(transportConfig)
+		if err != nil {
+			return nil, fmt.Errorf("create HTTP transport: %w", err)
+		}
+		var ok bool
+		httpTransport, ok = roundTripper.(*http.Transport)
+		if !ok {
+			return nil, fmt.Errorf("expected *http.Transport, got %T", roundTripper)
+		}
+		c.transports[clusterID] = httpTransport
 	}
+
 	// A custom transport conflicts with rest.Config TLS flags; clear them and
 	// rely on the transport for TLS behavior.
 	restConfig.Insecure = false
 	restConfig.TLSClientConfig = rest.TLSClientConfig{}
-	restConfig.Transport = transport
-
-	// Caller holds cacheMu, so the transports map is guaranteed to be initialized.
-	c.transports[clusterID] = transport
+	restConfig.Transport = httpTransport
 
 	return restConfig, nil
 }

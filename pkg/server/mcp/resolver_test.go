@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"expvar"
+	"net/http/httptest"
 	"strings"
 	"sync"
 	"testing"
@@ -23,6 +24,146 @@ func TestStaticResolver_ReturnsPrebuiltClient(t *testing.T) {
 	}
 	if resolved != client {
 		t.Fatal("expected static resolver to return pre-built client")
+	}
+}
+
+func TestStaticResolver_IgnoresRequestTokenHeaders(t *testing.T) {
+	client := toolset.NewCombinedClient(nil, nil, false)
+	r := &staticResolver{client: client}
+	request := httptest.NewRequest("GET", "/", nil)
+	request.Header.Set("Authorization", "Bearer direct-token")
+	request.Header.Set("R_token", "fallback-token")
+
+	resolved, err := r.Resolve(contextFunc(context.Background(), request))
+	if err != nil {
+		t.Fatalf("Resolve() failed: %v", err)
+	}
+	if resolved != client {
+		t.Fatal("expected static resolver to ignore request token headers")
+	}
+}
+
+func TestOAuthTokenResolver_IgnoresDirectRequestTokenSources(t *testing.T) {
+	var receivedTokens []string
+	r := &oauthTokenResolver{
+		serverURL: "https://rancher.example.com",
+		steveFactory: func(_ string, token string, _ bool) *steve.Client {
+			receivedTokens = append(receivedTokens, token)
+			return &steve.Client{}
+		},
+		normanFactory: func(_ string, token string, _ bool) (*norman.Client, error) {
+			receivedTokens = append(receivedTokens, token)
+			return &norman.Client{}, nil
+		},
+	}
+	request := httptest.NewRequest("GET", "/", nil)
+	request.Header.Set("Authorization", "Bearer direct-token")
+	request.Header.Set("R_token", "fallback-token")
+
+	_, err := r.Resolve(oauthTokenContext(contextFunc(context.Background(), request), "verified-oauth-token"))
+	if err != nil {
+		t.Fatalf("Resolve() failed: %v", err)
+	}
+	if strings.Join(receivedTokens, ",") != "verified-oauth-token,verified-oauth-token" {
+		t.Fatalf("OAuth resolver used direct request token input: %q", receivedTokens)
+	}
+}
+
+func TestRequestTokenResolver_SelectsSourceByAuthorizationFieldPresence(t *testing.T) {
+	cases := []struct {
+		name                 string
+		authorizationPresent bool
+		authorization        string
+		rTokenPresent        bool
+		rToken               string
+		wantToken            string
+		wantErr              string
+	}{
+		{
+			name:                 "Authorization only",
+			authorizationPresent: true,
+			authorization:        "Bearer authorization-token",
+			wantToken:            "authorization-token",
+		},
+		{
+			name:          "R_token only",
+			rTokenPresent: true,
+			rToken:        "raw-r-token",
+			wantToken:     "raw-r-token",
+		},
+		{
+			name:                 "Authorization takes precedence over R_token",
+			authorizationPresent: true,
+			authorization:        "Bearer authorization-token",
+			rTokenPresent:        true,
+			rToken:               "raw-r-token",
+			wantToken:            "authorization-token",
+		},
+		{
+			name:                 "malformed Authorization blocks R_token fallback",
+			authorizationPresent: true,
+			authorization:        "Basic malformed-token",
+			rTokenPresent:        true,
+			rToken:               "raw-r-token",
+			wantErr:              "malformed Authorization header",
+		},
+		{
+			name:                 "empty Authorization blocks R_token fallback",
+			authorizationPresent: true,
+			rTokenPresent:        true,
+			rToken:               "raw-r-token",
+			wantErr:              "malformed Authorization header",
+		},
+		{
+			name:          "empty R_token remains missing token error",
+			rTokenPresent: true,
+			wantErr:       "missing Authorization header",
+		},
+		{
+			name:    "neither token",
+			wantErr: "missing Authorization header",
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var receivedTokens []string
+			r := &requestTokenResolver{
+				serverURL: "https://rancher.example.com",
+				steveFactory: func(_ string, token string, _ bool) *steve.Client {
+					receivedTokens = append(receivedTokens, token)
+					return &steve.Client{}
+				},
+				normanFactory: func(_ string, token string, _ bool) (*norman.Client, error) {
+					receivedTokens = append(receivedTokens, token)
+					return &norman.Client{}, nil
+				},
+			}
+			request := httptest.NewRequest("GET", "/", nil)
+			if tc.authorizationPresent {
+				request.Header.Set("Authorization", tc.authorization)
+			}
+			if tc.rTokenPresent {
+				request.Header.Set("R_token", tc.rToken)
+			}
+
+			_, err := r.Resolve(contextFunc(context.Background(), request))
+			if tc.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+					t.Fatalf("expected error containing %q, got %v", tc.wantErr, err)
+				}
+				if len(receivedTokens) != 0 {
+					t.Fatalf("expected no client factories to receive a token, got %q", receivedTokens)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("Resolve() failed: %v", err)
+			}
+			if strings.Join(receivedTokens, ",") != tc.wantToken+","+tc.wantToken {
+				t.Fatalf("expected both client factories to receive %q, got %q", tc.wantToken, receivedTokens)
+			}
+		})
 	}
 }
 
@@ -64,7 +205,7 @@ func TestRequestTokenResolver_MalformedHeader(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			var ctx context.Context
-			if tc.header == "non-string value" {
+			if tc.name == "non-string value" {
 				ctx = context.WithValue(context.Background(), authorizationKey, 12345)
 			} else {
 				ctx = context.WithValue(context.Background(), authorizationKey, tc.header)

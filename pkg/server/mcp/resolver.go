@@ -43,29 +43,67 @@ func (r *requestTokenResolver) Resolve(ctx context.Context) (*toolset.CombinedCl
 		}
 	}()
 
-	token, err := bearerTokenFromContext(ctx)
+	token, err := requestTokenFromContext(ctx)
 	if err != nil {
 		if r.metrics != nil {
 			r.metrics.IncrementRancherRequestErrors()
 		}
 		return nil, err
 	}
+	return resolveRequestScopedClient(r.serverURL, r.insecure, token, r.steveFactory, r.normanFactory, r.metrics)
+}
 
-	steveClient := r.steveFactory(r.serverURL, token, r.insecure)
+// oauthTokenResolver builds a request-scoped CombinedClient from the verified OAuth token in ctx.
+type oauthTokenResolver struct {
+	serverURL     string
+	insecure      bool
+	steveFactory  SteveFactory
+	normanFactory NormanFactory
+	metrics       Metrics
+}
+
+func (r *oauthTokenResolver) Resolve(ctx context.Context) (*toolset.CombinedClient, error) {
+	start := time.Now()
+	defer func() {
+		if r.metrics != nil {
+			r.metrics.RecordClientResolveDuration(time.Since(start))
+		}
+	}()
+
+	token, ok := verifiedOAuthTokenFromContext(ctx)
+	if !ok {
+		if r.metrics != nil {
+			r.metrics.IncrementRancherRequestErrors()
+		}
+		return nil, errors.New("missing verified OAuth token")
+	}
+	return resolveRequestScopedClient(r.serverURL, r.insecure, token, r.steveFactory, r.normanFactory, r.metrics)
+}
+
+func resolveRequestScopedClient(
+	serverURL string,
+	insecure bool,
+	token string,
+	steveFactory SteveFactory,
+	normanFactory NormanFactory,
+	metrics Metrics,
+) (*toolset.CombinedClient, error) {
+
+	steveClient := steveFactory(serverURL, token, insecure)
 
 	// Create the Norman client but do not fail the whole request if it cannot be
 	// built. This mirrors static-mode behavior, where a Norman startup failure is
 	// logged but Kubernetes tools remain available. If a tool actually needs
 	// Norman, ValidateNormanClient will report the configuration error.
-	normanClient, err := r.normanFactory(r.serverURL, token, r.insecure)
+	normanClient, err := normanFactory(serverURL, token, insecure)
 	if err != nil {
-		if r.metrics != nil {
-			r.metrics.IncrementRancherRequestErrors()
+		if metrics != nil {
+			metrics.IncrementRancherRequestErrors()
 		}
 	}
 
-	if r.metrics != nil {
-		r.metrics.RecordClientResolveMemoryBytes(readMemoryBytes())
+	if metrics != nil {
+		metrics.RecordClientResolveMemoryBytes(readMemoryBytes())
 	}
 
 	return toolset.NewCombinedClient(normanClient, steveClient, true), nil
@@ -74,7 +112,7 @@ func (r *requestTokenResolver) Resolve(ctx context.Context) (*toolset.CombinedCl
 func bearerTokenFromContext(ctx context.Context) (string, error) {
 	raw := ctx.Value(authorizationKey)
 	authHeader, ok := raw.(string)
-	if !ok || authHeader == "" {
+	if !ok {
 		return "", errors.New("missing Authorization header: per-request Rancher token is required")
 	}
 
@@ -84,4 +122,16 @@ func bearerTokenFromContext(ctx context.Context) (string, error) {
 	}
 
 	return fields[1], nil
+}
+
+func requestTokenFromContext(ctx context.Context) (string, error) {
+	if ctx.Value(authorizationKey) != nil {
+		return bearerTokenFromContext(ctx)
+	}
+
+	if token, ok := ctx.Value(rancherTokenKey).(string); ok && token != "" {
+		return token, nil
+	}
+
+	return bearerTokenFromContext(ctx)
 }

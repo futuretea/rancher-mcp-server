@@ -32,18 +32,32 @@ log_level: 5  # Log level 0-9 (default: 5, Info)
 # Rancher configuration
 rancher_server_url: https://your-rancher-server.com
 
-# Authentication method 1: Static Bearer Token
-rancher_token: your-bearer-token-here
+# Authentication: choose exactly one mode below.
 
-# Authentication method 2: Access Key/Secret Key (choose one)
+# Mode 1: Static credentials
+# Static Bearer Token:
+rancher_token: your-bearer-token-here
+# Or Access Key/Secret Key:
 # rancher_access_key: your-access-key-here
 # rancher_secret_key: your-secret-key-here
 
-# Authentication method 3: Per-request token (HTTP/SSE mode only)
-# When enabled, the server reads the Authorization: Bearer <token> header from each
-# HTTP/SSE request and uses it to access Rancher. Static credentials above must be
-# empty, and the upstream gateway/proxy must forward the Authorization header.
+# Mode 2: Direct per-request token (HTTP/SSE mode only)
+# When enabled, the server uses Authorization: Bearer <token> from each HTTP/SSE
+# request. If Authorization is absent, it uses a non-empty raw R_token header instead.
+# A present malformed or empty Authorization header never falls back to R_token.
+# Static credentials above must be empty.
 # rancher_request_token_auth: false
+
+# Mode 3: Rancher OAuth token passthrough (Streamable HTTP /mcp only)
+# The MCP client obtains a Rancher access token outside this service. The server
+# validates the Bearer JWT and then passes the verified token to Rancher APIs.
+# Static credentials and rancher_request_token_auth must be empty/false.
+# This mode requires a root public resource URL and does not register /sse or
+# /message. It is not a generic MCP OAuth or RFC 9728 implementation.
+# rancher_oauth_token_auth: false
+# rancher_oauth_authorization_server_url: https://rancher.example.com/oidc
+# rancher_oauth_jwks_url: https://rancher.example.com/oidc/.well-known/jwks.json
+# rancher_oauth_resource_url: https://mcp.example.com
 
 # TLS configuration
 # rancher_tls_insecure: false  # Skip TLS verification for self-signed certs (default: false)

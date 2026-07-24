@@ -188,6 +188,54 @@ func TestStdioRequestTokenAuthRejectedByCommand(t *testing.T) {
 	}
 }
 
+func TestOAuthConfigurationFlagsMatchAudienceFreeContract(t *testing.T) {
+	streams := IOStreams{
+		In:     &bytes.Buffer{},
+		Out:    &bytes.Buffer{},
+		ErrOut: &bytes.Buffer{},
+	}
+
+	cmd := NewMCPServer(streams)
+	for _, name := range []string{
+		"rancher-oauth-token-auth",
+		"rancher-oauth-authorization-server-url",
+		"rancher-oauth-jwks-url",
+		"rancher-oauth-resource-url",
+	} {
+		if cmd.Flags().Lookup(name) == nil {
+			t.Errorf("command should have a --%s flag", name)
+		}
+	}
+	if cmd.Flags().Lookup("rancher-oauth-audience") != nil {
+		t.Error("command must not expose a --rancher-oauth-audience flag")
+	}
+}
+
+func TestStdioOAuthRejectedByCommand(t *testing.T) {
+	streams := IOStreams{
+		In:     &bytes.Buffer{},
+		Out:    &bytes.Buffer{},
+		ErrOut: &bytes.Buffer{},
+	}
+
+	cmd := NewMCPServer(streams)
+	cmd.SetArgs([]string{
+		"--rancher-server-url", "https://rancher.example.test",
+		"--rancher-oauth-token-auth",
+		"--rancher-oauth-authorization-server-url", "https://auth.example.test",
+		"--rancher-oauth-jwks-url", "https://auth.example.test/jwks",
+		"--rancher-oauth-resource-url", "https://mcp.example.test",
+	})
+
+	err := cmd.Execute()
+	if err == nil {
+		t.Fatal("expected OAuth mode to be rejected in stdio mode")
+	}
+	if !strings.Contains(err.Error(), "rancher_oauth_token_auth is not supported in stdio mode") {
+		t.Fatalf("expected OAuth stdio rejection message, got: %v", err)
+	}
+}
+
 func TestInvalidArguments(t *testing.T) {
 	streams := IOStreams{
 		In:     &bytes.Buffer{},

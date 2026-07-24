@@ -2,12 +2,17 @@ package steve
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	fakediscovery "k8s.io/client-go/discovery/fake"
 	"k8s.io/client-go/dynamic/fake"
+	k8sfake "k8s.io/client-go/kubernetes/fake"
 	"k8s.io/client-go/kubernetes/scheme"
+	k8stesting "k8s.io/client-go/testing"
 )
 
 func TestListResourcesForType_PointersAreDistinct(t *testing.T) {
@@ -53,5 +58,35 @@ func TestListResourcesForType_PointersAreDistinct(t *testing.T) {
 
 	if items[0].Resource == items[1].Resource {
 		t.Fatal("Resource pointers should point to distinct objects")
+	}
+}
+
+func TestGetAllResources_ReturnsContextCancellation(t *testing.T) {
+	client := NewClient("https://example.com", "token", "", "", false)
+
+	dynamicClient := fake.NewSimpleDynamicClient(scheme.Scheme)
+	client.dynamicClients["cluster"] = dynamicClient
+
+	clientset := k8sfake.NewSimpleClientset()
+	clientset.Discovery().(*fakediscovery.FakeDiscovery).Resources = []*metav1.APIResourceList{
+		{
+			GroupVersion: "v1",
+			APIResources: []metav1.APIResource{
+				{Name: "configmaps", Kind: "ConfigMap", Namespaced: true, Verbs: []string{"list"}},
+			},
+		},
+	}
+	client.clientsets["cluster"] = clientset
+
+	ctx, cancel := context.WithCancel(context.Background())
+	dynamicClient.PrependReactor("list", "configmaps", func(k8stesting.Action) (bool, runtime.Object, error) {
+		cancel()
+		return true, nil, context.Canceled
+	})
+	defer cancel()
+
+	_, err := client.GetAllResources(ctx, "cluster", nil)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetAllResources() error = %v, want context.Canceled", err)
 	}
 }

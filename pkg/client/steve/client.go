@@ -93,6 +93,15 @@ type WatchOptions struct {
 
 // createRestConfig creates a Kubernetes REST config for the given cluster.
 func (c *Client) createRestConfig(clusterID string) (*rest.Config, error) {
+	c.cacheMu.Lock()
+	defer c.cacheMu.Unlock()
+	c.ensureCachesLocked()
+
+	return c.createRestConfigLocked(clusterID)
+}
+
+// createRestConfigLocked creates a Kubernetes REST config while cacheMu is held.
+func (c *Client) createRestConfigLocked(clusterID string) (*rest.Config, error) {
 	clusterURL := url.GetSteveURL(c.serverURL, clusterID)
 
 	kubeconfig := clientcmdapi.NewConfig()
@@ -168,7 +177,7 @@ func (c *Client) getDynamicClient(clusterID string) (dynamic.Interface, error) {
 		return client, nil
 	}
 
-	restConfig, err := c.createRestConfig(clusterID)
+	restConfig, err := c.createRestConfigLocked(clusterID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create REST config: %w", err)
 	}
@@ -191,7 +200,7 @@ func (c *Client) getClientset(clusterID string) (kubernetes.Interface, error) {
 		return clientset, nil
 	}
 
-	restConfig, err := c.createRestConfig(clusterID)
+	restConfig, err := c.createRestConfigLocked(clusterID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create REST config: %w", err)
 	}

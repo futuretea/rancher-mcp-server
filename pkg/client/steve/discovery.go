@@ -122,6 +122,9 @@ func (c *Client) GetAllResources(ctx context.Context, clusterID string, opts *Ge
 	if opts == nil {
 		opts = &GetAllOptions{}
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 
 	apiResources, err := c.ListAPIResources(ctx, clusterID)
 	if err != nil {
@@ -133,6 +136,9 @@ func (c *Client) GetAllResources(ctx context.Context, clusterID string, opts *Ge
 	}
 
 	for _, ar := range apiResources {
+		if err := ctx.Err(); err != nil {
+			return nil, err
+		}
 		if !c.shouldFetchResource(ar, opts) {
 			continue
 		}
@@ -140,6 +146,9 @@ func (c *Client) GetAllResources(ctx context.Context, clusterID string, opts *Ge
 		namespace := resolveResourceNamespace(ar, opts.Namespace)
 		items, err := c.listResourcesForType(ctx, clusterID, ar, namespace, opts.Limit)
 		if err != nil {
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return nil, ctxErr
+			}
 			// Skip resources that cannot be listed.
 			continue
 		}

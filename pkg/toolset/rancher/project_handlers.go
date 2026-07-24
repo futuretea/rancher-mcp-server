@@ -10,9 +10,15 @@ import (
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
+type projectClient interface {
+	ListClusters(context.Context) ([]norman.Cluster, error)
+	ListProjects(context.Context, string) ([]norman.Project, error)
+	LookupCluster(context.Context, string) (*norman.Cluster, error)
+}
+
 // fetchProjects retrieves projects based on optional cluster filter.
 // If clusterID is empty, returns projects from all clusters.
-func fetchProjects(ctx context.Context, client *norman.Client, clusterID string) ([]norman.Project, error) {
+func fetchProjects(ctx context.Context, client projectClient, clusterID string) ([]norman.Project, error) {
 	if clusterID != "" {
 		return client.ListProjects(ctx, clusterID)
 	}
@@ -26,11 +32,24 @@ func fetchProjects(ctx context.Context, client *norman.Client, clusterID string)
 	for _, c := range clusters {
 		projects, err := client.ListProjects(ctx, c.ID)
 		if err != nil {
-			continue
+			return nil, fmt.Errorf("failed to list projects for cluster %s: %w", c.ID, err)
 		}
 		allProjects = append(allProjects, projects...)
 	}
 	return allProjects, nil
+}
+
+func resolveOptionalProjectCluster(ctx context.Context, client projectClient, params map[string]interface{}) (string, error) {
+	clusterInput := paramutil.ExtractOptionalString(params, paramutil.ParamCluster)
+	if clusterInput == "" {
+		return "", nil
+	}
+
+	cluster, err := client.LookupCluster(ctx, clusterInput)
+	if err != nil {
+		return "", fmt.Errorf("failed to resolve cluster %q: %w", clusterInput, err)
+	}
+	return cluster.ID, nil
 }
 
 // projectToMap converts a project to a string map for output formatting.
@@ -63,7 +82,10 @@ func projectListHandler(ctx context.Context, client interface{}, params map[stri
 	limit := paramutil.ExtractInt64(params, paramutil.ParamLimit, 100)
 	page := paramutil.ExtractInt64(params, paramutil.ParamPage, 1)
 
-	clusterID, _ := paramutil.ResolveOptionalCluster(ctx, normanClient, params)
+	clusterID, err := resolveOptionalProjectCluster(ctx, normanClient, params)
+	if err != nil {
+		return "", err
+	}
 
 	allProjects, err := fetchProjects(ctx, normanClient, clusterID)
 	if err != nil {

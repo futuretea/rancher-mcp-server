@@ -332,7 +332,7 @@ func listAllResourcesConcurrently(ctx context.Context, client steve.ResourceRead
 // listAllResourcesWithBudget lists resource kinds serially and fails fast when
 // the total scanned object count would exceed the configured budget.
 func listAllResourcesWithBudget(ctx context.Context, client steve.ResourceReader, clusterID, namespace string, maxScannedObjects int) ([]unstructuredv1.Unstructured, error) {
-	allItems := make([]unstructuredv1.Unstructured, 0, maxScannedObjects)
+	allItems := make([]unstructuredv1.Unstructured, 0)
 	remaining := maxScannedObjects
 	scannedKinds := 0
 
@@ -342,12 +342,12 @@ func listAllResourcesWithBudget(ctx context.Context, client steve.ResourceReader
 			ns = ""
 		}
 
-		limit := 1
-		if remaining > 0 {
-			limit = remaining + 1
+		limit := int64(remaining)
+		if remaining < int(^uint(0)>>1) {
+			limit++
 		}
 
-		list, err := client.ListResources(ctx, clusterID, spec.kind, ns, &steve.ListOptions{Limit: int64(limit)})
+		list, err := client.ListResources(ctx, clusterID, spec.kind, ns, &steve.ListOptions{Limit: limit})
 		if err != nil {
 			// Non-fatal: some resource types may not exist on the cluster
 			continue

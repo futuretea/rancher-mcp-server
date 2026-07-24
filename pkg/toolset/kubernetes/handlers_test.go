@@ -1,6 +1,7 @@
 package kubernetes
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -102,6 +103,13 @@ func TestPaginateResourceList(t *testing.T) {
 		}
 	})
 
+	t.Run("overflowing offset returns empty page", func(t *testing.T) {
+		result := paginateResourceList(list, math.MaxInt64, 3)
+		if len(result.Items) != 0 {
+			t.Fatalf("expected empty, got %d items", len(result.Items))
+		}
+	})
+
 	t.Run("zero limit returns all", func(t *testing.T) {
 		result := paginateResourceList(list, 0, 1)
 		if len(result.Items) != 5 {
@@ -173,4 +181,3 @@ func TestParseMaxFileSize(t *testing.T) {
 		}
 	})
 }
-

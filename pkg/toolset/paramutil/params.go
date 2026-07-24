@@ -1,6 +1,9 @@
 package paramutil
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // ExtractRequiredString extracts a required string parameter from params map.
 // Returns ErrMissingParameter if the parameter is missing or empty.
@@ -101,13 +104,17 @@ func ApplyPagination[T any](items []T, limit, page int64) ([]T, int64) {
 	if page <= 0 {
 		page = 1
 	}
-	start := (page - 1) * limit
+	offset := page - 1
+	if offset > math.MaxInt64/limit {
+		return []T{}, total
+	}
+	start := offset * limit
 	if start >= total {
 		return []T{}, total
 	}
-	end := start + limit
-	if end > total {
-		end = total
+	remaining := total - start
+	if limit >= remaining {
+		return items[start:], total
 	}
-	return items[start:end], total
+	return items[start : start+limit], total
 }

@@ -147,18 +147,40 @@ func (p *Printer) Diff(oldObj, newObj *unstructured.Unstructured) (string, error
 	return buf.String(), nil
 }
 
-// extractDiffFields returns a shallow map with only the fields that participate
-// in the diff: spec and status.
+// extractDiffFields returns a shallow map with the fields that participate in
+// the diff: metadata, spec, and status. Callers remove ignored metadata before
+// reaching this function.
 func extractDiffFields(obj *unstructured.Unstructured) map[string]interface{} {
 	fields := make(map[string]interface{})
 	if obj == nil {
 		return fields
+	}
+	if metadata := diffMetadata(obj); len(metadata) > 0 {
+		fields["metadata"] = metadata
 	}
 	if spec, ok := obj.Object["spec"]; ok {
 		fields["spec"] = spec
 	}
 	if status, ok := obj.Object["status"]; ok {
 		fields["status"] = status
+	}
+	return fields
+}
+
+func diffMetadata(obj *unstructured.Unstructured) map[string]interface{} {
+	metadata, ok := obj.Object["metadata"].(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	fields := make(map[string]interface{})
+	for key, value := range metadata {
+		switch key {
+		case "name", "namespace":
+			continue
+		default:
+			fields[key] = value
+		}
 	}
 	return fields
 }
@@ -224,6 +246,9 @@ func isNewResource(oldObj *unstructured.Unstructured) bool {
 // first time.
 func writeNewResourceDiff(buf *bytes.Buffer, newObj *unstructured.Unstructured) {
 	buf.WriteString("+ New Resource\n")
+	if metadata := diffMetadata(newObj); len(metadata) > 0 {
+		printSection(buf, "metadata", metadata, true)
+	}
 	if spec, ok := newObj.Object["spec"]; ok {
 		printSection(buf, "spec", spec, true)
 	}
@@ -243,7 +268,7 @@ func writeStructuredDiff(buf *bytes.Buffer, oldFields, newFields map[string]inte
 	buf.WriteString("\n")
 }
 
-// trimMetadata keeps only essential metadata fields (name and namespace).
+// trimMetadata keeps identity and semantically meaningful metadata fields.
 func trimMetadata(obj *unstructured.Unstructured) {
 	metaVal, ok := obj.Object["metadata"].(map[string]interface{})
 	if !ok {
@@ -252,6 +277,12 @@ func trimMetadata(obj *unstructured.Unstructured) {
 	cleanMeta := map[string]interface{}{
 		"name":      metaVal["name"],
 		"namespace": metaVal["namespace"],
+	}
+	if labels, ok := metaVal["labels"]; ok {
+		cleanMeta["labels"] = labels
+	}
+	if annotations, ok := metaVal["annotations"]; ok {
+		cleanMeta["annotations"] = annotations
 	}
 	obj.Object["metadata"] = cleanMeta
 }

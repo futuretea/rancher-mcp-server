@@ -32,6 +32,23 @@ func TestResolve_RejectsBudgetOverflow(t *testing.T) {
 	}
 }
 
+func TestResolve_HandlesMaximumBudgetWithoutPreallocation(t *testing.T) {
+	reader := newResolveTestReader(newResolveTestObject("apps/v1", "Deployment", "default", "demo", "root-uid"))
+
+	_, err := Resolve(context.Background(), reader, "c1", "deployment", "default", "demo", ResolveOptions{
+		Direction:         "dependents",
+		MaxDepth:          10,
+		ScanNamespace:     "default",
+		MaxScannedObjects: int(^uint(0) >> 1),
+	})
+	if err != nil {
+		t.Fatalf("Resolve() returned unexpected error: %v", err)
+	}
+	if got := reader.requestedLimits["pod"][0]; got <= 0 {
+		t.Fatalf("expected a positive request limit, got %d", got)
+	}
+}
+
 func TestResolve_UsesScanNamespaceForClusterScopedRoot(t *testing.T) {
 	reader := newResolveTestReader(newResolveTestObject("v1", "Node", "", "node-1", "node-uid"))
 
@@ -83,6 +100,7 @@ type resolveTestReader struct {
 	root                *unstructured.Unstructured
 	listResponses       map[string]*unstructured.UnstructuredList
 	requestedNamespaces map[string][]string
+	requestedLimits     map[string][]int64
 	mu                  sync.Mutex
 }
 
@@ -91,6 +109,7 @@ func newResolveTestReader(root unstructured.Unstructured) *resolveTestReader {
 		root:                root.DeepCopy(),
 		listResponses:       make(map[string]*unstructured.UnstructuredList),
 		requestedNamespaces: make(map[string][]string),
+		requestedLimits:     make(map[string][]int64),
 	}
 }
 
@@ -98,9 +117,12 @@ func (r *resolveTestReader) GetResource(context.Context, string, string, string,
 	return r.root.DeepCopy(), nil
 }
 
-func (r *resolveTestReader) ListResources(_ context.Context, _ string, kind, namespace string, _ *steve.ListOptions) (*unstructured.UnstructuredList, error) {
+func (r *resolveTestReader) ListResources(_ context.Context, _ string, kind, namespace string, options *steve.ListOptions) (*unstructured.UnstructuredList, error) {
 	r.mu.Lock()
 	r.requestedNamespaces[kind] = append(r.requestedNamespaces[kind], namespace)
+	if options != nil {
+		r.requestedLimits[kind] = append(r.requestedLimits[kind], options.Limit)
+	}
 	r.mu.Unlock()
 	if list, ok := r.listResponses[kind]; ok {
 		return list.DeepCopy(), nil

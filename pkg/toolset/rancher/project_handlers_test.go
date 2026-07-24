@@ -1,10 +1,36 @@
 package rancher
 
 import (
+	"context"
+	"errors"
 	"testing"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
+
+type fakeProjectClient struct {
+	clusters        []norman.Cluster
+	cluster         *norman.Cluster
+	listClustersErr error
+	lookupErr       error
+	projectErr      map[string]error
+}
+
+func (c *fakeProjectClient) ListClusters(context.Context) ([]norman.Cluster, error) {
+	return c.clusters, c.listClustersErr
+}
+
+func (c *fakeProjectClient) ListProjects(_ context.Context, clusterID string) ([]norman.Project, error) {
+	if err := c.projectErr[clusterID]; err != nil {
+		return nil, err
+	}
+	return nil, nil
+}
+
+func (c *fakeProjectClient) LookupCluster(context.Context, string) (*norman.Cluster, error) {
+	return c.cluster, c.lookupErr
+}
 
 func TestProjectToMap(t *testing.T) {
 	p := norman.Project{
@@ -77,4 +103,30 @@ func TestFilterProjectsByName(t *testing.T) {
 			t.Fatalf("expected 0, got %d", len(result))
 		}
 	})
+}
+
+func TestFetchProjects_PropagatesClusterProjectError(t *testing.T) {
+	wantErr := errors.New("permission denied")
+	clusters := []norman.Cluster{{}, {}}
+	clusters[0].ID = "c1"
+	clusters[1].ID = "c2"
+	client := &fakeProjectClient{
+		clusters:   clusters,
+		projectErr: map[string]error{"c2": wantErr},
+	}
+
+	_, err := fetchProjects(context.Background(), client, "")
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("fetchProjects() error = %v, want wrapped %v", err, wantErr)
+	}
+}
+
+func TestResolveOptionalProjectCluster_PropagatesLookupError(t *testing.T) {
+	wantErr := errors.New("cluster not found")
+	client := &fakeProjectClient{lookupErr: wantErr}
+
+	_, err := resolveOptionalProjectCluster(context.Background(), client, map[string]interface{}{paramutil.ParamCluster: "missing"})
+	if !errors.Is(err, wantErr) {
+		t.Fatalf("resolveOptionalProjectCluster() error = %v, want wrapped %v", err, wantErr)
+	}
 }

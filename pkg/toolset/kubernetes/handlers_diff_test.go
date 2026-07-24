@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
@@ -91,6 +92,87 @@ func TestDiffHandler_DoesNotRequireClient(t *testing.T) {
 	if _, err := diffHandler(context.Background(), nil, params); err != nil {
 		t.Fatalf("diffHandler() returned unexpected error without client: %v", err)
 	}
+}
+
+func TestDiffHandler_MetadataDifferencesHonorIgnoreMeta(t *testing.T) {
+	params := map[string]interface{}{
+		"resource1": `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"demo","namespace":"default","labels":{"version":"one"}},"spec":{"replicas":1}}`,
+		"resource2": `{"apiVersion":"apps/v1","kind":"Deployment","metadata":{"name":"demo","namespace":"default","labels":{"version":"two"}},"spec":{"replicas":1}}`,
+	}
+
+	output, err := diffHandler(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("diffHandler() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "labels") {
+		t.Fatalf("expected metadata differences, got %q", output)
+	}
+
+	params["ignoreMeta"] = true
+	output, err = diffHandler(context.Background(), nil, params)
+	if err != nil {
+		t.Fatalf("diffHandler() with ignoreMeta returned unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "labels") {
+		t.Fatalf("expected labels to remain visible with ignoreMeta, got %q", output)
+	}
+}
+
+func TestDiffResources_MetadataDifferencesHonorIgnoreMeta(t *testing.T) {
+	first := metadataDiffResource("one")
+	second := metadataDiffResource("two")
+
+	output, err := diffResources(first, second, false, false)
+	if err != nil {
+		t.Fatalf("diffResources() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "labels") {
+		t.Fatalf("expected metadata differences, got %q", output)
+	}
+
+	output, err = diffResources(first, second, false, true)
+	if err != nil {
+		t.Fatalf("diffResources() with ignoreMeta returned unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "labels") {
+		t.Fatalf("expected labels to remain visible with ignoreMeta, got %q", output)
+	}
+}
+
+func TestDiffResources_IgnoreMetaHidesTransientMetadata(t *testing.T) {
+	first := metadataDiffResource("one")
+	second := metadataDiffResource("one")
+	first.SetResourceVersion("1")
+	second.SetResourceVersion("2")
+
+	output, err := diffResources(first, second, false, false)
+	if err != nil {
+		t.Fatalf("diffResources() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "resourceVersion") {
+		t.Fatalf("expected transient metadata difference, got %q", output)
+	}
+
+	output, err = diffResources(first, second, false, true)
+	if err != nil {
+		t.Fatalf("diffResources() with ignoreMeta returned unexpected error: %v", err)
+	}
+	if output != "No differences found between the two resource versions." {
+		t.Fatalf("expected ignored transient metadata difference to be empty, got %q", output)
+	}
+}
+
+func metadataDiffResource(version string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "apps/v1",
+		"kind":       "Deployment",
+		"metadata": map[string]interface{}{
+			"name":      "demo",
+			"namespace": "default",
+			"labels":    map[string]interface{}{"version": version},
+		},
+		"spec": map[string]interface{}{"replicas": int64(1)},
+	}}
 }
 
 func TestResourceDiffHandler_CombinedClientNilSteve(t *testing.T) {

@@ -1,6 +1,7 @@
 package paramutil
 
 import (
+	"math"
 	"strings"
 	"testing"
 
@@ -166,6 +167,14 @@ func TestApplyPagination(t *testing.T) {
 			items: items,
 			limit: 3,
 			page:  10,
+			want:  []string{},
+			total: 5,
+		},
+		{
+			name:  "overflowing offset returns empty page",
+			items: items,
+			limit: math.MaxInt64,
+			page:  3,
 			want:  []string{},
 			total: 5,
 		},

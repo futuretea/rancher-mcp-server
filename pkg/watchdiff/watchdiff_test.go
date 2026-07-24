@@ -209,3 +209,82 @@ func TestDiffDeleteClearsCacheAndMarksDeletion(t *testing.T) {
 		t.Fatalf("expected empty output after cache cleanup, got %q", deletedAgain)
 	}
 }
+
+func TestDiffer_MetadataDifferencesHonorIgnoreMeta(t *testing.T) {
+	first := newMetadataTestObject("one")
+	second := newMetadataTestObject("two")
+
+	visible := NewDiffer(false)
+	firstOutput, err := visible.Diff(first)
+	if err != nil {
+		t.Fatalf("first Diff() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(firstOutput, "labels") {
+		t.Fatalf("expected metadata on a new resource, got %q", firstOutput)
+	}
+	output, err := visible.Diff(second)
+	if err != nil {
+		t.Fatalf("second Diff() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "labels") {
+		t.Fatalf("expected metadata differences, got %q", output)
+	}
+
+	hidden := NewDiffer(false)
+	hidden.SetIgnoreMeta(true)
+	if _, err := hidden.Diff(first); err != nil {
+		t.Fatalf("first ignored Diff() returned unexpected error: %v", err)
+	}
+	output, err = hidden.Diff(second)
+	if err != nil {
+		t.Fatalf("second ignored Diff() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "labels") {
+		t.Fatalf("expected labels to remain visible with ignoreMeta, got %q", output)
+	}
+}
+
+func TestDiffer_IgnoreMetaHidesTransientMetadata(t *testing.T) {
+	first := newMetadataTestObject("one")
+	second := newMetadataTestObject("one")
+	first.SetResourceVersion("1")
+	second.SetResourceVersion("2")
+
+	visible := NewDiffer(false)
+	if _, err := visible.Diff(first); err != nil {
+		t.Fatalf("first Diff() returned unexpected error: %v", err)
+	}
+	output, err := visible.Diff(second)
+	if err != nil {
+		t.Fatalf("second Diff() returned unexpected error: %v", err)
+	}
+	if !strings.Contains(output, "resourceVersion") {
+		t.Fatalf("expected transient metadata difference, got %q", output)
+	}
+
+	hidden := NewDiffer(false)
+	hidden.SetIgnoreMeta(true)
+	if _, err := hidden.Diff(first); err != nil {
+		t.Fatalf("first ignored Diff() returned unexpected error: %v", err)
+	}
+	output, err = hidden.Diff(second)
+	if err != nil {
+		t.Fatalf("second ignored Diff() returned unexpected error: %v", err)
+	}
+	if output != "" {
+		t.Fatalf("expected ignored transient metadata difference to be empty, got %q", output)
+	}
+}
+
+func newMetadataTestObject(version string) *unstructured.Unstructured {
+	return &unstructured.Unstructured{Object: map[string]interface{}{
+		"apiVersion": "v1",
+		"kind":       "ConfigMap",
+		"metadata": map[string]interface{}{
+			"name":      "demo",
+			"namespace": "default",
+			"labels":    map[string]interface{}{"version": version},
+		},
+		"spec": map[string]interface{}{"replicas": int64(1)},
+	}}
+}

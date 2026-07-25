@@ -176,6 +176,7 @@ func TestNewServer_OAuthLoadsJWKSExactlyOnceAtConstruction(t *testing.T) {
 	if server == nil {
 		t.Fatal("NewServer() returned a nil server")
 	}
+	t.Cleanup(server.Close)
 	if got := fixture.Requests(); got != 1 {
 		t.Fatalf("expected exactly one JWKS request during server construction, got %d", got)
 	}
@@ -212,6 +213,7 @@ func TestOAuthTokenVerifier_ValidRS256TokenUsesOneStartupJWKSFetch(t *testing.T)
 	if err != nil {
 		t.Fatalf("newOAuthTokenVerifier() failed: %v", err)
 	}
+	t.Cleanup(verifier.Close)
 
 	token := fixture.sign(t, validOAuthClaims())
 	for range 2 {
@@ -229,12 +231,187 @@ func TestOAuthTokenVerifier_ValidRS256TokenUsesOneStartupJWKSFetch(t *testing.T)
 	}
 }
 
+func TestOAuthTokenVerifier_RefreshesRotatedJWKS(t *testing.T) {
+	withOAuthJWKSRefreshInterval(t, 10*time.Millisecond)
+	fixture := newRotatingOAuthJWKSFixture(t)
+	verifier, err := newOAuthTokenVerifier(oauthTestConfig(fixture.URL()))
+	if err != nil {
+		t.Fatalf("newOAuthTokenVerifier() failed: %v", err)
+	}
+	t.Cleanup(verifier.Close)
+
+	fixture.rotate(t)
+	rotatedToken := fixture.sign(t, validOAuthClaims())
+
+	waitForOAuthJWKS(t, 250*time.Millisecond, func() bool {
+		_, err := verifier.verifyAuthorization("Bearer " + rotatedToken)
+		return err == nil
+	})
+
+	if got := fixture.Requests(); got < 2 {
+		t.Fatalf("expected a JWKS refresh after key rotation, got %d requests", got)
+	}
+}
+
+func TestOAuthTokenVerifier_RetainsLastKnownGoodKeysAfterRefreshFailure(t *testing.T) {
+	withOAuthJWKSRefreshInterval(t, 10*time.Millisecond)
+	fixture := newRotatingOAuthJWKSFixture(t)
+	verifier, err := newOAuthTokenVerifier(oauthTestConfig(fixture.URL()))
+	if err != nil {
+		t.Fatalf("newOAuthTokenVerifier() failed: %v", err)
+	}
+	t.Cleanup(verifier.Close)
+
+	validToken := fixture.sign(t, validOAuthClaims())
+	fixture.failRefreshes()
+	waitForOAuthJWKS(t, 250*time.Millisecond, func() bool {
+		return fixture.Requests() >= 2
+	})
+
+	if _, err := verifier.verifyAuthorization("Bearer " + validToken); err != nil {
+		t.Fatalf("verifyAuthorization() rejected a token signed by the last known good key: %v", err)
+	}
+}
+
+func TestOAuthTokenVerifier_RetainsLastKnownGoodKeysAfterUnusableRefresh(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*rotatingOAuthJWKSFixture)
+	}{
+		{
+			name: "empty JWKS",
+			configure: func(fixture *rotatingOAuthJWKSFixture) {
+				fixture.serveEmptyJWKS()
+			},
+		},
+		{
+			name: "RS512-only JWKS",
+			configure: func(fixture *rotatingOAuthJWKSFixture) {
+				fixture.serveJWKSWithAlgorithm("RS512")
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withOAuthJWKSRefreshInterval(t, 10*time.Millisecond)
+			fixture := newRotatingOAuthJWKSFixture(t)
+			verifier, err := newOAuthTokenVerifier(oauthTestConfig(fixture.URL()))
+			if err != nil {
+				t.Fatalf("newOAuthTokenVerifier() failed: %v", err)
+			}
+			t.Cleanup(verifier.Close)
+
+			validToken := fixture.sign(t, validOAuthClaims())
+			fixture.rotate(t)
+			tt.configure(fixture)
+			waitForOAuthJWKS(t, 250*time.Millisecond, func() bool {
+				return fixture.Requests() >= 2
+			})
+			time.Sleep(30 * time.Millisecond)
+
+			if _, err := verifier.verifyAuthorization("Bearer " + validToken); err != nil {
+				t.Fatalf("verifyAuthorization() rejected a token signed by the last known good key: %v", err)
+			}
+		})
+	}
+}
+
+func TestOAuthTokenVerifier_RetainsLastKnownGoodKeysAfterNonVerificationKeyRefresh(t *testing.T) {
+	tests := []struct {
+		name      string
+		configure func(*rotatingOAuthJWKSFixture)
+	}{
+		{
+			name: "encryption-only key use",
+			configure: func(fixture *rotatingOAuthJWKSFixture) {
+				fixture.serveJWKSWithUse("enc")
+			},
+		},
+		{
+			name: "missing verify key operation",
+			configure: func(fixture *rotatingOAuthJWKSFixture) {
+				fixture.serveJWKSWithKeyOperations([]string{"encrypt"})
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			withOAuthJWKSRefreshInterval(t, 10*time.Millisecond)
+			fixture := newRotatingOAuthJWKSFixture(t)
+			verifier, err := newOAuthTokenVerifier(oauthTestConfig(fixture.URL()))
+			if err != nil {
+				t.Fatalf("newOAuthTokenVerifier() failed: %v", err)
+			}
+			t.Cleanup(verifier.Close)
+
+			validToken := fixture.sign(t, validOAuthClaims())
+			fixture.rotate(t)
+			tt.configure(fixture)
+			waitForOAuthJWKS(t, 250*time.Millisecond, func() bool {
+				return fixture.Requests() >= 2
+			})
+			time.Sleep(30 * time.Millisecond)
+
+			if _, err := verifier.verifyAuthorization("Bearer " + validToken); err != nil {
+				t.Fatalf("verifyAuthorization() rejected a token signed by the last known good key: %v", err)
+			}
+		})
+	}
+}
+
+func TestOAuthTokenVerifier_RejectsRetiredKeysAfterSuccessfulRefresh(t *testing.T) {
+	withOAuthJWKSRefreshInterval(t, 10*time.Millisecond)
+	fixture := newRotatingOAuthJWKSFixture(t)
+	verifier, err := newOAuthTokenVerifier(oauthTestConfig(fixture.URL()))
+	if err != nil {
+		t.Fatalf("newOAuthTokenVerifier() failed: %v", err)
+	}
+	t.Cleanup(verifier.Close)
+
+	retiredToken := fixture.sign(t, validOAuthClaims())
+	fixture.rotate(t)
+	rotatedToken := fixture.sign(t, validOAuthClaims())
+	waitForOAuthJWKS(t, 250*time.Millisecond, func() bool {
+		_, err := verifier.verifyAuthorization("Bearer " + rotatedToken)
+		return err == nil
+	})
+
+	if _, err := verifier.verifyAuthorization("Bearer " + retiredToken); err == nil {
+		t.Fatal("verifyAuthorization() accepted a token signed by a retired key")
+	}
+}
+
+func TestServerClose_StopsOAuthJWKSRefresh(t *testing.T) {
+	withOAuthJWKSRefreshInterval(t, 10*time.Millisecond)
+	fixture := newRotatingOAuthJWKSFixture(t)
+	server, err := NewServer(Configuration{StaticConfig: oauthTestConfig(fixture.URL())})
+	if err != nil {
+		t.Fatalf("NewServer() failed: %v", err)
+	}
+	t.Cleanup(server.Close)
+
+	waitForOAuthJWKS(t, 250*time.Millisecond, func() bool {
+		return fixture.Requests() >= 2
+	})
+	server.Close()
+
+	time.Sleep(30 * time.Millisecond)
+	requestsAfterClose := fixture.Requests()
+	time.Sleep(50 * time.Millisecond)
+	if got := fixture.Requests(); got != requestsAfterClose {
+		t.Fatalf("expected JWKS refresh to stop after server close, got %d additional requests", got-requestsAfterClose)
+	}
+}
+
 func TestOAuthTokenVerifier_AcceptsReferenceCompatibleClaims(t *testing.T) {
 	fixture := newOAuthJWKSFixture(t)
 	verifier, err := newOAuthTokenVerifier(oauthTestConfig(fixture.URL()))
 	if err != nil {
 		t.Fatalf("newOAuthTokenVerifier() failed: %v", err)
 	}
+	t.Cleanup(verifier.Close)
 
 	now := time.Now()
 	claimsWithoutAudience := validOAuthClaims()
@@ -288,6 +465,7 @@ func TestOAuthTokenVerifier_RejectsInvalidAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatalf("newOAuthTokenVerifier() failed: %v", err)
 	}
+	t.Cleanup(verifier.Close)
 
 	otherKey, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
@@ -538,6 +716,13 @@ func withOAuthJWKSConstructionTimeout(t *testing.T, timeout time.Duration) {
 	t.Cleanup(func() { oauthJWKSConstructionTimeout = previous })
 }
 
+func withOAuthJWKSRefreshInterval(t *testing.T, interval time.Duration) {
+	t.Helper()
+	previous := oauthJWKSRefreshInterval
+	oauthJWKSRefreshInterval = interval
+	t.Cleanup(func() { oauthJWKSRefreshInterval = previous })
+}
+
 func withOAuthJWKSHTTPClient(t *testing.T, client *http.Client) {
 	t.Helper()
 	previous := oauthJWKSHTTPClient
@@ -562,4 +747,172 @@ func (b *unreadableJWKSBody) Read(_ []byte) (int, error) {
 func (b *unreadableJWKSBody) Close() error {
 	b.closed.Store(true)
 	return nil
+}
+
+type rotatingOAuthJWKSFixture struct {
+	mu        sync.RWMutex
+	private   *rsa.PrivateKey
+	kid       string
+	algorithm string
+	use       string
+	keyOps    []string
+	empty     bool
+	fail      bool
+	requests  atomic.Int64
+	server    *httptest.Server
+}
+
+func newRotatingOAuthJWKSFixture(t *testing.T) *rotatingOAuthJWKSFixture {
+	t.Helper()
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+
+	fixture := &rotatingOAuthJWKSFixture{
+		private:   privateKey,
+		kid:       "initial-rsa-key",
+		algorithm: oauthSigningMethod,
+		use:       "sig",
+	}
+	fixture.server = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		fixture.requests.Add(1)
+		fixture.mu.RLock()
+		defer fixture.mu.RUnlock()
+		if fixture.fail {
+			http.Error(w, "unavailable", http.StatusServiceUnavailable)
+			return
+		}
+		if fixture.empty {
+			writeOAuthJWKSWithKID(t, w, nil, "", "", "", nil)
+			return
+		}
+		writeOAuthJWKSWithKID(t, w, fixture.private, fixture.algorithm, fixture.kid, fixture.use, fixture.keyOps)
+	}))
+	t.Cleanup(fixture.server.Close)
+	return fixture
+}
+
+func (f *rotatingOAuthJWKSFixture) URL() string {
+	return f.server.URL
+}
+
+func (f *rotatingOAuthJWKSFixture) Requests() int64 {
+	return f.requests.Load()
+}
+
+func (f *rotatingOAuthJWKSFixture) rotate(t *testing.T) {
+	t.Helper()
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("GenerateKey() failed: %v", err)
+	}
+	f.mu.Lock()
+	f.private = privateKey
+	f.kid = "rotated-rsa-key"
+	f.mu.Unlock()
+}
+
+func (f *rotatingOAuthJWKSFixture) failRefreshes() {
+	f.mu.Lock()
+	f.fail = true
+	f.mu.Unlock()
+}
+
+func (f *rotatingOAuthJWKSFixture) serveEmptyJWKS() {
+	f.mu.Lock()
+	f.empty = true
+	f.mu.Unlock()
+}
+
+func (f *rotatingOAuthJWKSFixture) serveJWKSWithAlgorithm(algorithm string) {
+	f.mu.Lock()
+	f.algorithm = algorithm
+	f.mu.Unlock()
+}
+
+func (f *rotatingOAuthJWKSFixture) serveJWKSWithUse(use string) {
+	f.mu.Lock()
+	f.use = use
+	f.mu.Unlock()
+}
+
+func (f *rotatingOAuthJWKSFixture) serveJWKSWithKeyOperations(keyOps []string) {
+	f.mu.Lock()
+	f.keyOps = keyOps
+	f.mu.Unlock()
+}
+
+func (f *rotatingOAuthJWKSFixture) sign(t *testing.T, claims map[string]any) string {
+	t.Helper()
+	f.mu.RLock()
+	defer f.mu.RUnlock()
+	return signOAuthTokenWithKID(t, f.private, claims, f.kid)
+}
+
+func writeOAuthJWKSWithKID(t testing.TB, w http.ResponseWriter, privateKey *rsa.PrivateKey, algorithm, kid, use string, keyOps []string) {
+	t.Helper()
+
+	w.Header().Set("Content-Type", "application/json")
+	keys := []map[string]any{}
+	if privateKey != nil {
+		key := map[string]any{
+			"kty": "RSA",
+			"kid": kid,
+			"alg": algorithm,
+			"n":   base64.RawURLEncoding.EncodeToString(privateKey.N.Bytes()),
+			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(privateKey.PublicKey.E)).Bytes()),
+		}
+		if use != "" {
+			key["use"] = use
+		}
+		if len(keyOps) > 0 {
+			key["key_ops"] = keyOps
+		}
+		keys = append(keys, key)
+	}
+	if err := json.NewEncoder(w).Encode(map[string]any{
+		"keys": keys,
+	}); err != nil {
+		t.Errorf("Encode() failed: %v", err)
+	}
+}
+
+func signOAuthTokenWithKID(t *testing.T, privateKey *rsa.PrivateKey, claims map[string]any, kid string) string {
+	t.Helper()
+
+	header, err := json.Marshal(map[string]string{
+		"alg": "RS256",
+		"kid": kid,
+		"typ": "JWT",
+	})
+	if err != nil {
+		t.Fatalf("Marshal() header failed: %v", err)
+	}
+	payload, err := json.Marshal(claims)
+	if err != nil {
+		t.Fatalf("Marshal() claims failed: %v", err)
+	}
+
+	signingInput := base64.RawURLEncoding.EncodeToString(header) + "." + base64.RawURLEncoding.EncodeToString(payload)
+	hash, digest := jwtSigningDigest(t, "RS256", []byte(signingInput))
+	signature, err := rsa.SignPKCS1v15(rand.Reader, privateKey, hash, digest)
+	if err != nil {
+		t.Fatalf("SignPKCS1v15() failed: %v", err)
+	}
+
+	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
+}
+
+func waitForOAuthJWKS(t *testing.T, timeout time.Duration, condition func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if condition() {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatal("timed out waiting for JWKS condition")
 }

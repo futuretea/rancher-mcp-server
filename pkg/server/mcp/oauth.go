@@ -7,15 +7,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"net/http"
 	"strings"
 	"time"
 
+	"github.com/MicahParks/jwkset"
 	"github.com/MicahParks/keyfunc/v3"
 	"github.com/golang-jwt/jwt/v5"
+	"golang.org/x/time/rate"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/core/config"
+	"github.com/futuretea/rancher-mcp-server/pkg/core/logging"
 )
 
 const (
@@ -25,6 +27,7 @@ const (
 
 var (
 	oauthJWKSConstructionTimeout = 10 * time.Second
+	oauthJWKSRefreshInterval     = time.Hour
 	oauthJWKSHTTPClient          = &http.Client{}
 	errInvalidOAuthAuthorization = errors.New("invalid OAuth Bearer token")
 )
@@ -32,47 +35,80 @@ var (
 type oauthTokenContextKey struct{}
 
 type oauthTokenVerifier struct {
-	keyfunc keyfunc.Keyfunc
-	issuer  string
+	keyfunc       keyfunc.Keyfunc
+	issuer        string
+	cancelRefresh context.CancelFunc
 }
 
 func newOAuthTokenVerifier(staticConfig *config.StaticConfig) (*oauthTokenVerifier, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), oauthJWKSConstructionTimeout)
-	defer cancel()
-
-	request, err := http.NewRequestWithContext(ctx, http.MethodGet, staticConfig.RancherOAuthJWKSURL, nil)
+	refreshContext, cancelRefresh := context.WithCancel(context.Background())
+	storage, err := newOAuthJWKSStorage(refreshContext, staticConfig.RancherOAuthJWKSURL, oauthJWKSClient(staticConfig.RancherTLSInsecure))
 	if err != nil {
-		return nil, fmt.Errorf("create OAuth JWKS request: %w", err)
-	}
-	response, err := oauthJWKSClient(staticConfig.RancherTLSInsecure).Do(request)
-	if err != nil {
-		return nil, fmt.Errorf("load OAuth JWKS: %w", err)
-	}
-	defer func() {
-		_ = response.Body.Close()
-	}()
-
-	if response.StatusCode < http.StatusOK || response.StatusCode >= http.StatusMultipleChoices {
-		return nil, fmt.Errorf("load OAuth JWKS: unexpected HTTP status %d", response.StatusCode)
-	}
-
-	rawJWKS, err := io.ReadAll(response.Body)
-	if err != nil {
-		return nil, fmt.Errorf("read OAuth JWKS: %w", err)
-	}
-
-	jwtKeyfunc, err := keyfunc.NewJWKSetJSON(json.RawMessage(rawJWKS))
-	if err != nil {
+		cancelRefresh()
 		return nil, fmt.Errorf("parse OAuth JWKS: %w", err)
 	}
+	jwtKeyfunc, err := keyfunc.New(keyfunc.Options{Ctx: refreshContext, Storage: storage})
+	if err != nil {
+		cancelRefresh()
+		return nil, fmt.Errorf("create OAuth keyfunc: %w", err)
+	}
 	if err := validateOAuthJWKS(jwtKeyfunc); err != nil {
+		cancelRefresh()
 		return nil, err
 	}
 
 	return &oauthTokenVerifier{
-		keyfunc: jwtKeyfunc,
-		issuer:  strings.TrimSuffix(staticConfig.RancherOAuthAuthorizationServerURL, "/authorize"),
+		keyfunc:       jwtKeyfunc,
+		issuer:        strings.TrimSuffix(staticConfig.RancherOAuthAuthorizationServerURL, "/authorize"),
+		cancelRefresh: cancelRefresh,
 	}, nil
+}
+
+func newOAuthJWKSStorage(ctx context.Context, url string, client *http.Client) (jwkset.Storage, error) {
+	remoteStorage, err := jwkset.NewStorageFromHTTP(url, jwkset.HTTPClientStorageOptions{
+		Client:              client,
+		Ctx:                 ctx,
+		HTTPTimeout:         oauthJWKSConstructionTimeout,
+		RefreshErrorHandler: oauthJWKSRefreshErrorHandler,
+		RefreshInterval:     oauthJWKSRefreshInterval,
+		Storage:             oauthJWKSStorage{Storage: jwkset.NewMemoryStorage()},
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create OAuth JWKS storage: %w", err)
+	}
+
+	storage, err := jwkset.NewHTTPClient(jwkset.HTTPClientOptions{
+		HTTPURLs:          map[string]jwkset.Storage{url: remoteStorage},
+		RateLimitWaitMax:  time.Minute,
+		RefreshUnknownKID: rate.NewLimiter(rate.Every(5*time.Minute), 1),
+	})
+	if err != nil {
+		return nil, fmt.Errorf("create OAuth JWKS client: %w", err)
+	}
+	return storage, nil
+}
+
+func oauthJWKSRefreshErrorHandler(context.Context, error) {
+	logging.Warn("OAuth JWKS refresh failed; retaining the last known good keyset")
+}
+
+type oauthJWKSStorage struct {
+	jwkset.Storage
+}
+
+func (s oauthJWKSStorage) KeyReplaceAll(ctx context.Context, keys []jwkset.JWK) error {
+	verificationKeys := oauthVerificationKeys(keys)
+	if len(verificationKeys) == 0 {
+		return errors.New("OAuth JWKS has no RS256 verification key")
+	}
+	return s.Storage.KeyReplaceAll(ctx, verificationKeys)
+}
+
+// Close stops the background JWKS refresh loop.
+func (v *oauthTokenVerifier) Close() {
+	if v != nil && v.cancelRefresh != nil {
+		v.cancelRefresh()
+	}
 }
 
 func oauthJWKSClient(insecure bool) *http.Client {
@@ -107,18 +143,43 @@ func validateOAuthJWKS(jwtKeyfunc keyfunc.Keyfunc) error {
 	if err != nil {
 		return fmt.Errorf("inspect OAuth JWKS: %w", err)
 	}
+	return validateOAuthJWKs(keys)
+}
 
+func validateOAuthJWKs(keys []jwkset.JWK) error {
+	if len(oauthVerificationKeys(keys)) != 0 {
+		return nil
+	}
+	return errors.New("OAuth JWKS has no RS256 verification key")
+}
+
+func oauthVerificationKeys(keys []jwkset.JWK) []jwkset.JWK {
+	verificationKeys := make([]jwkset.JWK, 0, len(keys))
 	for _, key := range keys {
 		algorithm := key.Marshal().ALG.String()
 		if algorithm != "" && algorithm != oauthSigningMethod {
 			continue
 		}
+		if key.Marshal().USE != "" && key.Marshal().USE != jwkset.UseSig {
+			continue
+		}
+		if keyOperations := key.Marshal().KEYOPS; len(keyOperations) > 0 && !containsVerificationKeyOperation(keyOperations) {
+			continue
+		}
 		if _, ok := key.Key().(*rsa.PublicKey); ok {
-			return nil
+			verificationKeys = append(verificationKeys, key)
 		}
 	}
+	return verificationKeys
+}
 
-	return errors.New("OAuth JWKS has no RS256 verification key")
+func containsVerificationKeyOperation(keyOperations []jwkset.KEYOPS) bool {
+	for _, keyOperation := range keyOperations {
+		if keyOperation == jwkset.KeyOpsVerify {
+			return true
+		}
+	}
+	return false
 }
 
 func (v *oauthTokenVerifier) verifyAuthorization(authorization string) (string, error) {

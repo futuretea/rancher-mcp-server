@@ -23,7 +23,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
   - Query container logs with filtering (tail lines, time range, timestamps, keyword search)
   - Multi-pod log aggregation via label selector with time-based sorting
   - View rollout history for Deployments
-  - Analyze node health and resource usage
+  - Inspect node state and resource usage
   - Inspect pods with parent workload, metrics, and logs
   - Show dependency/dependent trees for any resource (inspired by kube-lineage)
   - **Get all resources** (inspired by [ketall](https://github.com/corneliusweig/ketall)): List all Kubernetes resources including ConfigMaps, Secrets, RBAC, CRDs
@@ -44,7 +44,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
     - Applies to: Kubernetes Secret `data` and `stringData` fields
     - Affects tools: `kubernetes_get`, `kubernetes_list`, `kubernetes_describe`
   - `enable_container_exec`: Explicit opt-in for pod command execution (default: `false`, also requires `read_only=false`)
-  - `enable_container_file_upload` / `enable_container_file_download`: Explicit opt-in for container file transfer tools
+  - `enable_container_file_upload` / `enable_container_file_download`: Explicit opt-in for container file transfer tools; upload also requires `read_only=false`
 - **Output Formats**: Table, YAML, and JSON
 - **Output Filters**: Remove verbose fields like `managedFields` from responses
 - **Pagination**: Limit and page parameters for list operations
@@ -118,8 +118,8 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--rancher-tls-insecure` | Skip TLS verification | `false` |
 | `--rancher-request-token-auth` | Use `Authorization: Bearer <token>`, or raw `R_token` only when Authorization is absent, from each HTTP/SSE request instead of static credentials | `false` |
 | `--rancher-oauth-token-auth` | Verify a Rancher OAuth Bearer token before `/mcp` calls Rancher | `false` |
-| `--rancher-oauth-authorization-server-url` | Rancher OAuth authorization-server URL and JWT issuer | |
-| `--rancher-oauth-jwks-url` | Rancher OAuth JWKS URL loaded during server construction | |
+| `--rancher-oauth-authorization-server-url` | Rancher OAuth authorization-server root URL and JWT issuer; do not append `/authorize` | |
+| `--rancher-oauth-jwks-url` | Rancher OAuth JWKS URL loaded at startup and refreshed automatically | |
 | `--rancher-oauth-resource-url` | Root public resource URL used by discovery metadata and the 401 challenge | |
 | `--read-only` | Disable write operations | `true` |
 | `--disable-destructive` | Disable delete operations | `false` |
@@ -128,7 +128,7 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--enable-container-file-upload` | Enable container file upload tool | `false` |
 | `--enable-container-file-download` | Enable container file download tool | `false` |
 | `--max-file-size` | Max file size for container file operations | `10Mi` |
-| `--list-output` | Output format (json, table, yaml) | `json` |
+| `--list-output` | Reserved compatibility setting; current tool handlers ignore it | `json` |
 | `--output-filters` | Fields to remove from output | `metadata.managedFields` |
 | `--toolsets` | Toolsets to enable | `kubernetes,rancher` |
 | `--enabled-tools` | Specific tools to enable | |
@@ -167,6 +167,7 @@ rancher_token: your-bearer-token
 # token to Rancher APIs. Do not combine this with Modes 1 or 2.
 # rancher_oauth_token_auth: true
 # rancher_oauth_authorization_server_url: https://rancher.example.com/oidc
+# The server loads the JWKS at startup and refreshes it automatically.
 # rancher_oauth_jwks_url: https://rancher.example.com/oidc/.well-known/jwks.json
 # rancher_oauth_resource_url: https://mcp.example.com
 
@@ -177,6 +178,7 @@ disable_destructive: false
 
 # High-risk container operations are disabled by default.
 # enable_container_exec requires read_only: false.
+# enable_container_file_upload also requires read_only: false.
 enable_container_exec: false
 enable_container_file_upload: false
 enable_container_file_download: false
@@ -188,6 +190,7 @@ enable_container_file_download: false
 # Applies to Kubernetes Secret data and stringData fields.
 show_sensitive_data: false
 
+# Reserved compatibility setting; current tool handlers use each tool's format parameter.
 list_output: json
 
 # Remove verbose fields from output
@@ -203,6 +206,15 @@ toolsets:
 # disabled_tools: []
 ```
 
+Start the server with the file explicitly; it is not discovered automatically:
+
+```shell
+rancher-mcp-server --config ./config.yaml
+```
+
+For an MCP client that uses `npx`, pass the same arguments after the package
+name: `npx -y @futuretea/rancher-mcp-server@latest --config ./config.yaml`.
+
 ### Environment Variables
 
 Use `RANCHER_MCP_` prefix with underscores:
@@ -214,6 +226,16 @@ RANCHER_MCP_RANCHER_TOKEN=your-token
 RANCHER_MCP_READ_ONLY=true
 RANCHER_MCP_SHOW_SENSITIVE_DATA=false  # Global admin control for sensitive data
 RANCHER_MCP_ENABLE_CONTAINER_EXEC=false
+```
+
+For Rancher OAuth token passthrough, configure the OAuth settings with the same
+prefix:
+
+```shell
+RANCHER_MCP_RANCHER_OAUTH_TOKEN_AUTH=true
+RANCHER_MCP_RANCHER_OAUTH_AUTHORIZATION_SERVER_URL=https://rancher.example.com/oidc
+RANCHER_MCP_RANCHER_OAUTH_JWKS_URL=https://rancher.example.com/oidc/.well-known/jwks.json
+RANCHER_MCP_RANCHER_OAUTH_RESOURCE_URL=https://mcp.example.com
 ```
 
 ### HTTP/SSE Mode
@@ -270,24 +292,33 @@ The upstream gateway must forward the selected request-token header. Minimal exa
 **nginx:**
 
 ```nginx
-location /mcp/ {
-    proxy_pass http://rancher-mcp-server:8080/mcp/;
+location ~ ^/(mcp|sse|message)$ {
+    proxy_pass http://rancher-mcp-server:8080;
     proxy_set_header Authorization $http_authorization;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 }
 ```
 
-**Traefik:**
+This route preserves the original request path and applies to every transport
+route required by direct per-request token authentication.
+
+**Traefik ForwardAuth:**
 
 ```yaml
 http:
   middlewares:
-    forward-auth:
-      headers:
-        customRequestHeaders:
-          Authorization: "{http.request.header.Authorization}"
+    rancher-mcp-auth:
+      forwardAuth:
+        address: "https://auth.example.com/verify"
+        authResponseHeaders:
+          - Authorization
 ```
+
+Use this only when the authentication service returns a valid
+`Authorization: Bearer <Rancher token>` response header. Traefik then copies
+that header to the upstream request. If the incoming request already carries
+the Rancher Bearer token, do not overwrite it with a static header value.
 
 ### Rancher OAuth Token Passthrough Authentication
 
@@ -313,9 +344,10 @@ rancher-mcp-server --port 8080 \
 
 Requirements and limits:
 
-- The four OAuth fields are required when `--rancher-oauth-token-auth` is set.
-  OAuth mode cannot be combined with static credentials or
-  `--rancher-request-token-auth`, and it is rejected in stdio mode.
+- `--rancher-oauth-token-auth` and the three OAuth URLs are required. A Rancher
+  server URL is also required. OAuth mode cannot be combined with static
+  credentials or `--rancher-request-token-auth`, and it is rejected in stdio
+  mode.
 - The removed audience YAML key and derived environment name are not newly rejected;
   current configuration loading ignores unknown legacy inputs.
 - The resource URL must be the root public URL. Path-mounted deployments are
@@ -327,7 +359,13 @@ Requirements and limits:
   return `404`; `/healthz` and `/debug/vars` remain available.
 - This service never reads, forwards, stores, or logs Rancher browser cookies
   such as `R_SESS`. It does not implement authorization-code exchange, token
-  exchange, refresh tokens, dynamic client registration, or JWKS rotation.
+  exchange, refresh tokens, or dynamic client registration.
+- The server loads the JWKS during startup and fails to start unless it contains
+  a usable RS256 signature-verification key. It refreshes the JWKS hourly; an
+  unknown key ID can trigger an additional refresh, rate-limited to once every
+  five minutes. A failed or unusable refresh keeps the last known-good keyset.
+  A successful refresh immediately removes keys no longer published by the
+  authorization server.
 - This is an explicitly accepted Rancher-token passthrough mode. It provides
   reference-compatible metadata and a challenge, but does not claim generic
   MCP OAuth or RFC 9728 interoperability.
@@ -368,10 +406,14 @@ Container exec and file transfer tools are disabled by default and must be expli
 | Tool | Gate | Requires `read_only=false` |
 |------|------|---------------------------|
 | `kubernetes_exec` | `--enable-container-exec` | Yes |
-| `kubernetes_upload_file` | `--enable-container-file-upload` | No |
+| `kubernetes_upload_file` | `--enable-container-file-upload` | Yes |
 | `kubernetes_download_file` | `--enable-container-file-download` | No |
 
 `kubernetes_exec` accepts an argv-style command array (no stdin, no TTY) and returns `exitCode`, `stdout`, and `stderr`. The file transfer tools require `tar` in the container and respect `--max-file-size` (default: 10Mi).
+
+Enable uploads with both `--read-only=false` and
+`--enable-container-file-upload`. Enable downloads with
+`--enable-container-file-download`.
 
 See the [kubernetes tools section](#kubernetes) for full parameter documentation.
 
@@ -406,7 +448,7 @@ Show Kubernetes cluster resource capacity, requests, limits, and utilization. Si
 | `namespaceLabelSelector` | string | No | Filter namespaces by label selector (e.g., "env=production") |
 | `nodeTaints` | string | No | Filter nodes by taints. Use 'key=value:effect' to include, 'key=value:effect-' to exclude. Multiple taints can be separated by comma |
 | `noTaint` | boolean | No | Exclude nodes with any taints (default: false) |
-| `sortBy` | string | No | Sort by: cpu.util, mem.util, cpu.request, mem.request, cpu.limit, mem.limit, cpu.util.percentage, mem.util.percentage, name |
+| `sortBy` | string | No | Sort by: cpu.util, mem.util, cpu.request, mem.request, cpu.limit, mem.limit, cpu.util.percentage, mem.util.percentage, cpu.request.percentage, mem.request.percentage, cpu.limit.percentage, mem.limit.percentage, pod.count, name |
 | `format` | string | No | Output format: table, json, yaml (default: table) |
 
 **Examples:**
@@ -454,7 +496,9 @@ Show Kubernetes cluster resource capacity, requests, limits, and utilization. Si
 <details>
 <summary>kubernetes_top</summary>
 
-Rank pods or nodes by resource usage, requests, limits, or restart count. Supports metrics-server utilization data with fallback to requests/limits when metrics are unavailable.
+Rank pods or nodes by resource requests and limits. With metrics-server,
+utilization fields are also available; without it, utilization is omitted and
+the result includes a warning. Pod rankings also support restart count.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -462,7 +506,7 @@ Rank pods or nodes by resource usage, requests, limits, or restart count. Suppor
 | `kind` | string | No | Resource kind to rank: `pod` or `node` (default: `pod`) |
 | `namespace` | string | No | Namespace (empty = all namespaces) |
 | `labelSelector` | string | No | Label selector for filtering (e.g., "app=nginx,env=prod") |
-| `sortBy` | string | No | Sort by field. Pods: `cpu.util`, `mem.util`, `cpu.request`, `mem.request`, `cpu.limit`, `mem.limit`, `restart.count`. Nodes: `cpu.util`, `mem.util`, `cpu.util.percentage`, `mem.util.percentage`, `pod.count` |
+| `sortBy` | string | No | Sort by field. Pods: `cpu.util`, `mem.util`, `cpu.request`, `mem.request`, `cpu.limit`, `mem.limit`, `restart.count`. Nodes: `cpu.util`, `mem.util`, `cpu.request`, `mem.request`, `cpu.limit`, `mem.limit`, `cpu.util.percentage`, `mem.util.percentage`, `name` |
 | `limit` | integer | No | Maximum results to return (default: 50, max: 500) |
 | `format` | string | No | Output format: `json`, `table`, `yaml` (default: `table`) |
 
@@ -623,6 +667,8 @@ Show all dependencies or dependents of any Kubernetes resource as a tree. Covers
 | `name` | string | Yes | Resource name |
 | `direction` | string | No | Traversal direction: `dependents` (default) or `dependencies` |
 | `depth` | integer | No | Maximum traversal depth, 1-20 (default: 10) |
+| `scanNamespace` | string | No | Namespace for auxiliary scans of a cluster-scoped root; a namespaced root must use its own namespace |
+| `maxScannedObjects` | integer | No | Fail-fast limit for total scanned objects; `0` disables the limit (default: 0) |
 | `format` | string | No | Output format: tree, json (default: tree) |
 
 </details>
@@ -689,14 +735,14 @@ Get logs from a pod container. Supports multi-pod log aggregation via label sele
 | `container` | string | No | Container name (empty = all containers) |
 | `tailLines` | integer | No | Lines from end (default: 100) |
 | `sinceSeconds` | integer | No | Logs from last N seconds |
-| `timestamps` | boolean | No | Include timestamps (default: true) |
+| `timestamps` | boolean | No | Include timestamps (default: false) |
 | `previous` | boolean | No | Previous container instance (default: false) |
 | `keyword` | string | No | Filter log lines containing this keyword (case-insensitive) |
 
 **Notes:**
-- When `labelSelector` is specified, logs from all matching pods are aggregated and sorted by timestamp
-- Output format for single pod: `[container] timestamp content`
-- Output format for multi-pod: `[pod/container] timestamp content`
+- When `labelSelector` is specified, logs from all matching pods are aggregated; they are time-sorted only when `timestamps=true`
+- With `timestamps=true`, single-pod output is `[container] timestamp content`
+- With `timestamps=true`, multi-pod output is `[pod/container] timestamp content`
 
 </details>
 
@@ -730,12 +776,13 @@ View rollout history for Deployments. Shows revision history with change annotat
 <details>
 <summary>kubernetes_node_analysis</summary>
 
-Analyze node health and resource usage. Shows node capacity, allocatable resources, pod distribution, and identifies potential issues.
+Inspect one node's state and resource usage. Shows node capacity, allocatable
+resources, taints, labels, and scheduled pods.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
-| `name` | string | No | Node name (if empty, analyzes all nodes) |
+| `name` | string | Yes | Node name |
 | `format` | string | No | Output format: json, yaml (default: json) |
 
 </details>
@@ -787,6 +834,23 @@ Compare two Kubernetes resource versions and show the differences as a git-style
   "ignoreMeta": true
 }
 ```
+
+</details>
+
+<details>
+<summary>kubernetes_resource_diff</summary>
+
+Compare two resources of the same kind, including resources in different
+clusters or namespaces. Returns a git-style diff.
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `kind` | string | Yes | Resource kind (e.g., deployment, daemonset, statefulset) |
+| `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., `apps/v1`) |
+| `left` | object | Yes | First resource: `cluster` and `name` are required; `namespace` is optional |
+| `right` | object | Yes | Second resource: `cluster` and `name` are required; `namespace` is optional |
+| `ignoreStatus` | boolean | No | Ignore changes under `status` (default: false) |
+| `ignoreMeta` | boolean | No | Ignore non-essential metadata differences (default: true) |
 
 </details>
 
@@ -923,7 +987,7 @@ Create a Kubernetes resource. Disabled when `read_only=true`.
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster ID |
-| `resource` | string | Yes | JSON manifest (must include apiVersion, kind, metadata, spec) |
+| `resource` | string | Yes | JSON manifest valid for its resource kind; include `spec` only when that kind defines one |
 
 </details>
 
@@ -987,7 +1051,10 @@ Execute a non-interactive command in a pod container. Disabled by default (`--en
 <details>
 <summary>kubernetes_upload_file</summary>
 
-Upload a file to a pod container. Disabled by default (`--enable-container-file-upload` required). Accepts base64-encoded content and writes to the specified path. Requires `tar` in the container. Files are limited by `--max-file-size` (default: 10Mi).
+Upload a file to a pod container. Disabled by default; requires both
+`--read-only=false` and `--enable-container-file-upload`. Accepts
+base64-encoded content and writes to the specified path. Requires `tar` in the
+container. Files are limited by `--max-file-size` (default: 10Mi).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -1003,7 +1070,10 @@ Upload a file to a pod container. Disabled by default (`--enable-container-file-
 <details>
 <summary>kubernetes_download_file</summary>
 
-Download a file from a pod container. Enabled by default, requires `--enable-container-file-download` to activate. Returns base64-encoded file content with metadata. Requires `tar` in the container. Files are limited by `--max-file-size` (default: 10Mi).
+Download a file from a pod container. Disabled by default; enable it with
+`--enable-container-file-download`. Returns base64-encoded file content with
+metadata. Requires `tar` in the container. Files are limited by
+`--max-file-size` (default: 10Mi).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|

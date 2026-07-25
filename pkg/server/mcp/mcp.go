@@ -131,6 +131,7 @@ func NewServer(configuration Configuration) (*Server, error) {
 
 	// Register tools
 	if err := s.registerTools(); err != nil {
+		s.Close()
 		return nil, err
 	}
 
@@ -427,7 +428,9 @@ func (s *Server) IsHealthy() bool {
 // Close cleans up the server resources
 func (s *Server) Close() {
 	logging.Info("Closing MCP server")
-	// Nothing to clean up for now
+	if s != nil && s.oauthVerifier != nil {
+		s.oauthVerifier.Close()
+	}
 }
 
 // NewTextResult creates a standardized text result for tool responses

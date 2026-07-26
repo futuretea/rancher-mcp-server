@@ -6,11 +6,12 @@ import (
 	"strings"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
-// clusterToMap converts a cluster to a map with full resource details.
+// clusterToMap converts a Rancher cluster to a source-agnostic output row.
 func clusterToMap(c norman.Cluster) map[string]string {
 	version := ""
 	if c.Version != nil {
@@ -19,6 +20,7 @@ func clusterToMap(c norman.Cluster) map[string]string {
 	return map[string]string{
 		"id":       c.ID,
 		"name":     c.Name,
+		"source":   "rancher",
 		"state":    string(c.State),
 		"provider": getClusterProvider(c),
 		"version":  version,
@@ -29,13 +31,23 @@ func clusterToMap(c norman.Cluster) map[string]string {
 	}
 }
 
+func kubeconfigClusterToMap(contextName string) map[string]string {
+	return map[string]string{
+		"id":       "kubeconfig:" + contextName,
+		"name":     contextName,
+		"source":   "kubeconfig",
+		"state":    "",
+		"provider": "",
+		"version":  "",
+		"nodes":    "",
+		"cpu":      "",
+		"ram":      "",
+		"pods":     "",
+	}
+}
+
 // clusterListHandler handles the cluster_list tool
 func clusterListHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	normanClient, err := toolset.ValidateNormanClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	format, err := paramutil.ExtractAndValidateFormat(params)
 	if err != nil {
 		return "", err
@@ -46,23 +58,50 @@ func clusterListHandler(ctx context.Context, client interface{}, params map[stri
 	limit := paramutil.ExtractInt64(params, paramutil.ParamLimit, 100)
 	page := paramutil.ExtractInt64(params, paramutil.ParamPage, 1)
 
-	clusters, err := normanClient.ListClusters(ctx)
-	if err != nil {
-		return "", fmt.Errorf("failed to list clusters: %w", err)
+	clusterMaps := make([]map[string]string, 0)
+	hasClusterSource := false
+	if normanClient, err := toolset.ValidateNormanClient(client); err == nil {
+		hasClusterSource = true
+		clusters, err := normanClient.ListClusters(ctx)
+		if err != nil {
+			return "", fmt.Errorf("failed to list Rancher clusters: %w", err)
+		}
+		for _, cluster := range clusters {
+			clusterMaps = append(clusterMaps, clusterToMap(cluster))
+		}
+	}
+	if steveClient, err := toolset.ValidateSteveClient(client); err == nil && len(steveClient.KubeconfigContexts()) > 0 {
+		hasClusterSource = true
+		clusterMaps = appendKubeconfigClusters(clusterMaps, steveClient)
+	}
+	if !hasClusterSource {
+		return "", paramutil.ErrClusterSourcesNotConfigured
 	}
 
-	// Apply name filter
-	filtered := filterClustersByName(clusters, nameFilter)
-
-	// Apply pagination
+	filtered := filterClusterMapsByName(clusterMaps, nameFilter)
 	paginated, _ := paramutil.ApplyPagination(filtered, limit, page)
 
-	clusterMaps := make([]map[string]string, len(paginated))
-	for i, c := range paginated {
-		clusterMaps[i] = clusterToMap(c)
-	}
+	return paramutil.FormatOutput(paginated, format, []string{"id", "name", "source", "state", "provider", "version", "nodes", "cpu", "ram", "pods"}, nil)
+}
 
-	return paramutil.FormatOutput(clusterMaps, format, []string{"id", "name", "state", "provider", "version", "nodes", "cpu", "ram", "pods"}, nil)
+func appendKubeconfigClusters(rows []map[string]string, client *steve.Client) []map[string]string {
+	for _, contextName := range client.KubeconfigContexts() {
+		rows = append(rows, kubeconfigClusterToMap(contextName))
+	}
+	return rows
+}
+
+func filterClusterMapsByName(clusters []map[string]string, name string) []map[string]string {
+	if name == "" {
+		return clusters
+	}
+	result := make([]map[string]string, 0, len(clusters))
+	for _, cluster := range clusters {
+		if strings.Contains(strings.ToLower(cluster["name"]), strings.ToLower(name)) {
+			result = append(result, cluster)
+		}
+	}
+	return result
 }
 
 // filterClustersByName filters clusters by name (partial match, case-insensitive).

@@ -12,6 +12,7 @@ func TestToolAnnotations(t *testing.T) {
 		DestructiveHint:    paramutil.BoolPtr(false),
 		RequiresRancher:    paramutil.BoolPtr(true),
 		RequiresKubernetes: paramutil.BoolPtr(false),
+		ClusterSources:     []string{"rancher", "kubeconfig"},
 	}
 
 	if *annotations.ReadOnlyHint != true {
@@ -28,5 +29,9 @@ func TestToolAnnotations(t *testing.T) {
 
 	if *annotations.RequiresKubernetes != false {
 		t.Error("RequiresKubernetes should be false")
+	}
+
+	if len(annotations.ClusterSources) != 2 {
+		t.Fatalf("ClusterSources = %v, want both configured cluster sources", annotations.ClusterSources)
 	}
 }

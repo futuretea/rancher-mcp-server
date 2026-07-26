@@ -62,6 +62,15 @@ rancher_token: your-bearer-token-here
 # TLS configuration
 # rancher_tls_insecure: false  # Skip TLS verification for self-signed certs (default: false)
 
+# Optional direct Kubernetes cluster source. Context IDs use kubeconfig:<context>.
+# Files are loaded in order; when multiple files declare the same context, the first
+# file wins. Do not combine with rancher_request_token_auth or
+# rancher_oauth_token_auth. In HTTP/SSE mode, restrict network access to trusted
+# callers because kubeconfig-backed requests have no HTTP authentication.
+# kubeconfig_paths:
+#   - /etc/rancher-mcp/kubeconfig
+#   - /etc/rancher-mcp/extra-kubeconfig
+
 # Security configuration
 read_only: true  # Read-only mode (default: true)
 disable_destructive: false  # Disable destructive operations

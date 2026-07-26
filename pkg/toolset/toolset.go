@@ -31,6 +31,9 @@ type ToolAnnotations struct {
 
 	// RequiresKubernetes indicates if the tool requires Kubernetes configuration.
 	RequiresKubernetes *bool
+
+	// ClusterSources declares which cluster sources a tool can operate on.
+	ClusterSources []string
 }
 
 // ServerTool represents an MCP tool with its metadata and handler.

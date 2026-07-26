@@ -1,6 +1,48 @@
 package config
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"reflect"
+	"strings"
+	"testing"
+
+	"github.com/spf13/viper"
+)
+
+func TestLoadConfig_KubeconfigPathsFromFileAndEnvironment(t *testing.T) {
+	t.Run("configuration file", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		if err := os.WriteFile(path, []byte("list_output: json\nkubeconfig_paths:\n  - /first.yaml\n  - /second.yaml\n"), 0o600); err != nil {
+			t.Fatalf("write config fixture: %v", err)
+		}
+
+		config, err := LoadConfig(path)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+		if want := []string{"/first.yaml", "/second.yaml"}; !reflect.DeepEqual(config.KubeconfigPaths, want) {
+			t.Fatalf("KubeconfigPaths = %#v, want %#v", config.KubeconfigPaths, want)
+		}
+	})
+
+	t.Run("environment reaches GP-1 validation", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		t.Setenv("RANCHER_MCP_KUBECONFIG_PATHS", "/first.yaml,/second.yaml")
+		viper.Set("list_output", "json")
+		viper.Set("rancher_request_token_auth", true)
+		viper.Set("rancher_server_url", "https://rancher.example.test")
+
+		_, err := LoadConfig("")
+		if err == nil || !strings.Contains(err.Error(), "kubeconfig_paths") {
+			t.Fatalf("LoadConfig() error = %v, want kubeconfig GP-1 validation error", err)
+		}
+	})
+}
 
 func TestValidate_Port(t *testing.T) {
 	t.Run("valid port", func(t *testing.T) {
@@ -294,6 +336,62 @@ func TestValidate_RancherOAuthModeSelection(t *testing.T) {
 			err := tt.config.Validate()
 			if tt.wantErr && err == nil {
 				t.Fatal("expected validation error")
+			}
+			if !tt.wantErr && err != nil {
+				t.Fatalf("expected valid configuration, got: %v", err)
+			}
+		})
+	}
+}
+
+func TestValidate_KubeconfigPathsRejectRequestScopedAuthModes(t *testing.T) {
+	base := StaticConfig{
+		Port:            8080,
+		ListOutput:      "json",
+		KubeconfigPaths: []string{"/etc/rancher-mcp/clusters.yaml"},
+	}
+
+	tests := []struct {
+		name      string
+		configure func(*StaticConfig)
+		wantErr   bool
+	}{
+		{
+			name: "static credential mode is accepted",
+			configure: func(config *StaticConfig) {
+				config.RancherServerURL = "https://rancher.example.test"
+				config.RancherToken = "fixture-token"
+			},
+		},
+		{
+			name: "request token mode is rejected",
+			configure: func(config *StaticConfig) {
+				config.RancherServerURL = "https://rancher.example.test"
+				config.RancherRequestTokenAuth = true
+			},
+			wantErr: true,
+		},
+		{
+			name: "OAuth token mode is rejected",
+			configure: func(config *StaticConfig) {
+				config.RancherServerURL = "https://rancher.example.test"
+				config.RancherOAuthTokenAuth = true
+				config.RancherOAuthAuthorizationServerURL = "https://auth.example.test"
+				config.RancherOAuthJWKSURL = "https://auth.example.test/jwks"
+				config.RancherOAuthResourceURL = "https://mcp.example.test"
+			},
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			config := base
+			tt.configure(&config)
+
+			err := config.Validate()
+			if tt.wantErr && err == nil {
+				t.Fatal("expected configuration validation error")
 			}
 			if !tt.wantErr && err != nil {
 				t.Fatalf("expected valid configuration, got: %v", err)

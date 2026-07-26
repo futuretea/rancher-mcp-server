@@ -2,10 +2,13 @@ package cmd
 
 import (
 	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/core/config"
+	"github.com/futuretea/rancher-mcp-server/pkg/core/logging"
+	"github.com/spf13/viper"
 )
 
 func TestVersionCommand(t *testing.T) {
@@ -163,6 +166,59 @@ func TestRequestTokenAuthFlagDefined(t *testing.T) {
 	cmd := NewMCPServer(streams)
 	if cmd.Flags().Lookup("rancher-request-token-auth") == nil {
 		t.Error("Command should have a rancher-request-token-auth flag")
+	}
+}
+
+func TestKubeconfigPathsFlagDefined(t *testing.T) {
+	streams := IOStreams{
+		In:     &bytes.Buffer{},
+		Out:    &bytes.Buffer{},
+		ErrOut: &bytes.Buffer{},
+	}
+
+	cmd := NewMCPServer(streams)
+	if cmd.Flags().Lookup("kubeconfig-paths") == nil {
+		t.Fatal("command should have a kubeconfig-paths flag")
+	}
+}
+
+func TestKubeconfigPathsFlagBindsOrderedValues(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+
+	streams := IOStreams{
+		In:     &bytes.Buffer{},
+		Out:    &bytes.Buffer{},
+		ErrOut: &bytes.Buffer{},
+	}
+	cmd := NewMCPServer(streams)
+	if err := cmd.ParseFlags([]string{"--kubeconfig-paths", "/first.yaml,/second.yaml"}); err != nil {
+		t.Fatalf("ParseFlags() error = %v", err)
+	}
+	if err := bindFlags(cmd); err != nil {
+		t.Fatalf("bindFlags() error = %v", err)
+	}
+
+	cfg, err := config.LoadConfig("")
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	if want := []string{"/first.yaml", "/second.yaml"}; !reflect.DeepEqual(cfg.KubeconfigPaths, want) {
+		t.Fatalf("KubeconfigPaths = %#v, want %#v", cfg.KubeconfigPaths, want)
+	}
+}
+
+func TestWarnKubeconfigHTTPExposure(t *testing.T) {
+	output := &bytes.Buffer{}
+	logging.SetStdioMode(false)
+	logging.Initialize(5, output)
+
+	warnKubeconfigHTTPExposure(&config.StaticConfig{
+		Port:            8080,
+		KubeconfigPaths: []string{"/etc/rancher-mcp/clusters.yaml"},
+	})
+	if !strings.Contains(output.String(), "kubeconfig") || !strings.Contains(output.String(), "unauthenticated") {
+		t.Fatalf("warning output = %q, want kubeconfig exposure warning", output.String())
 	}
 }
 

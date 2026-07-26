@@ -31,7 +31,7 @@ var apiVersionProperty = map[string]any{
 
 var clusterIDProperty = map[string]any{
 	"type":        "string",
-	"description": "Cluster ID (use cluster_list tool to get available cluster IDs)",
+	"description": "Cluster reference (use cluster_list to get available IDs; kubeconfig clusters use kubeconfig:<context>)",
 }
 
 // GetName returns the name of the toolset

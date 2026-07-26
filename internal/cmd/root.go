@@ -44,6 +44,7 @@ func bindFlags(cmd *cobra.Command) error {
 		"rancher_oauth_authorization_server_url": "rancher-oauth-authorization-server-url",
 		"rancher_oauth_jwks_url":                 "rancher-oauth-jwks-url",
 		"rancher_oauth_resource_url":             "rancher-oauth-resource-url",
+		"kubeconfig_paths":                       "kubeconfig-paths",
 		// Security configuration
 		"read_only":           "read-only",
 		"disable_destructive": "disable-destructive",
@@ -119,6 +120,7 @@ for network access.`,
 	cmd.Flags().String("rancher-oauth-authorization-server-url", "", "Rancher OAuth authorization server URL")
 	cmd.Flags().String("rancher-oauth-jwks-url", "", "Rancher OAuth JWKS URL")
 	cmd.Flags().String("rancher-oauth-resource-url", "", "Public root URL for Rancher OAuth metadata")
+	cmd.Flags().StringSlice("kubeconfig-paths", []string{}, "Explicit kubeconfig paths for direct Kubernetes cluster access")
 
 	// Security configuration flags
 	cmd.Flags().Bool("read-only", true, "Run in read-only mode")
@@ -165,6 +167,7 @@ func runServer(cfgFile string, streams IOStreams) error {
 		// HTTP/SSE mode - initialize normal logging
 		logging.Initialize(cfg.LogLevel, streams.ErrOut)
 	}
+	warnKubeconfigHTTPExposure(cfg)
 
 	// Create MCP server configuration
 	mcpConfig := mcp.Configuration{
@@ -210,6 +213,12 @@ func validateRequestTokenAuthMode(cfg *config.StaticConfig) error {
 		return fmt.Errorf("rancher_oauth_token_auth is not supported in stdio mode")
 	}
 	return nil
+}
+
+func warnKubeconfigHTTPExposure(cfg *config.StaticConfig) {
+	if cfg.HasKubeconfigConfig() && cfg.Port > 0 {
+		logging.Warn("kubeconfig paths are configured for unauthenticated HTTP/SSE mode; network-reachable callers can use the server's kubeconfig credentials")
+	}
 }
 
 // newVersionCommand creates the version command

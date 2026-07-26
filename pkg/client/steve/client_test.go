@@ -1,17 +1,24 @@
 package steve
 
 import (
+	"context"
+	"errors"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/rest"
 )
 
 func TestGetDynamicClient_ReusesClientPerCluster(t *testing.T) {
-	client := NewClient("https://example.com", "token", "", "", false)
+	client := NewClient("https://example.com", "", "", "", false)
 
 	first, err := client.getDynamicClient("cluster-a")
 	if err != nil {
@@ -137,16 +144,24 @@ func TestNewClientWithToken_BindsToken(t *testing.T) {
 }
 
 func TestCreateRestConfigUsesClientGoTransportDefaults(t *testing.T) {
-	client := NewClient("https://example.com", "token", "", "", false)
+	client := NewClient("https://example.com", "", "", "", false)
 
 	restConfig, err := client.createRestConfig("cluster-a")
 	if err != nil {
 		t.Fatalf("createRestConfig() returned unexpected error: %v", err)
 	}
 
-	transport, ok := restConfig.Transport.(*http.Transport)
+	if restConfig.Transport != nil {
+		t.Fatalf("expected rest.Config Transport to remain nil, got %T", restConfig.Transport)
+	}
+
+	transportValue, err := rest.TransportFor(restConfig)
+	if err != nil {
+		t.Fatalf("rest.TransportFor() returned unexpected error: %v", err)
+	}
+	transport, ok := transportValue.(*http.Transport)
 	if !ok {
-		t.Fatalf("expected *http.Transport, got %T", restConfig.Transport)
+		t.Fatalf("expected *http.Transport, got %T", transportValue)
 	}
 	if transport.Proxy == nil {
 		t.Fatal("expected transport to configure a proxy function")
@@ -162,25 +177,33 @@ func TestCreateRestConfigUsesClientGoTransportDefaults(t *testing.T) {
 	}
 }
 
-func TestCreateRestConfigReusesTransportPerCluster(t *testing.T) {
-	client := NewClient("https://example.com", "token", "", "", false)
+func TestCreateRestConfigUsesSharedTLSCacheAcrossClusters(t *testing.T) {
+	client := NewClient("https://example.com", "", "", "", true)
 
 	first, err := client.createRestConfig("cluster-a")
 	if err != nil {
 		t.Fatalf("first createRestConfig() returned unexpected error: %v", err)
 	}
-	second, err := client.createRestConfig("cluster-a")
+	second, err := client.createRestConfig("cluster-b")
 	if err != nil {
-		t.Fatalf("second createRestConfig() returned unexpected error: %v", err)
+		t.Fatalf("createRestConfig() for second cluster returned unexpected error: %v", err)
 	}
 
-	if first.Transport != second.Transport {
-		t.Fatal("expected REST configs for the same cluster to share a transport")
+	firstTransport, err := rest.TransportFor(first)
+	if err != nil {
+		t.Fatalf("rest.TransportFor(first) returned unexpected error: %v", err)
+	}
+	secondTransport, err := rest.TransportFor(second)
+	if err != nil {
+		t.Fatalf("rest.TransportFor(second) returned unexpected error: %v", err)
+	}
+	if firstTransport != secondTransport {
+		t.Fatal("expected client-go TLS cache to share a transport across clusters")
 	}
 }
 
 func TestCreateRestConfigReusesTransportAcrossConcurrentCalls(t *testing.T) {
-	client := NewClient("https://example.com", "token", "", "", false)
+	client := NewClient("https://example.com", "", "", "", true)
 
 	const workers = 8
 	configs := make([]*rest.Config, workers)
@@ -204,13 +227,107 @@ func TestCreateRestConfigReusesTransportAcrossConcurrentCalls(t *testing.T) {
 			t.Fatalf("concurrent createRestConfig() returned unexpected error: %v", err)
 		}
 	}
-	if len(client.transports) != 1 {
-		t.Fatalf("expected one cached transport, got %d", len(client.transports))
-	}
+	transports := make([]http.RoundTripper, len(configs))
 	for i := 1; i < len(configs); i++ {
-		if configs[i].Transport != configs[0].Transport {
-			t.Fatal("expected concurrent REST configs to share a transport")
+		transport, err := rest.TransportFor(configs[i])
+		if err != nil {
+			t.Fatalf("rest.TransportFor() returned unexpected error: %v", err)
 		}
+		transports[i] = transport
+	}
+	transport, err := rest.TransportFor(configs[0])
+	if err != nil {
+		t.Fatalf("rest.TransportFor() returned unexpected error: %v", err)
+	}
+	transports[0] = transport
+	for i := 1; i < len(transports); i++ {
+		if transports[i] != transports[0] {
+			t.Fatal("expected concurrent REST configs to share client-go's TLS cache")
+		}
+	}
+}
+
+func TestRancherTLSSettingAppliesToRESTAndFileTransport(t *testing.T) {
+	for _, test := range []struct {
+		name           string
+		insecure       bool
+		wantServerCall bool
+	}{
+		{name: "verification enabled", insecure: false, wantServerCall: false},
+		{name: "verification disabled", insecure: true, wantServerCall: true},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			var restCalls, websocketCalls, spdyCalls atomic.Int32
+			server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				switch {
+				case strings.HasSuffix(r.URL.Path, "/pods"):
+					restCalls.Add(1)
+					w.Header().Set("Content-Type", "application/json")
+					_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"PodList","items":[]}`))
+				case strings.HasSuffix(r.URL.Path, "/exec") && r.Method == http.MethodGet:
+					websocketCalls.Add(1)
+					http.Error(w, "fixture endpoint does not implement WebSocket upgrades", http.StatusInternalServerError)
+				case strings.HasSuffix(r.URL.Path, "/exec") && r.Method == http.MethodPost:
+					spdyCalls.Add(1)
+					http.Error(w, "fixture endpoint does not implement SPDY upgrades", http.StatusInternalServerError)
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(server.Close)
+
+			client := NewClient(server.URL, "", "", "", test.insecure)
+			dynamicClient, err := client.getDynamicClient("cluster-a")
+			if err != nil {
+				t.Fatalf("getDynamicClient() error = %v", err)
+			}
+			_, err = dynamicClient.Resource(schema.GroupVersionResource{Version: "v1", Resource: "pods"}).Namespace("default").List(context.Background(), metav1.ListOptions{})
+			if test.insecure && err != nil {
+				t.Fatalf("REST request error = %v, want successful self-signed request", err)
+			}
+			if !test.insecure && (err == nil || !strings.Contains(err.Error(), "certificate")) {
+				t.Fatalf("REST request error = %v, want certificate verification failure", err)
+			}
+
+			_, _, err = client.CheckFileInfo(context.Background(), "cluster-a", "default", "fixture-pod", "fixture-container", "/tmp/fixture")
+			if err == nil {
+				t.Fatal("CheckFileInfo() error = nil, want remote command failure")
+			}
+			if got := restCalls.Load() > 0; got != test.wantServerCall {
+				t.Fatalf("REST server called = %t, want %t", got, test.wantServerCall)
+			}
+			if got := websocketCalls.Load() > 0; got != test.wantServerCall {
+				t.Fatalf("WebSocket server called = %t, want %t (error: %v)", got, test.wantServerCall, err)
+			}
+			if got := spdyCalls.Load() > 0; got != test.wantServerCall {
+				t.Fatalf("SPDY server called = %t, want %t (error: %v)", got, test.wantServerCall, err)
+			}
+			if !test.insecure && !strings.Contains(err.Error(), "certificate") {
+				t.Fatalf("CheckFileInfo() error = %v, want certificate verification failure", err)
+			}
+		})
+	}
+}
+
+func TestCheckFileInfo_InvalidClusterReferencePreservesTypedError(t *testing.T) {
+	var remoteCalls atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		remoteCalls.Add(1)
+	}))
+	t.Cleanup(server.Close)
+
+	client, err := NewClientWithKubeconfigPaths("", "", "", "", false, []string{writeKubeconfig(t, "direct", server.URL, "")})
+	if err != nil {
+		t.Fatalf("NewClientWithKubeconfigPaths() error = %v", err)
+	}
+
+	_, _, err = client.CheckFileInfo(context.Background(), "kubeconfig:../escape", "default", "fixture-pod", "fixture-container", "/tmp/fixture")
+	var referenceErr *ClusterReferenceError
+	if !errors.As(err, &referenceErr) {
+		t.Fatalf("CheckFileInfo() error = %v, want ClusterReferenceError", err)
+	}
+	if remoteCalls.Load() != 0 {
+		t.Fatalf("remote calls = %d, want 0 before invalid reference is rejected", remoteCalls.Load())
 	}
 }
 

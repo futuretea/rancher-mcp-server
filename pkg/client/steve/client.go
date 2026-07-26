@@ -5,10 +5,7 @@ package steve
 import (
 	"context"
 	"fmt"
-	"net/http"
 	"sync"
-
-	"github.com/futuretea/rancher-mcp-server/pkg/util/url"
 
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -18,9 +15,6 @@ import (
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
-	clientcmdapi "k8s.io/client-go/tools/clientcmd/api"
-	"k8s.io/client-go/transport"
 )
 
 // ResourceReader is the read-only interface for querying Kubernetes resources.
@@ -33,30 +27,23 @@ type ResourceReader interface {
 
 // Client provides methods for interacting with Kubernetes clusters via Rancher's Steve API.
 type Client struct {
-	serverURL string
-	token     string
-	accessKey string
-	secretKey string
-	insecure  bool
+	serverURL  string
+	token      string
+	accessKey  string
+	secretKey  string
+	insecure   bool
+	rancher    clusterSource
+	kubeconfig *kubeconfigSource
 
 	cacheMu        sync.Mutex
 	dynamicClients map[string]dynamic.Interface
 	clientsets     map[string]kubernetes.Interface
-	transports     map[string]*http.Transport
 }
 
 // NewClient creates a new Steve API client.
 func NewClient(serverURL, token, accessKey, secretKey string, insecure bool) *Client {
-	return &Client{
-		serverURL:      serverURL,
-		token:          token,
-		accessKey:      accessKey,
-		secretKey:      secretKey,
-		insecure:       insecure,
-		dynamicClients: make(map[string]dynamic.Interface),
-		clientsets:     make(map[string]kubernetes.Interface),
-		transports:     make(map[string]*http.Transport),
-	}
+	client, _ := NewClientWithKubeconfigPaths(serverURL, token, accessKey, secretKey, insecure, nil)
+	return client
 }
 
 // NewClientWithToken creates a new Steve API client bound to a single request token.
@@ -64,18 +51,36 @@ func NewClientWithToken(serverURL, token string, insecure bool) *Client {
 	return NewClient(serverURL, token, "", "", insecure)
 }
 
+// NewClientWithKubeconfigPaths creates a client for configured Rancher and kubeconfig cluster sources.
+func NewClientWithKubeconfigPaths(serverURL, token, accessKey, secretKey string, insecure bool, kubeconfigPaths []string) (*Client, error) {
+	client := &Client{
+		serverURL:      serverURL,
+		token:          token,
+		accessKey:      accessKey,
+		secretKey:      secretKey,
+		insecure:       insecure,
+		dynamicClients: make(map[string]dynamic.Interface),
+		clientsets:     make(map[string]kubernetes.Interface),
+	}
+	if serverURL != "" {
+		client.rancher = &rancherSource{client: client}
+	}
+	if len(kubeconfigPaths) > 0 {
+		source, err := newKubeconfigSource(kubeconfigPaths)
+		if err != nil {
+			return nil, err
+		}
+		client.kubeconfig = source
+	}
+	return client, nil
+}
+
 // Close releases resources held by the client. After Close the client must not be used.
 func (c *Client) Close() {
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
-	for _, transport := range c.transports {
-		if transport != nil {
-			transport.CloseIdleConnections()
-		}
-	}
 	c.dynamicClients = nil
 	c.clientsets = nil
-	c.transports = nil
 }
 
 // ListOptions contains options for listing resources.
@@ -102,69 +107,16 @@ func (c *Client) createRestConfig(clusterID string) (*rest.Config, error) {
 
 // createRestConfigLocked creates a Kubernetes REST config while cacheMu is held.
 func (c *Client) createRestConfigLocked(clusterID string) (*rest.Config, error) {
-	clusterURL := url.GetSteveURL(c.serverURL, clusterID)
-
-	kubeconfig := clientcmdapi.NewConfig()
-	kubeconfig.Clusters["cluster"] = &clientcmdapi.Cluster{
-		Server:                clusterURL,
-		InsecureSkipTLSVerify: c.insecure,
+	rancher := c.rancher
+	if rancher == nil && c.serverURL != "" {
+		rancher = &rancherSource{client: c}
 	}
 
-	authInfo := &clientcmdapi.AuthInfo{}
-	if c.token != "" {
-		authInfo.Token = c.token
-	} else if c.accessKey != "" && c.secretKey != "" {
-		authInfo.Username = c.accessKey
-		authInfo.Password = c.secretKey
-	}
-	kubeconfig.AuthInfos["user"] = authInfo
-
-	kubeconfig.Contexts["context"] = &clientcmdapi.Context{
-		Cluster:  "cluster",
-		AuthInfo: "user",
-	}
-	kubeconfig.CurrentContext = "context"
-
-	restConfig, err := clientcmd.NewNonInteractiveClientConfig(
-		*kubeconfig,
-		kubeconfig.CurrentContext,
-		&clientcmd.ConfigOverrides{},
-		nil,
-	).ClientConfig()
+	source, sourceReference, err := parseClusterReference(clusterID, rancher, c.kubeconfig)
 	if err != nil {
 		return nil, err
 	}
-
-	httpTransport := c.transports[clusterID]
-	if httpTransport == nil {
-		transportConfig, err := restConfig.TransportConfig()
-		if err != nil {
-			return nil, fmt.Errorf("create transport config: %w", err)
-		}
-		transportConfig.BearerToken = ""
-		transportConfig.BearerTokenFile = ""
-		transportConfig.Username = ""
-		transportConfig.Password = ""
-
-		roundTripper, err := transport.New(transportConfig)
-		if err != nil {
-			return nil, fmt.Errorf("create HTTP transport: %w", err)
-		}
-		var ok bool
-		httpTransport, ok = roundTripper.(*http.Transport)
-		if !ok {
-			return nil, fmt.Errorf("expected *http.Transport, got %T", roundTripper)
-		}
-		c.transports[clusterID] = httpTransport
-	}
-
-	// A custom transport conflicts with rest.Config TLS flags; clear them and
-	// rely on the transport for TLS behavior.
-	restConfig.Insecure = false
-	restConfig.TLSClientConfig = rest.TLSClientConfig{}
-	restConfig.Transport = httpTransport
-
-	return restConfig, nil
+	return source.restConfig(sourceReference)
 }
 
 // getDynamicClient creates a dynamic Kubernetes client for the given cluster.
@@ -220,9 +172,14 @@ func (c *Client) ensureCachesLocked() {
 	if c.clientsets == nil {
 		c.clientsets = make(map[string]kubernetes.Interface)
 	}
-	if c.transports == nil {
-		c.transports = make(map[string]*http.Transport)
+}
+
+// KubeconfigContexts returns configured kubeconfig context names.
+func (c *Client) KubeconfigContexts() []string {
+	if c == nil || c.kubeconfig == nil {
+		return nil
 	}
+	return c.kubeconfig.contextNames()
 }
 
 // getResourceInterface returns a dynamic resource interface for the given parameters.

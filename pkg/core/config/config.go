@@ -30,6 +30,7 @@ type StaticConfig struct {
 	RancherOAuthAuthorizationServerURL string `mapstructure:"rancher_oauth_authorization_server_url"`
 	RancherOAuthJWKSURL                string `mapstructure:"rancher_oauth_jwks_url"`
 	RancherOAuthResourceURL            string `mapstructure:"rancher_oauth_resource_url"`
+	KubeconfigPaths                    []string `mapstructure:"kubeconfig_paths"`
 
 	// Security configuration
 	ReadOnly           bool `mapstructure:"read_only"`
@@ -72,7 +73,24 @@ func (c *StaticConfig) Validate() error {
 		return fmt.Errorf("list_output must be one of: table, yaml, json, got %s", c.ListOutput)
 	}
 
+	if err := c.validateKubeconfigAuthModeExclusion(); err != nil {
+		return err
+	}
+
 	return c.validateRancherConfiguration()
+}
+
+func (c *StaticConfig) validateKubeconfigAuthModeExclusion() error {
+	if !c.HasKubeconfigConfig() {
+		return nil
+	}
+	if c.RancherRequestTokenAuth {
+		return fmt.Errorf("kubeconfig_paths cannot be combined with rancher_request_token_auth")
+	}
+	if c.RancherOAuthTokenAuth {
+		return fmt.Errorf("kubeconfig_paths cannot be combined with rancher_oauth_token_auth")
+	}
+	return nil
 }
 
 func (c *StaticConfig) validateRancherConfiguration() error {
@@ -201,6 +219,11 @@ func LoadConfig(configPath string) (*StaticConfig, error) {
 // HasRancherConfig returns true if Rancher configuration is present
 func (c *StaticConfig) HasRancherConfig() bool {
 	return c.RancherServerURL != "" && (c.hasTokenAuth() || c.hasKeyAuth())
+}
+
+// HasKubeconfigConfig reports whether explicitly configured kubeconfig paths are present.
+func (c *StaticConfig) HasKubeconfigConfig() bool {
+	return len(c.KubeconfigPaths) > 0
 }
 
 // GetPortString returns the port as a string in the format ":port"

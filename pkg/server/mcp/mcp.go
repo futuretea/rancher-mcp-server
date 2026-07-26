@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"slices"
 	"sort"
+	"strings"
 
 	"github.com/mark3labs/mcp-go/mcp"
 	"github.com/mark3labs/mcp-go/server"
@@ -112,14 +113,19 @@ func NewServer(configuration Configuration) (*Server, error) {
 
 		// Initialize Steve client (for Steve API / Kubernetes resources)
 		var steveClient *steve.Client
-		if configuration.HasRancherConfig() {
-			steveClient = steve.NewClient(
+		if configuration.HasRancherConfig() || configuration.HasKubeconfigConfig() {
+			var err error
+			steveClient, err = steve.NewClientWithKubeconfigPaths(
 				configuration.RancherServerURL,
 				configuration.RancherToken,
 				configuration.RancherAccessKey,
 				configuration.RancherSecretKey,
 				configuration.RancherTLSInsecure,
+				configuration.KubeconfigPaths,
 			)
+			if err != nil {
+				return nil, fmt.Errorf("initialize Steve client: %w", err)
+			}
 			logging.Info("Steve client initialized for Kubernetes resources")
 		}
 
@@ -251,6 +257,10 @@ func (s *Server) shouldEnableTool(toolName string) bool {
 
 // configureTool creates a configured tool handler that uses server configuration
 func (s *Server) configureTool(tool toolset.ServerTool) toolset.ServerTool {
+	if len(tool.Annotations.ClusterSources) > 0 {
+		tool.Tool.Description += fmt.Sprintf(" Applicable cluster sources: %s.", strings.Join(tool.Annotations.ClusterSources, ", "))
+	}
+
 	return toolset.ServerTool{
 		Tool:        tool.Tool,
 		Annotations: tool.Annotations,

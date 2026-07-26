@@ -2,6 +2,11 @@ package kubernetes
 
 import (
 	"context"
+	"errors"
+	"net/http"
+	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -217,6 +222,89 @@ func TestResourceDiffHandler_AcceptsCombinedClientWithSteve(t *testing.T) {
 	}
 }
 
+func TestResourceDiffHandler_RejectsInvalidKubeconfigClusterReference(t *testing.T) {
+	client, err := steve.NewClientWithKubeconfigPaths("", "", "", "", false, []string{writeDiffKubeconfig(t)})
+	if err != nil {
+		t.Fatalf("NewClientWithKubeconfigPaths() error = %v", err)
+	}
+
+	_, err = resourceDiffHandler(context.Background(), &toolset.CombinedClient{Steve: client}, map[string]interface{}{
+		"kind": "deployment",
+		"left": map[string]interface{}{
+			"cluster": "kubeconfig:../escape",
+			"name":    "left",
+		},
+		"right": map[string]interface{}{
+			"cluster": "kubeconfig:direct",
+			"name":    "right",
+		},
+	})
+
+	var referenceErr *steve.ClusterReferenceError
+	if !errors.As(err, &referenceErr) {
+		t.Fatalf("resourceDiffHandler() error = %v, want ClusterReferenceError", err)
+	}
+}
+
+func TestKubernetesListTool_UsesKubeconfigClusterThroughCombinedClient(t *testing.T) {
+	var requestPath string
+	apiServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requestPath = r.URL.Path
+		if r.Method != http.MethodGet || r.URL.Path != "/api/v1/namespaces/default/pods" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"PodList","items":[{"apiVersion":"v1","kind":"Pod","metadata":{"name":"direct-pod","namespace":"default"}}]}`))
+	}))
+	defer apiServer.Close()
+
+	client, err := steve.NewClientWithKubeconfigPaths("", "", "", "", false, []string{writeDiffKubeconfigForServer(t, apiServer.URL)})
+	if err != nil {
+		t.Fatalf("NewClientWithKubeconfigPaths() error = %v", err)
+	}
+	combinedClient := toolset.NewCombinedClient(nil, client, false)
+	listTool := findKubernetesTool(t, "kubernetes_list")
+	params := map[string]interface{}{
+		"cluster":   "kubeconfig:direct",
+		"kind":      "pod",
+		"namespace": "default",
+		"format":    "json",
+	}
+
+	output, err := listTool.Handler(context.Background(), combinedClient, params)
+	if err != nil {
+		t.Fatalf("kubernetes_list error = %v", err)
+	}
+	if !strings.Contains(output, "direct-pod") {
+		t.Fatalf("kubernetes_list output = %q, want direct kubeconfig pod", output)
+	}
+	if requestPath != "/api/v1/namespaces/default/pods" {
+		t.Fatalf("Kubernetes API path = %q, want direct kubeconfig API path", requestPath)
+	}
+	if strings.Contains(requestPath, "/k8s/clusters/") {
+		t.Fatalf("Kubernetes API path = %q must not use Rancher Steve routing", requestPath)
+	}
+
+	params["cluster"] = "kubeconfig:../escape"
+	_, err = listTool.Handler(context.Background(), combinedClient, params)
+	var referenceErr *steve.ClusterReferenceError
+	if !errors.As(err, &referenceErr) {
+		t.Fatalf("kubernetes_list invalid reference error = %v, want ClusterReferenceError", err)
+	}
+}
+
+func findKubernetesTool(t *testing.T, name string) toolset.ServerTool {
+	t.Helper()
+	for _, registered := range (&Toolset{}).GetTools(nil) {
+		if registered.Tool.Name == name {
+			return registered
+		}
+	}
+	t.Fatalf("Kubernetes tool %q is not registered", name)
+	return toolset.ServerTool{}
+}
+
 func TestExtractDiffTarget_UsesOptionalNamespaceSemantics(t *testing.T) {
 	target, err := extractDiffTarget(map[string]interface{}{
 		"left": map[string]interface{}{
@@ -230,4 +318,57 @@ func TestExtractDiffTarget_UsesOptionalNamespaceSemantics(t *testing.T) {
 	if target.Namespace != "" {
 		t.Fatalf("expected empty namespace for cluster-scoped lookups, got %q", target.Namespace)
 	}
+}
+
+func writeDiffKubeconfig(t *testing.T) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "kubeconfig.yaml")
+	content := `apiVersion: v1
+kind: Config
+clusters:
+- name: direct
+  cluster:
+    server: https://direct.example.test
+contexts:
+- name: direct
+  context:
+    cluster: direct
+    user: direct
+current-context: direct
+users:
+- name: direct
+  user: {}
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write kubeconfig fixture: %v", err)
+	}
+	return path
+}
+
+func writeDiffKubeconfigForServer(t *testing.T, server string) string {
+	t.Helper()
+
+	path := filepath.Join(t.TempDir(), "kubeconfig.yaml")
+	content := `apiVersion: v1
+kind: Config
+clusters:
+- name: direct
+  cluster:
+    server: ` + server + `
+    insecure-skip-tls-verify: true
+contexts:
+- name: direct
+  context:
+    cluster: direct
+    user: direct
+current-context: direct
+users:
+- name: direct
+  user: {}
+`
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatalf("write kubeconfig fixture: %v", err)
+	}
+	return path
 }

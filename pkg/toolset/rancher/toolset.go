@@ -35,7 +35,7 @@ func clusterListTool() toolset.ServerTool {
 	return toolset.ServerTool{
 		Tool: mcp.Tool{
 			Name:        "cluster_list",
-			Description: "List all available Rancher clusters",
+			Description: "List all available clusters",
 			InputSchema: mcp.ToolInputSchema{
 				Type: "object",
 				Properties: map[string]any{
@@ -64,7 +64,8 @@ func clusterListTool() toolset.ServerTool {
 			},
 		},
 		Annotations: toolset.ToolAnnotations{
-			ReadOnlyHint: paramutil.BoolPtr(true),
+			ReadOnlyHint:   paramutil.BoolPtr(true),
+			ClusterSources: []string{"rancher", "kubeconfig"},
 		},
 		Handler: clusterListHandler,
 	}

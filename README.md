@@ -12,7 +12,7 @@
 
 A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Rancher multi-cluster management.
 
-- **Multi-cluster Management**: Access multiple Kubernetes clusters through Rancher API
+- **Multi-cluster Management**: Access Kubernetes clusters through the Rancher API or configured kubeconfig paths
 - **Kubernetes Resources via Steve API**: CRUD operations on any resource type
   - Get/List any resource (Pod, Deployment, Service, ConfigMap, Secret, CRD, etc.)
   - Create resources from JSON manifests
@@ -54,8 +54,12 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
 
 ### Requirements
 
-- Access to a Rancher server
-- Rancher API credentials (Token or Access Key/Secret Key)
+Configure at least one cluster access method:
+
+- Rancher access: a Rancher server and API credentials (Token or Access Key/Secret Key)
+- Direct Kubernetes access: one or more kubeconfig paths
+
+Rancher access and credentials are optional when kubeconfig paths are configured.
 
 ### Claude Code
 
@@ -116,6 +120,7 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--rancher-access-key` | Rancher access key | |
 | `--rancher-secret-key` | Rancher secret key | |
 | `--rancher-tls-insecure` | Skip TLS verification | `false` |
+| `--kubeconfig-paths` | Kubeconfig files for direct Kubernetes cluster access | |
 | `--rancher-request-token-auth` | Use `Authorization: Bearer <token>`, or raw `R_token` only when Authorization is absent, from each HTTP/SSE request instead of static credentials | `false` |
 | `--rancher-oauth-token-auth` | Verify a Rancher OAuth Bearer token before `/mcp` calls Rancher | `false` |
 | `--rancher-oauth-authorization-server-url` | Rancher OAuth authorization-server root URL and JWT issuer; do not append `/authorize` | |
@@ -173,6 +178,13 @@ rancher_token: your-bearer-token
 
 # rancher_tls_insecure: false
 
+# Optional direct Kubernetes cluster source. Each context is exposed as
+# kubeconfig:<context>; use cluster_list to discover available IDs.
+# When multiple files define the same context, the first file wins.
+# kubeconfig_paths:
+#   - /etc/rancher-mcp/kubeconfig
+#   - /etc/rancher-mcp/extra-kubeconfig
+
 read_only: true  # default: true
 disable_destructive: false
 
@@ -212,6 +224,23 @@ Start the server with the file explicitly; it is not discovered automatically:
 rancher-mcp-server --config ./config.yaml
 ```
 
+### Kubeconfig cluster source
+
+`kubeconfig_paths` adds direct Kubernetes contexts without routing requests through
+Rancher. Files are loaded in order; if more than one file declares the same context,
+the first file wins. Run `cluster_list` to obtain IDs such as
+`kubeconfig:production` and pass those IDs to Kubernetes tools.
+
+The result of `cluster_list` includes a `source` column. Rancher rows use
+`rancher`; direct-context rows use `kubeconfig` and intentionally leave Rancher-only
+fields empty. `project_list` remains Rancher-only and rejects `kubeconfig:` IDs.
+
+Do not combine `kubeconfig_paths` with `rancher_request_token_auth` or
+`rancher_oauth_token_auth`: kubeconfig credentials belong to the server process,
+while those modes use caller-scoped Rancher tokens. In HTTP/SSE mode (`port > 0`),
+this server has no HTTP authentication for kubeconfig-backed requests. Prefer stdio
+or restrict network access to trusted callers.
+
 For an MCP client that uses `npx`, pass the same arguments after the package
 name: `npx -y @futuretea/rancher-mcp-server@latest --config ./config.yaml`.
 
@@ -223,10 +252,14 @@ Use `RANCHER_MCP_` prefix with underscores:
 RANCHER_MCP_PORT=8080
 RANCHER_MCP_RANCHER_SERVER_URL=https://rancher.example.com
 RANCHER_MCP_RANCHER_TOKEN=your-token
+RANCHER_MCP_KUBECONFIG_PATHS=/etc/rancher-mcp/kubeconfig,/etc/rancher-mcp/extra-kubeconfig
 RANCHER_MCP_READ_ONLY=true
 RANCHER_MCP_SHOW_SENSITIVE_DATA=false  # Global admin control for sensitive data
 RANCHER_MCP_ENABLE_CONTAINER_EXEC=false
 ```
+
+`RANCHER_MCP_KUBECONFIG_PATHS` uses a comma-separated ordered list, matching
+`kubeconfig_paths`. When multiple files define the same context, the first path wins.
 
 For Rancher OAuth token passthrough, configure the OAuth settings with the same
 prefix:
@@ -433,7 +466,7 @@ Show Kubernetes cluster resource capacity, requests, limits, and utilization. Si
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `pods` | boolean | No | Include individual pod resources in the output (default: false) |
 | `containers` | boolean | No | Include individual container resources in the output (implies pods=true) (default: false) |
 | `util` | boolean | No | Include actual resource utilization from metrics-server (requires metrics-server) (default: false) |
@@ -502,7 +535,7 @@ the result includes a warning. Pod rankings also support restart count.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | No | Resource kind to rank: `pod` or `node` (default: `pod`) |
 | `namespace` | string | No | Namespace (empty = all namespaces) |
 | `labelSelector` | string | No | Label selector for filtering (e.g., "app=nginx,env=prod") |
@@ -548,7 +581,7 @@ Get a health summary for Deployments, StatefulSets, and DaemonSets. Shows ready 
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | No | Namespace (empty = all namespaces) |
 | `kind` | string | No | Workload kind: `deployment`, `statefulset`, `daemonset`, or `all` (default: `all`) |
 | `labelSelector` | string | No | Label selector for filtering |
@@ -583,7 +616,7 @@ Aggregate pod/container resources by namespace or label key. Returns total reque
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | No | Namespace filter (empty = all namespaces) |
 | `labelSelector` | string | No | Label selector for filtering pods |
 | `groupBy` | string | No | Group by: `namespace` or `label` (default: `namespace`) |
@@ -621,7 +654,7 @@ Group and rank Kubernetes events by reason, kind, and frequency. Useful for iden
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | No | Namespace (empty = all namespaces) |
 | `kind` | string | No | Filter by involved object kind (e.g., Pod, Deployment, Node) |
 | `type` | string | No | Filter by event type: `Warning` or `Normal` |
@@ -660,7 +693,7 @@ Show all dependencies or dependents of any Kubernetes resource as a tree. Covers
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | Yes | Resource kind (e.g., deployment, pod, service, ingress, node, App) |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
@@ -680,7 +713,7 @@ Get a Kubernetes resource by kind, namespace, and name.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, App) |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
@@ -697,7 +730,7 @@ List Kubernetes resources by kind.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, App) |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (empty = all namespaces) |
@@ -728,7 +761,7 @@ Get logs from a pod container. Supports multi-pod log aggregation via label sele
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | Yes | Namespace |
 | `name` | string | No | Pod name (required if labelSelector not specified) |
 | `labelSelector` | string | No | Label selector for multi-pod log aggregation (e.g., "app=nginx") |
@@ -753,7 +786,7 @@ Get pod diagnostics: details, parent workload, metrics, and logs.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | Yes | Namespace |
 | `name` | string | Yes | Pod name |
 
@@ -766,7 +799,7 @@ View rollout history for Deployments. Shows revision history with change annotat
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | Yes | Namespace |
 | `name` | string | Yes | Deployment name |
 | `format` | string | No | Output format: json, table (default: table) |
@@ -781,7 +814,7 @@ resources, taints, labels, and scheduled pods.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `name` | string | Yes | Node name |
 | `format` | string | No | Output format: json, yaml (default: json) |
 
@@ -794,7 +827,7 @@ Describe a Kubernetes resource with its related events. Similar to `kubectl desc
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, node, App) |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped resources) |
@@ -847,8 +880,8 @@ clusters or namespaces. Returns a git-style diff.
 |-----------|------|----------|-------------|
 | `kind` | string | Yes | Resource kind (e.g., deployment, daemonset, statefulset) |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., `apps/v1`) |
-| `left` | object | Yes | First resource: `cluster` and `name` are required; `namespace` is optional |
-| `right` | object | Yes | Second resource: `cluster` and `name` are required; `namespace` is optional |
+| `left` | object | Yes | First resource: `cluster` is a cluster reference (Rancher ID or `kubeconfig:<context>`); `name` is required and `namespace` is optional |
+| `right` | object | Yes | Second resource: `cluster` is a cluster reference (Rancher ID or `kubeconfig:<context>`); `name` is required and `namespace` is optional |
 | `ignoreStatus` | boolean | No | Ignore changes under `status` (default: false) |
 | `ignoreMeta` | boolean | No | Ignore non-essential metadata differences (default: true) |
 
@@ -861,7 +894,7 @@ Get really all Kubernetes resources in the cluster (inspired by [ketall](https:/
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | No | Filter by namespace (optional, empty for all namespaces) |
 | `name` | string | No | Filter by resource name (partial match, client-side) |
 | `labelSelector` | string | No | Label selector for filtering (e.g., "app=nginx,env=prod") |
@@ -913,7 +946,7 @@ Watch Kubernetes resources and return git-style diffs of changes at regular inte
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, App) |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (empty = all namespaces or cluster-scoped resources) |
@@ -969,7 +1002,7 @@ List Kubernetes events. Supports filtering by namespace, involved object name, a
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | No | Namespace (empty = all namespaces) |
 | `name` | string | No | Filter by involved object name |
 | `kind` | string | No | Filter by involved object kind (e.g., Pod, Deployment, Node) |
@@ -986,7 +1019,7 @@ Create a Kubernetes resource. Disabled when `read_only=true`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `resource` | string | Yes | JSON manifest valid for its resource kind; include `spec` only when that kind defines one |
 
 </details>
@@ -998,7 +1031,7 @@ Patch a resource using JSON Patch (RFC 6902). Disabled when `read_only=true`.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | Yes | Resource kind |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped) |
@@ -1014,7 +1047,7 @@ Delete a Kubernetes resource. Disabled when `read_only=true` or `disable_destruc
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | Yes | Resource kind |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
 | `namespace` | string | No | Namespace (optional for cluster-scoped) |
@@ -1029,7 +1062,7 @@ Execute a non-interactive command in a pod container. Disabled by default (`--en
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | Yes | Namespace |
 | `name` | string | Yes | Pod name |
 | `container` | string | No | Container name (defaults to first container) |
@@ -1058,7 +1091,7 @@ container. Files are limited by `--max-file-size` (default: 10Mi).
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | Yes | Namespace |
 | `name` | string | Yes | Pod name |
 | `container` | string | No | Container name (defaults to first container) |
@@ -1077,7 +1110,7 @@ metadata. Requires `tar` in the container. Files are limited by
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | Cluster ID |
+| `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `namespace` | string | Yes | Namespace |
 | `name` | string | Yes | Pod name |
 | `container` | string | No | Container name (defaults to first container) |
@@ -1090,7 +1123,7 @@ metadata. Requires `tar` in the container. Files are limited by
 <details>
 <summary>cluster_list</summary>
 
-List available Rancher clusters.
+List all available clusters from Rancher and configured kubeconfig contexts.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -1108,7 +1141,7 @@ List Rancher projects.
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | No | Filter by cluster ID |
+| `cluster` | string | No | Rancher cluster ID filter; `kubeconfig:` references are rejected |
 | `name` | string | No | Filter by project name (partial match) |
 | `limit` | integer | No | Items per page (default: 100) |
 | `page` | integer | No | Page number (default: 1) |
@@ -1121,7 +1154,7 @@ List Rancher projects.
 ### Prerequisites
 
 - Go 1.26.0+
-- Access to a Rancher server (for integration testing)
+- Access to a Rancher server (only for Rancher integration testing; kubeconfig-only operation does not require Rancher access)
 
 ### Build
 

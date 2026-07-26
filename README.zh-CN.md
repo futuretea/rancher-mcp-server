@@ -12,7 +12,7 @@
 
 面向 Rancher 多集群管理的 [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) 服务器。
 
-- **多集群管理**：通过 Rancher API 访问多个 Kubernetes 集群
+- **多集群管理**：通过 Rancher API 或已配置的 kubeconfig 路径访问 Kubernetes 集群
 - **通过 Steve API 操作 Kubernetes 资源**：对任意资源类型执行 CRUD
   - 获取/列出任意资源（Pod、Deployment、Service、ConfigMap、Secret、CRD 等）
   - 通过 JSON 清单创建资源
@@ -54,8 +54,12 @@
 
 ### 前置要求
 
-- 可访问的 Rancher 服务器
-- Rancher API 凭据（Token 或 Access Key/Secret Key）
+至少配置一种集群访问方式：
+
+- Rancher 访问：可访问的 Rancher 服务器和 Rancher API 凭据（Token 或 Access Key/Secret Key）
+- 直连 Kubernetes：一个或多个 kubeconfig 路径
+
+配置了 kubeconfig 路径时，Rancher 访问和凭据均为可选项。
 
 ### Claude Code
 
@@ -116,6 +120,7 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--rancher-access-key` | Rancher access key | |
 | `--rancher-secret-key` | Rancher secret key | |
 | `--rancher-tls-insecure` | 跳过 TLS 验证 | `false` |
+| `--kubeconfig-paths` | 用于直连 Kubernetes 集群的 kubeconfig 文件 | |
 | `--rancher-request-token-auth` | 使用每个 HTTP/SSE 请求的 `Authorization: Bearer <token>` 头代替静态凭据 | `false` |
 | `--read-only` | 禁用写操作 | `true` |
 | `--disable-destructive` | 禁用删除操作 | `false` |
@@ -156,6 +161,13 @@ rancher_token: your-bearer-token
 
 # rancher_tls_insecure: false
 
+# 可选：直连 Kubernetes 集群来源。每个 context 会暴露为
+# kubeconfig:<context>；使用 cluster_list 查看可用 ID。
+# 多个文件定义同名 context 时，排在最前的文件优先。
+# kubeconfig_paths:
+#   - /etc/rancher-mcp/kubeconfig
+#   - /etc/rancher-mcp/extra-kubeconfig
+
 read_only: true  # default: true
 disable_destructive: false
 
@@ -195,10 +207,29 @@ toolsets:
 RANCHER_MCP_PORT=8080
 RANCHER_MCP_RANCHER_SERVER_URL=https://rancher.example.com
 RANCHER_MCP_RANCHER_TOKEN=your-token
+RANCHER_MCP_KUBECONFIG_PATHS=/etc/rancher-mcp/kubeconfig,/etc/rancher-mcp/extra-kubeconfig
 RANCHER_MCP_READ_ONLY=true
 RANCHER_MCP_SHOW_SENSITIVE_DATA=false  # Global admin control for sensitive data
 RANCHER_MCP_ENABLE_CONTAINER_EXEC=false
 ```
+
+`RANCHER_MCP_KUBECONFIG_PATHS` 使用逗号分隔的有序列表，对应
+`kubeconfig_paths`。多个文件定义相同 context 时，排在前面的路径优先。
+
+### Kubeconfig 集群来源
+
+`kubeconfig_paths` 可直接使用 Kubernetes context，不经过 Rancher。文件按配置
+顺序加载；若多个文件定义相同 context，以第一个文件为准。运行 `cluster_list`
+可获取 `kubeconfig:production` 这类 ID，并将其传给 Kubernetes 工具。
+
+`cluster_list` 的结果包含 `source` 列：Rancher 集群为 `rancher`，直连 context
+为 `kubeconfig`，且直连行的 Rancher 专属字段会保持为空。`project_list` 仍仅支持
+Rancher 集群，并会拒绝 `kubeconfig:` ID。
+
+不要将 `kubeconfig_paths` 与 `rancher_request_token_auth` 或
+`rancher_oauth_token_auth` 组合使用：前者使用服务进程的 kubeconfig 凭据，后两者
+使用调用者范围的 Rancher token。在 HTTP/SSE 模式（`port > 0`）下，本服务不会为
+kubeconfig 请求提供 HTTP 鉴权。请优先使用 stdio，或仅向可信调用者开放网络。
 
 ### HTTP/SSE 模式
 
@@ -327,7 +358,7 @@ data:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `pods` | boolean | No | 在输出中包含各 Pod 资源（默认：false） |
 | `containers` | boolean | No | 在输出中包含各容器资源（隐含 pods=true）（默认：false） |
 | `util` | boolean | No | 包含 metrics-server 的实际资源利用率（需要 metrics-server）（默认：false） |
@@ -394,7 +425,7 @@ data:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | No | 要排序的资源类型：`pod` 或 `node`（默认：`pod`） |
 | `namespace` | string | No | 命名空间（空 = 所有命名空间） |
 | `labelSelector` | string | No | 标签选择器过滤（例如："app=nginx,env=prod"） |
@@ -440,7 +471,7 @@ data:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | No | 命名空间（空 = 所有命名空间） |
 | `kind` | string | No | 工作负载类型：`deployment`、`statefulset`、`daemonset` 或 `all`（默认：`all`） |
 | `labelSelector` | string | No | 标签选择器过滤 |
@@ -475,7 +506,7 @@ data:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | No | 命名空间过滤（空 = 所有命名空间） |
 | `labelSelector` | string | No | 标签选择器过滤 Pod |
 | `groupBy` | string | No | 分组方式：`namespace` 或 `label`（默认：`namespace`） |
@@ -513,7 +544,7 @@ data:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | No | 命名空间（空 = 所有命名空间） |
 | `kind` | string | No | 按关联对象 kind 过滤（例如：Pod、Deployment、Node） |
 | `type` | string | No | 按事件类型过滤：`Warning` 或 `Normal` |
@@ -552,7 +583,7 @@ data:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | Yes | 资源 kind（例如：deployment、pod、service、ingress、node、App） |
 | `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：catalog.cattle.io/v1） |
 | `namespace` | string | No | 命名空间（集群级资源可选） |
@@ -570,7 +601,7 @@ data:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | Yes | 资源 kind（例如：pod、deployment、service、App） |
 | `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：catalog.cattle.io/v1） |
 | `namespace` | string | No | 命名空间（集群级资源可选） |
@@ -587,7 +618,7 @@ data:
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | Yes | 资源 kind（例如：pod、deployment、service、App） |
 | `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：catalog.cattle.io/v1） |
 | `namespace` | string | No | 命名空间（空 = 所有命名空间） |
@@ -618,7 +649,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | Yes | 命名空间 |
 | `name` | string | No | Pod 名称（未指定 labelSelector 时必填） |
 | `labelSelector` | string | No | 多 Pod 日志聚合的标签选择器（例如："app=nginx"） |
@@ -643,7 +674,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | Yes | 命名空间 |
 | `name` | string | Yes | Pod 名称 |
 
@@ -656,7 +687,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | Yes | 命名空间 |
 | `name` | string | Yes | Deployment 名称 |
 | `format` | string | No | 输出格式：json、table（默认：table） |
@@ -670,7 +701,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `name` | string | No | 节点名称（为空时分析所有节点） |
 | `format` | string | No | 输出格式：json、yaml（默认：json） |
 
@@ -683,7 +714,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | Yes | 资源 kind（例如：pod、deployment、service、node、App） |
 | `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：catalog.cattle.io/v1） |
 | `namespace` | string | No | 命名空间（集群级资源可选） |
@@ -727,13 +758,29 @@ CRD 可直接使用其清单标识：
 </details>
 
 <details>
+<summary>kubernetes_resource_diff</summary>
+
+比较同一 kind 的两个资源，包括不同集群或命名空间中的资源。返回 git 风格 diff。
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `kind` | string | Yes | 资源 kind（例如：deployment、daemonset、statefulset） |
+| `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：`apps/v1`） |
+| `left` | object | Yes | 左侧资源：`cluster` 是集群引用（Rancher ID 或 `kubeconfig:<context>`）；`name` 必填，`namespace` 可选 |
+| `right` | object | Yes | 右侧资源：`cluster` 是集群引用（Rancher ID 或 `kubeconfig:<context>`）；`name` 必填，`namespace` 可选 |
+| `ignoreStatus` | boolean | No | 忽略 `status` 下的变更（默认：false） |
+| `ignoreMeta` | boolean | No | 忽略非必要元数据差异（默认：true） |
+
+</details>
+
+<details>
 <summary>kubernetes_get_all</summary>
 
 获取集群中真正的全部 Kubernetes 资源（灵感来自 [ketall](https://github.com/corneliusweig/ketall)）。与 `kubectl get all` 不同，此工具展示所有资源类型，包括 ConfigMap、Secret、RBAC 资源、CRD 等通常被隐藏的资源。
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | No | 按命名空间过滤（可选，空表示所有命名空间） |
 | `name` | string | No | 按资源名称过滤（部分匹配，客户端侧） |
 | `labelSelector` | string | No | 标签选择器过滤（例如："app=nginx,env=prod"） |
@@ -785,7 +832,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | Yes | 资源 kind（例如：pod、deployment、service、App） |
 | `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：catalog.cattle.io/v1） |
 | `namespace` | string | No | 命名空间（空 = 所有命名空间或集群级资源） |
@@ -841,7 +888,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | No | 命名空间（空 = 所有命名空间） |
 | `name` | string | No | 按关联对象名称过滤 |
 | `kind` | string | No | 按关联对象 kind 过滤（例如：Pod、Deployment、Node） |
@@ -858,7 +905,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `resource` | string | Yes | JSON 清单（必须包含 apiVersion、kind、metadata、spec） |
 
 </details>
@@ -870,7 +917,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | Yes | 资源 kind |
 | `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：catalog.cattle.io/v1） |
 | `namespace` | string | No | 命名空间（集群级资源可选） |
@@ -886,7 +933,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | Yes | 资源 kind |
 | `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：catalog.cattle.io/v1） |
 | `namespace` | string | No | 命名空间（集群级资源可选） |
@@ -901,7 +948,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | Yes | 命名空间 |
 | `name` | string | Yes | Pod 名称 |
 | `container` | string | No | 容器名称（默认为第一个容器） |
@@ -927,7 +974,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | Yes | 命名空间 |
 | `name` | string | Yes | Pod 名称 |
 | `container` | string | No | 容器名称（默认为第一个容器） |
@@ -943,7 +990,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | Yes | 集群 ID |
+| `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `namespace` | string | Yes | 命名空间 |
 | `name` | string | Yes | Pod 名称 |
 | `container` | string | No | 容器名称（默认为第一个容器） |
@@ -956,7 +1003,7 @@ CRD 可直接使用其清单标识：
 <details>
 <summary>cluster_list</summary>
 
-列出可用的 Rancher 集群。
+列出 Rancher 和已配置 kubeconfig context 中的所有可用集群。
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
@@ -974,7 +1021,7 @@ CRD 可直接使用其清单标识：
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `cluster` | string | No | 按集群 ID 过滤 |
+| `cluster` | string | No | 仅按 Rancher 集群 ID 过滤；拒绝 `kubeconfig:` 引用 |
 | `name` | string | No | 按项目名称过滤（部分匹配） |
 | `limit` | integer | No | 每页条目数（默认：100） |
 | `page` | integer | No | 页码（默认：1） |
@@ -987,7 +1034,7 @@ CRD 可直接使用其清单标识：
 ### 前置要求
 
 - Go 1.26.0+
-- 可访问的 Rancher 服务器（用于集成测试）
+- 可访问的 Rancher 服务器（仅用于 Rancher 集成测试；仅使用 kubeconfig 的运行不需要 Rancher 访问）
 
 ### 构建
 

@@ -67,6 +67,10 @@ func projectToMap(p norman.Project) map[string]string {
 // projectListHandler handles the project_list tool.
 // Supports fuzzy matching for cluster identifier.
 func projectListHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
+	if strings.HasPrefix(paramutil.ExtractOptionalString(params, paramutil.ParamCluster), "kubeconfig:") {
+		return "", fmt.Errorf("project_list does not support kubeconfig clusters")
+	}
+
 	normanClient, err := toolset.ValidateNormanClient(client)
 	if err != nil {
 		return "", err

@@ -52,19 +52,20 @@ func buildCapabilityStatus(configured, available bool, missingReason, unavailabl
 }
 
 func (s *Server) capabilityStatuses() map[string]CapabilityStatus {
-	hasCapability := s.configuration != nil && s.configuration.HasRancherCapability()
-	hasConfig := s.configuration != nil && s.configuration.HasRancherConfig()
+	hasRancherCapability := s.configuration != nil && s.configuration.HasRancherCapability()
+	hasRancherConfig := s.configuration != nil && s.configuration.HasRancherConfig()
+	hasKubeconfigConfig := s.configuration != nil && s.configuration.HasKubeconfigConfig()
 
 	requestScoped := s.configuration != nil && s.configuration.usesRequestScopedRancherToken()
-	rancherAvailable := hasCapability && (requestScoped || (s.normanClient != nil && s.normanClient.IsUsable()))
-	kubernetesAvailable := hasCapability && (requestScoped || s.steveClient != nil)
+	rancherAvailable := hasRancherCapability && (requestScoped || (s.normanClient != nil && s.normanClient.IsUsable()))
+	kubernetesAvailable := (hasRancherCapability && (requestScoped || s.steveClient != nil)) || (hasKubeconfigConfig && s.steveClient != nil)
 
-	rancherStatus := buildCapabilityStatus(hasCapability, rancherAvailable, "rancher configuration missing", "rancher client unavailable")
-	kubernetesStatus := buildCapabilityStatus(hasCapability, kubernetesAvailable, "rancher configuration missing", "kubernetes client unavailable")
+	rancherStatus := buildCapabilityStatus(hasRancherCapability, rancherAvailable, "rancher configuration missing", "rancher client unavailable")
+	kubernetesStatus := buildCapabilityStatus(hasRancherCapability || hasKubeconfigConfig, kubernetesAvailable, "kubernetes configuration missing", "kubernetes client unavailable")
 
 	// Suppress misleading "unavailable" reasons in dynamic mode where availability
 	// reflects configuration readiness rather than pre-created client usability.
-	if hasCapability && !hasConfig {
+	if hasRancherCapability && !hasRancherConfig {
 		rancherStatus.Reason = ""
 		kubernetesStatus.Reason = ""
 	}
@@ -112,12 +113,15 @@ func (s *Server) capabilitySummary() string {
 func applyDefaultAnnotations(toolsetName string, serverTool toolset.ServerTool) toolset.ServerTool {
 	switch toolsetName {
 	case "rancher":
-		if serverTool.Annotations.RequiresRancher == nil {
-			serverTool.Annotations.RequiresRancher = boolPtr(true)
+		if serverTool.Annotations.ClusterSources == nil {
+			serverTool.Annotations.ClusterSources = []string{"rancher"}
 		}
 	case "kubernetes":
 		if serverTool.Annotations.RequiresKubernetes == nil {
 			serverTool.Annotations.RequiresKubernetes = boolPtr(true)
+		}
+		if *serverTool.Annotations.RequiresKubernetes && serverTool.Annotations.ClusterSources == nil {
+			serverTool.Annotations.ClusterSources = []string{"rancher", "kubeconfig"}
 		}
 	}
 
@@ -133,8 +137,56 @@ func (s *Server) capabilityAllowsTool(serverTool toolset.ServerTool) (bool, stri
 	if serverTool.Annotations.RequiresKubernetes != nil && *serverTool.Annotations.RequiresKubernetes && !statuses["kubernetes"].Available {
 		return false, statuses["kubernetes"].Reason
 	}
+	if len(serverTool.Annotations.ClusterSources) == 0 {
+		return true, ""
+	}
 
-	return true, ""
+	var reasons []string
+	requiresKubernetes := serverTool.Annotations.RequiresKubernetes != nil && *serverTool.Annotations.RequiresKubernetes
+	for _, source := range serverTool.Annotations.ClusterSources {
+		available, reason := s.clusterSourceAvailable(source, requiresKubernetes)
+		if available {
+			return true, ""
+		}
+		if reason != "" {
+			reasons = append(reasons, reason)
+		}
+	}
+	return false, strings.Join(reasons, "; ")
+}
+
+func (s *Server) clusterSourceAvailable(source string, requiresKubernetes bool) (bool, string) {
+	if s.configuration == nil || s.configuration.StaticConfig == nil {
+		return false, "cluster source configuration missing"
+	}
+
+	switch source {
+	case "rancher":
+		requestScoped := s.configuration.usesRequestScopedRancherToken()
+		if !s.configuration.HasRancherCapability() {
+			return false, "rancher configuration missing"
+		}
+		if requiresKubernetes && (requestScoped || s.steveClient != nil) {
+			return true, ""
+		}
+		if !requiresKubernetes && (requestScoped || (s.normanClient != nil && s.normanClient.IsUsable())) {
+			return true, ""
+		}
+		if requiresKubernetes {
+			return false, "rancher Kubernetes client unavailable"
+		}
+		return false, "rancher client unavailable"
+	case "kubeconfig":
+		if !s.configuration.HasKubeconfigConfig() {
+			return false, "kubeconfig configuration missing"
+		}
+		if s.steveClient != nil {
+			return true, ""
+		}
+		return false, "kubeconfig client unavailable"
+	default:
+		return false, fmt.Sprintf("unknown cluster source %q", source)
+	}
 }
 
 func validateUniqueToolNames(enabledToolsets []toolset.Toolset, client interface{}) error {

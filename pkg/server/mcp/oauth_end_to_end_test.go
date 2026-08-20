@@ -113,9 +113,9 @@ func TestOAuthDynamicAuthRejectedRequestsDoNotReachRancher(t *testing.T) {
 			})),
 		},
 		{
-			name: "missing required scope",
+			name: "missing offline_access and unsupported scope",
 			authorization: "Bearer " + fixture.sign(t, oauthClaims(map[string]any{
-				"scope": []string{"offline_access"},
+				"scope": []string{"openid", "profile"},
 			})),
 		},
 		{

@@ -448,6 +448,12 @@ func TestOAuthTokenVerifier_AcceptsReferenceCompatibleClaims(t *testing.T) {
 				"nbf": now.Add(9 * time.Second).Unix(),
 			}),
 		},
+		{
+			name: "space-delimited scope string",
+			claims: oauthClaims(map[string]any{
+				"scope": "openid offline_access",
+			}),
+		},
 	}
 
 	for _, tt := range tests {
@@ -512,9 +518,9 @@ func TestOAuthTokenVerifier_RejectsInvalidAuthorization(t *testing.T) {
 			})),
 		},
 		{
-			name: "missing required scope",
+			name: "missing offline_access and unsupported scope",
 			authorization: "Bearer " + fixture.sign(t, oauthClaims(map[string]any{
-				"scope": []string{"offline_access"},
+				"scope": []string{"openid", "profile"},
 			})),
 		},
 		{
@@ -652,7 +658,7 @@ func validOAuthClaims() map[string]any {
 		"exp":   now.Add(time.Hour).Unix(),
 		"nbf":   now.Add(-time.Minute).Unix(),
 		"iat":   now.Add(-time.Minute).Unix(),
-		"scope": []string{"offline_access", "rancher:mcp"},
+		"scope": []string{"openid", "offline_access"},
 	}
 }
 

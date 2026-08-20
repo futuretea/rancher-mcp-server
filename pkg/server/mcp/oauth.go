@@ -208,23 +208,35 @@ func (v *oauthTokenVerifier) verifyAuthorization(authorization string) (string, 
 }
 
 func hasRequiredOAuthScopes(claims jwt.MapClaims) bool {
-	rawScopes, ok := claims["scope"].([]any)
+	scopes, ok := oauthClaimScopes(claims["scope"])
 	if !ok {
 		return false
 	}
-
-	scopes := make(map[string]struct{}, len(rawScopes))
-	for _, rawScope := range rawScopes {
-		scope, ok := rawScope.(string)
-		if !ok {
-			return false
-		}
-		scopes[scope] = struct{}{}
-	}
-
 	_, hasOfflineAccess := scopes["offline_access"]
-	_, hasRancherMCP := scopes["rancher:mcp"]
-	return hasOfflineAccess && hasRancherMCP
+	return hasOfflineAccess
+}
+
+// oauthClaimScopes normalizes the scope claim, which providers encode either
+// as a JSON array of strings or as a single space-delimited string.
+func oauthClaimScopes(raw any) (map[string]struct{}, bool) {
+	scopes := map[string]struct{}{}
+	switch value := raw.(type) {
+	case []any:
+		for _, item := range value {
+			scope, ok := item.(string)
+			if !ok {
+				return nil, false
+			}
+			scopes[scope] = struct{}{}
+		}
+		return scopes, true
+	case string:
+		for _, scope := range strings.Fields(value) {
+			scopes[scope] = struct{}{}
+		}
+		return scopes, true
+	}
+	return nil, false
 }
 
 func oauthTokenContext(ctx context.Context, token string) context.Context {
@@ -273,7 +285,7 @@ func oauthProtectedResourceMetadataHandler(staticConfig *config.StaticConfig) ht
 		_ = json.NewEncoder(w).Encode(oauthProtectedResourceMetadata{
 			Resource:             staticConfig.RancherOAuthResourceURL,
 			AuthorizationServers: []string{staticConfig.RancherOAuthAuthorizationServerURL},
-			ScopesSupported:      []string{"offline_access", "rancher:mcp"},
+			ScopesSupported:      []string{"offline_access"},
 		})
 	})
 }

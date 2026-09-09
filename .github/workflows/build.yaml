@@ -45,6 +45,9 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+      - name: Verify go.mod is tidy
+        if: matrix.os == 'ubuntu-latest'
+        run: go mod tidy -diff
       - name: Build
         run: |
           build_date="$(date -u '+%Y-%m-%dT%H:%M:%SZ')"

@@ -1,0 +1,52 @@
+name: Integration
+
+# Runs the Docker-backed integration tests against real Rancher releases.
+# This is intentionally not part of the per-PR Build workflow: each version
+# starts a privileged Rancher container and needs several minutes to boot.
+on:
+  workflow_dispatch:
+  schedule:
+    # nightly, staggered away from the top of the hour
+    - cron: '23 3 * * *'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  GO_VERSION: 1.26.0
+
+jobs:
+  rancher-version-support:
+    name: Rancher ${{ matrix.version }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '2.13.3'
+          - '2.14.3'
+          - '2.15.1'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+      - name: Pull Rancher image
+        run: docker pull rancher/rancher:v${{ matrix.version }}
+      - name: Run integration tests
+        env:
+          RANCHER_TEST_VERSIONS: ${{ matrix.version }}
+        run: |
+          go test -tags=integration -timeout 45m -v \
+            -run 'TestRancherVersionSupport' ./test/integration/
+      - name: Rancher container logs on failure
+        if: failure()
+        run: |
+          docker ps -a --filter "name=rancher-it-" --format '{{.Names}} {{.Status}}' || true
+          for c in $(docker ps -a --filter "name=rancher-it-" --format '{{.Names}}'); do
+            echo "=== logs: $c ==="
+            docker logs --tail 200 "$c" 2>&1 || true
+          done

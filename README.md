@@ -403,6 +403,33 @@ Requirements and limits:
   reference-compatible metadata and a challenge, but does not claim generic
   MCP OAuth or RFC 9728 interoperability.
 
+### Rancher Version Support
+
+Which authentication modes work with which Rancher versions:
+
+| Rancher | Static credentials | `--rancher-request-token-auth` | `--rancher-oauth-token-auth` |
+|---|---|---|---|
+| 2.11 and earlier | Supported | Supported | Not available: Rancher has no OIDC provider |
+| 2.12 - 2.13 | Supported | Supported | Not usable: the Rancher API rejects OIDC access tokens (JWT authentication was added in 2.14 by [rancher/rancher#53016](https://github.com/rancher/rancher/pull/53016)) |
+| 2.14 - 2.15 | Supported | Supported | Supported, with the prerequisites below |
+
+OAuth passthrough prerequisites on 2.14 and later:
+
+- The `oidc-provider` feature must be enabled. It is on by default only on
+  Rancher Prime; community installations enable it manually, and Rancher
+  restarts once.
+- The `OIDCClient` must allow the scopes this server requires. With the default
+  required scope set the client needs `offline_access` and `rancher:mcp`, and
+  Rancher issues `rancher:mcp` only when it is listed in
+  `OIDCClient.spec.scopes`. A default-configured client issues only `openid`,
+  `profile`, and `offline_access`, which the server rejects.
+- The `server-url` setting must be configured. Without it, issued tokens carry a
+  relative `/oidc` issuer that no external verifier can match.
+
+Rows for 2.11 and earlier and for 2.12 are based on Rancher source analysis. The
+2.13.3, 2.14.3, and 2.15.1 behaviors are covered by the integration suite
+described under [Test](#test).
+
 ## Tools and Functionalities <a id="tools-and-functionalities"></a>
 
 ### Sensitive Data Protection
@@ -1165,8 +1192,20 @@ make build
 ### Test
 
 ```shell
-make test
+make test        # unit tests only, no Docker required
 ```
+
+Integration tests start real Rancher containers with Docker and exercise the
+built server against them. They need Docker, several minutes per version, and
+enough memory for one Rancher container at a time:
+
+```shell
+go test -tags=integration -timeout 45m ./test/integration/...                       # 2.13.3, 2.14.3, 2.15.1
+RANCHER_TEST_VERSIONS=2.14.3 go test -tags=integration -timeout 30m ./test/integration/...
+```
+
+Set `RANCHER_TEST_KEEP=1` to keep the Rancher containers for inspection. The
+same suite runs from the `Integration` GitHub Actions workflow.
 
 ### Lint
 

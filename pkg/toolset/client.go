@@ -4,6 +4,7 @@ package toolset
 
 import (
 	"context"
+	"fmt"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
@@ -15,6 +16,7 @@ type CombinedClient struct {
 	Norman    *norman.Client
 	Steve     *steve.Client
 	closeable bool
+	normanErr error
 }
 
 // NewCombinedClient creates a CombinedClient. When closeable is false, Close is a no-op.
@@ -50,13 +52,40 @@ type ClientResolver interface {
 	Resolve(ctx context.Context) (*CombinedClient, error)
 }
 
+// SetNormanError records why the Norman client could not be initialized, so
+// ValidateNormanClient can report the underlying cause instead of only the
+// generic "not configured" hint.
+func (c *CombinedClient) SetNormanError(err error) {
+	if c != nil {
+		c.normanErr = err
+	}
+}
+
+// NormanInitCause reports the recorded Norman initialization failure, or nil
+// when no cause is known.
+func NormanInitCause(client interface{}) error {
+	if combined, ok := client.(*CombinedClient); ok && combined != nil {
+		return combined.normanErr
+	}
+	return nil
+}
+
+// normanUnavailableError reports the missing Norman client, including the
+// construction failure that caused it when one is known.
+func (c *CombinedClient) normanUnavailableError() error {
+	if c != nil && c.normanErr != nil {
+		return fmt.Errorf("%w: %v", paramutil.ErrRancherNotConfigured, c.normanErr)
+	}
+	return paramutil.ErrRancherNotConfigured
+}
+
 // ValidateNormanClient validates and returns a configured Norman client.
 // Returns ErrRancherNotConfigured if the client is nil or not configured.
 func ValidateNormanClient(client interface{}) (*norman.Client, error) {
 	// Check if it's a CombinedClient first
 	if combined, ok := client.(*CombinedClient); ok {
 		if combined.Norman == nil || !combined.Norman.IsUsable() {
-			return nil, paramutil.ErrRancherNotConfigured
+			return nil, combined.normanUnavailableError()
 		}
 		return combined.Norman, nil
 	}

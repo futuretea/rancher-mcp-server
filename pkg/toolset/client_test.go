@@ -2,14 +2,17 @@ package toolset
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"github.com/rancher/norman/types"
 )
 
@@ -160,6 +163,22 @@ func TestValidateNormanClient(t *testing.T) {
 		_, err := ValidateNormanClient(cc)
 		if err == nil {
 			t.Fatal("expected error for unusable Norman client")
+		}
+	})
+
+	t.Run("CombinedClient reports the initialization cause", func(t *testing.T) {
+		cc := NewCombinedClient(nil, nil, false)
+		cc.SetNormanError(errors.New(`failed to create management client: Get "https://rancher.example.com/v3": dial tcp: connection refused`))
+
+		_, err := ValidateNormanClient(cc)
+		if err == nil {
+			t.Fatal("expected error for unusable Norman client")
+		}
+		if !errors.Is(err, paramutil.ErrRancherNotConfigured) {
+			t.Fatalf("expected ErrRancherNotConfigured to stay matchable, got %v", err)
+		}
+		if !strings.Contains(err.Error(), "connection refused") {
+			t.Fatalf("expected the initialization cause in the error, got %v", err)
 		}
 	})
 

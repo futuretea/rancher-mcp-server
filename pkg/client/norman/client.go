@@ -4,8 +4,12 @@ package norman
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"regexp"
+	"strings"
 
 	"github.com/rancher/norman/clientbase"
 	"github.com/rancher/norman/types"
@@ -55,6 +59,65 @@ func NewClientWithToken(serverURL, token string, insecure bool) (*Client, error)
 	return newClient(serverURL, token, "", "", insecure)
 }
 
+// urlUserInfoPattern matches the userinfo segment of a URL (scheme://user:password@host).
+// It is only a fallback for URLs that appear re-rendered in an error message;
+// credentials are normally removed by substituting the configured URL string.
+var urlUserInfoPattern = regexp.MustCompile(`(://)[^/@\s]+@`)
+
+// redactURLCredentials masks credentials embedded in rawURL inside an error
+// message, so a Rancher server URL such as https://user:password@host never
+// reaches logs or tool output.
+func redactURLCredentials(err error, rawURL string) error {
+	if err == nil {
+		return nil
+	}
+
+	masked := err.Error()
+	if rawURL != "" {
+		masked = strings.ReplaceAll(masked, rawURL, redactedURL(rawURL))
+	}
+	masked = urlUserInfoPattern.ReplaceAllString(masked, "$1***@")
+
+	if masked == err.Error() {
+		return err
+	}
+	return errors.New(masked)
+}
+
+// redactedURL returns rawURL with any credentials removed from its userinfo
+// segment, keeping scheme, host and path so the message stays diagnosable.
+// A value that does not parse as a URL is masked conservatively up to its last
+// "@", because an invalid URL cannot be split into authority and path.
+func redactedURL(rawURL string) string {
+	parsed, parseErr := url.Parse(rawURL)
+	if parseErr == nil && parsed.User == nil {
+		return rawURL
+	}
+
+	const separator = "://"
+	schemeEnd := strings.Index(rawURL, separator)
+	if schemeEnd < 0 {
+		return rawURL
+	}
+	prefixEnd := schemeEnd + len(separator)
+	rest := rawURL[prefixEnd:]
+
+	authorityEnd := len(rest)
+	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
+		authorityEnd = i
+	}
+
+	// The userinfo ends at the last "@" of the authority, matching net/url.
+	searchEnd := authorityEnd
+	if parseErr != nil {
+		searchEnd = len(rest)
+	}
+	if at := strings.LastIndex(rest[:searchEnd], "@"); at >= 0 {
+		return rawURL[:prefixEnd] + "***@" + rest[at+1:]
+	}
+	return rawURL
+}
+
 func newClient(serverURL, token, accessKey, secretKey string, insecure bool) (*Client, error) {
 	// Create management client configuration
 	// Use GetNormanURL to ensure /v3 suffix regardless of user input
@@ -69,7 +132,7 @@ func newClient(serverURL, token, accessKey, secretKey string, insecure bool) (*C
 	// Create the management client
 	management, err := managementClient.NewClient(clientOpts)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create management client: %w", err)
+		return nil, fmt.Errorf("failed to create management client: %w", redactURLCredentials(err, clientOpts.URL))
 	}
 
 	return &Client{

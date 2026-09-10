@@ -3,8 +3,10 @@ package norman
 import (
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/rancher/norman/types"
@@ -95,5 +97,88 @@ func TestNormanClientClose_ClearsCaches(t *testing.T) {
 
 	if client.IsUsable() {
 		t.Fatal("expected Close to clear management client cache")
+	}
+}
+
+func TestRedactURLCredentials(t *testing.T) {
+	cases := []struct {
+		name   string
+		rawURL string
+		err    error
+		want   string
+	}{
+		{
+			name:   "userinfo credentials are masked",
+			rawURL: "http://user:sup3rsecret@127.0.0.1:18099/v3",
+			err:    errors.New(`failed to create management client: Bad response statusCode [401]. Body: [] from [http://user:sup3rsecret@127.0.0.1:18099/v3]`),
+			want:   `failed to create management client: Bad response statusCode [401]. Body: [] from [http://***@127.0.0.1:18099/v3]`,
+		},
+		{
+			name:   "username only userinfo is masked",
+			rawURL: "https://token-value@rancher.example.com/v3",
+			err:    errors.New(`Get "https://token-value@rancher.example.com/v3": connection refused`),
+			want:   `Get "https://***@rancher.example.com/v3": connection refused`,
+		},
+		{
+			name:   "unescaped at sign in the password is masked",
+			rawURL: "http://user:p@ssw0rd@127.0.0.1:18099/v3",
+			err:    errors.New(`from [http://user:p@ssw0rd@127.0.0.1:18099/v3]`),
+			want:   `from [http://***@127.0.0.1:18099/v3]`,
+		},
+		{
+			name:   "unparseable url with credentials is masked",
+			rawURL: "http://user:pa/ss@127.0.0.1:18099/v3",
+			err:    errors.New(`parse "http://user:pa/ss@127.0.0.1:18099/v3": invalid port ":pa" after host`),
+			want:   `parse "http://***@127.0.0.1:18099/v3": invalid port ":pa" after host`,
+		},
+		{
+			name:   "re-rendered url is masked by the fallback pattern",
+			rawURL: "http://user:p@ss@127.0.0.1:18099/v3",
+			err:    errors.New(`Get "http://user:p%40ss@127.0.0.1:18099/v3": connection refused`),
+			want:   `Get "http://***@127.0.0.1:18099/v3": connection refused`,
+		},
+		{
+			name:   "plain url is unchanged",
+			rawURL: "https://rancher.example.com/v3",
+			err:    errors.New(`Get "https://rancher.example.com/v3": connection refused`),
+			want:   `Get "https://rancher.example.com/v3": connection refused`,
+		},
+		{
+			name:   "at sign inside a path is unchanged",
+			rawURL: "https://rancher.example.com/path@name",
+			err:    errors.New(`Get "https://rancher.example.com/path@name": connection refused`),
+			want:   `Get "https://rancher.example.com/path@name": connection refused`,
+		},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := redactURLCredentials(tc.err, tc.rawURL).Error(); got != tc.want {
+				t.Fatalf("redactURLCredentials() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+
+	if redactURLCredentials(nil, "") != nil {
+		t.Fatal("expected a nil error to stay nil")
+	}
+}
+
+func TestNewClientWithToken_RedactsCredentialsInErrors(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "no schema here", http.StatusNotFound)
+	}))
+	t.Cleanup(server.Close)
+
+	serverURL := strings.Replace(server.URL, "http://", "http://user:s3cretpw@", 1)
+	_, err := NewClientWithToken(serverURL, "request-token", true)
+	if err == nil {
+		t.Fatal("expected NewClientWithToken() to fail against a non-schema endpoint")
+	}
+	if strings.Contains(err.Error(), "s3cretpw") {
+		t.Fatalf("expected credentials to be redacted, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "***@") {
+		t.Fatalf("expected the redacted URL in the error, got %v", err)
 	}
 }

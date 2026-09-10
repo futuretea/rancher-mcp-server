@@ -75,6 +75,9 @@ func clusterListHandler(ctx context.Context, client interface{}, params map[stri
 		clusterMaps = appendKubeconfigClusters(clusterMaps, steveClient)
 	}
 	if !hasClusterSource {
+		if cause := toolset.NormanInitCause(client); cause != nil {
+			return "", fmt.Errorf("%w: %v", paramutil.ErrClusterSourcesNotConfigured, cause)
+		}
 		return "", paramutil.ErrClusterSourcesNotConfigured
 	}
 

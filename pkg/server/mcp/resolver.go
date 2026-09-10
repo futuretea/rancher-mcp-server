@@ -8,6 +8,7 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/norman"
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
+	"github.com/futuretea/rancher-mcp-server/pkg/core/logging"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
 )
 
@@ -94,9 +95,10 @@ func resolveRequestScopedClient(
 	// Create the Norman client but do not fail the whole request if it cannot be
 	// built. This mirrors static-mode behavior, where a Norman startup failure is
 	// logged but Kubernetes tools remain available. If a tool actually needs
-	// Norman, ValidateNormanClient will report the configuration error.
-	normanClient, err := normanFactory(serverURL, token, insecure)
-	if err != nil {
+	// Norman, ValidateNormanClient reports the recorded cause.
+	normanClient, normanErr := normanFactory(serverURL, token, insecure)
+	if normanErr != nil {
+		logging.Warn("Failed to create Rancher client for request: %v", normanErr)
 		if metrics != nil {
 			metrics.IncrementRancherRequestErrors()
 		}
@@ -106,7 +108,9 @@ func resolveRequestScopedClient(
 		metrics.RecordClientResolveMemoryBytes(readMemoryBytes())
 	}
 
-	return toolset.NewCombinedClient(normanClient, steveClient, true), nil
+	combined := toolset.NewCombinedClient(normanClient, steveClient, true)
+	combined.SetNormanError(normanErr)
+	return combined, nil
 }
 
 func bearerTokenFromContext(ctx context.Context) (string, error) {

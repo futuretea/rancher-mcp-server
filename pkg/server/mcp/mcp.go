@@ -104,10 +104,10 @@ func NewServer(configuration Configuration) (*Server, error) {
 		s.combinedClient = toolset.NewCombinedClient(nil, nil, false)
 	} else {
 		// Initialize Norman client (for Rancher v3 API)
-		normanClient, err := norman.NewClient(configuration.StaticConfig)
-		if err != nil {
+		normanClient, normanErr := norman.NewClient(configuration.StaticConfig)
+		if normanErr != nil {
 			// Log the error but continue without Norman client
-			logging.Warn("Failed to create Norman client: %v", err)
+			logging.Warn("Failed to create Norman client: %v", normanErr)
 			logging.Warn("Rancher tools will not be available")
 		}
 
@@ -132,6 +132,7 @@ func NewServer(configuration Configuration) (*Server, error) {
 		s.normanClient = normanClient
 		s.steveClient = steveClient
 		s.combinedClient = toolset.NewCombinedClient(normanClient, steveClient, false)
+		s.combinedClient.SetNormanError(normanErr)
 		s.clientResolver = &staticResolver{client: s.combinedClient}
 	}
 

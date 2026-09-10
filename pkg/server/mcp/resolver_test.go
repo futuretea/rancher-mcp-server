@@ -295,6 +295,9 @@ func TestRequestTokenResolver_NormanFailureFallsBackToSteve(t *testing.T) {
 	if client.Norman != nil {
 		t.Fatal("expected Norman client to be nil after creation failure")
 	}
+	if _, err := toolset.ValidateNormanClient(client); err == nil || !strings.Contains(err.Error(), "failed to create management client") {
+		t.Fatalf("expected the validation error to carry the initialization cause, got %v", err)
+	}
 	if steveToken != "secret-token" || normanToken != "secret-token" {
 		t.Fatalf("expected token to be passed to both factories; steve=%q norman=%q", steveToken, normanToken)
 	}

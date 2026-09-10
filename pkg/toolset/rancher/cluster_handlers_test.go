@@ -160,6 +160,19 @@ func TestClusterListHandler_NoClusterSourcesReturnsConfigurationError(t *testing
 	}
 }
 
+func TestClusterListHandler_ReportsNormanInitializationCause(t *testing.T) {
+	client := toolset.NewCombinedClient(nil, nil, false)
+	client.SetNormanError(errors.New("failed to create management client: connection refused"))
+
+	_, err := clusterListHandler(context.Background(), client, map[string]interface{}{"format": "json"})
+	if !errors.Is(err, paramutil.ErrClusterSourcesNotConfigured) {
+		t.Fatalf("clusterListHandler() error = %v, want %v", err, paramutil.ErrClusterSourcesNotConfigured)
+	}
+	if !strings.Contains(err.Error(), "connection refused") {
+		t.Fatalf("expected the initialization cause in the error, got %v", err)
+	}
+}
+
 func expectedRancherClusterRow() map[string]string {
 	return map[string]string{
 		"id":       "c-rancher",

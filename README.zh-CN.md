@@ -121,7 +121,11 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--rancher-secret-key` | Rancher secret key | |
 | `--rancher-tls-insecure` | 跳过 TLS 验证 | `false` |
 | `--kubeconfig-paths` | 用于直连 Kubernetes 集群的 kubeconfig 文件 | |
-| `--rancher-request-token-auth` | 使用每个 HTTP/SSE 请求的 `Authorization: Bearer <token>` 头代替静态凭据 | `false` |
+| `--rancher-request-token-auth` | 使用每个 HTTP/SSE 请求的 `Authorization: Bearer <token>` 头代替静态凭据；仅当 Authorization 缺失时才使用非空的原始 `R_token` 头 | `false` |
+| `--rancher-oauth-token-auth` | 在 `/mcp` 调用 Rancher 前校验 Rancher OAuth Bearer token | `false` |
+| `--rancher-oauth-authorization-server-url` | Rancher OAuth 授权服务器根 URL 与 JWT issuer；不要追加 `/authorize` | |
+| `--rancher-oauth-jwks-url` | Rancher OAuth JWKS URL，启动时加载并自动刷新 | |
+| `--rancher-oauth-resource-url` | 用于发现元数据与 401 挑战的公开资源根 URL | |
 | `--read-only` | 禁用写操作 | `true` |
 | `--disable-destructive` | 禁用删除操作 | `false` |
 | `--show-sensitive-data` | 全局管理员标志，允许显示敏感数据 | `false` |
@@ -129,7 +133,7 @@ npx @futuretea/rancher-mcp-server@latest --help
 | `--enable-container-file-upload` | 启用容器文件上传工具 | `false` |
 | `--enable-container-file-download` | 启用容器文件下载工具 | `false` |
 | `--max-file-size` | 容器文件操作的最大文件大小 | `10Mi` |
-| `--list-output` | 输出格式（json、table、yaml） | `json` |
+| `--list-output` | 保留的兼容设置；当前工具处理逻辑忽略该值 | `json` |
 | `--output-filters` | 从输出中移除的字段 | `metadata.managedFields` |
 | `--toolsets` | 要启用的工具集 | `kubernetes,rancher` |
 | `--enabled-tools` | 要启用的特定工具 | |
@@ -156,8 +160,19 @@ rancher_token: your-bearer-token
 
 # 方式 2：每请求 token（仅 HTTP/SSE 模式）
 # 启用后，服务端会从每个 HTTP/SSE 请求的 Authorization: Bearer <token> 头中读取 token
-# 并转发给 Rancher。此时上方静态凭据必须为空，且上游网关必须转发 Authorization 头。
+# 并转发给 Rancher；仅当 Authorization 缺失时，才使用非空的原始 R_token 头。
+# 存在但为空或格式错误的 Authorization 头不会回退到 R_token。
+# 此时上方静态凭据必须为空。
 # rancher_request_token_auth: true
+
+# 方式 3：Rancher OAuth token 透传（仅 Streamable HTTP /mcp）
+# 客户端在本服务之外获取 Rancher access token；服务端在调用 Rancher 前校验该
+# Bearer JWT，再把校验通过的 token 透传给 Rancher API。不要与方式 1 或方式 2 组合使用。
+# rancher_oauth_token_auth: true
+# rancher_oauth_authorization_server_url: https://rancher.example.com/oidc
+# 服务端在启动时加载 JWKS，并自动刷新。
+# rancher_oauth_jwks_url: https://rancher.example.com/oidc/.well-known/jwks.json
+# rancher_oauth_resource_url: https://mcp.example.com
 
 # rancher_tls_insecure: false
 
@@ -199,6 +214,12 @@ toolsets:
 # disabled_tools: []
 ```
 
+必须显式指定该文件启动服务，它不会被自动发现：
+
+```shell
+rancher-mcp-server --config ./config.yaml
+```
+
 ### 环境变量
 
 使用 `RANCHER_MCP_` 前缀，单词间用下划线连接：
@@ -216,6 +237,15 @@ RANCHER_MCP_ENABLE_CONTAINER_EXEC=false
 `RANCHER_MCP_KUBECONFIG_PATHS` 使用逗号分隔的有序列表，对应
 `kubeconfig_paths`。多个文件定义相同 context 时，排在前面的路径优先。
 
+Rancher OAuth token 透传使用同一前缀配置 OAuth 设置：
+
+```shell
+RANCHER_MCP_RANCHER_OAUTH_TOKEN_AUTH=true
+RANCHER_MCP_RANCHER_OAUTH_AUTHORIZATION_SERVER_URL=https://rancher.example.com/oidc
+RANCHER_MCP_RANCHER_OAUTH_JWKS_URL=https://rancher.example.com/oidc/.well-known/jwks.json
+RANCHER_MCP_RANCHER_OAUTH_RESOURCE_URL=https://mcp.example.com
+```
+
 ### Kubeconfig 集群来源
 
 `kubeconfig_paths` 可直接使用 Kubernetes context，不经过 Rancher。文件按配置
@@ -230,6 +260,9 @@ Rancher 集群，并会拒绝 `kubeconfig:` ID。
 `rancher_oauth_token_auth` 组合使用：前者使用服务进程的 kubeconfig 凭据，后两者
 使用调用者范围的 Rancher token。在 HTTP/SSE 模式（`port > 0`）下，本服务不会为
 kubeconfig 请求提供 HTTP 鉴权。请优先使用 stdio，或仅向可信调用者开放网络。
+
+对于使用 `npx` 的 MCP 客户端，把同样的参数放在包名之后：
+`npx -y @futuretea/rancher-mcp-server@latest --config ./config.yaml`。
 
 ### HTTP/SSE 模式
 
@@ -247,6 +280,10 @@ rancher-mcp-server --port 8080 \
 - `/sse` - Server-Sent Events 端点
 - `/message` - SSE 客户端消息端点
 
+在 Rancher OAuth token 透传模式下，MCP 传输路由为 `/mcp` 与
+`/.well-known/oauth-protected-resource`；该模式下 `/sse` 与 `/message` 返回
+`404`，`/healthz` 与 `/debug/vars` 仍可用。
+
 在代理后使用公开 URL：
 
 ```shell
@@ -258,11 +295,11 @@ rancher-mcp-server --port 8080 \
 
 ### 每请求 Rancher Token 认证
 
-在 HTTP/SSE 模式下，如果上游网关已对用户完成认证，可启用 `--rancher-request-token-auth`，使服务端不再存储静态 Rancher 凭据。服务端会从每个传入的 HTTP/SSE 请求中读取 `Authorization: Bearer <token>` 头，并使用该 token 访问 Rancher API。
+在 HTTP/SSE 模式下，如果上游网关已对用户完成认证，可启用 `--rancher-request-token-auth`，使服务端不再存储静态 Rancher 凭据。存在 `Authorization: Bearer <token>` 头时使用该头；否则使用非空的原始 `R_token` 头访问 Rancher API。
 
 要求：
 - 仅限 HTTP/SSE 模式（`--port` 必须大于 `0`；与 stdio 模式互斥）
-- 上游网关或代理必须在每次请求 `/mcp`、`/sse`、`/message` 时转发 `Authorization` 头
+- 上游网关或代理必须在每次请求 `/mcp`、`/sse`、`/message` 时转发 `Authorization` 或 `R_token`；存在但为空或格式错误的 Authorization 头会阻止 `R_token` 回退
 - 不能与 `--rancher-token`、`--rancher-access-key`、`--rancher-secret-key` 同时使用
 
 示例：
@@ -275,29 +312,101 @@ rancher-mcp-server --port 8080 \
 
 #### 网关示例
 
-上游网关必须转发 `Authorization` 头。最小配置示例：
+上游网关必须转发所选的请求 token 头。以下最小示例使用 Authorization：
 
 **nginx：**
 
 ```nginx
-location /mcp/ {
-    proxy_pass http://rancher-mcp-server:8080/mcp/;
+location ~ ^/(mcp|sse|message)$ {
+    proxy_pass http://rancher-mcp-server:8080;
     proxy_set_header Authorization $http_authorization;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
 }
 ```
 
-**Traefik：**
+该路由保留原始请求路径，并覆盖每请求 token 认证所需的全部传输路由。
+
+**Traefik ForwardAuth：**
 
 ```yaml
 http:
   middlewares:
-    forward-auth:
-      headers:
-        customRequestHeaders:
-          Authorization: "{http.request.header.Authorization}"
+    rancher-mcp-auth:
+      forwardAuth:
+        address: "https://auth.example.com/verify"
+        authResponseHeaders:
+          - Authorization
 ```
+
+仅当认证服务返回合法的 `Authorization: Bearer <Rancher token>` 响应头时才使用该配置；
+Traefik 会把该响应头复制到上游请求。如果原始请求已携带 Rancher Bearer token，
+不要用静态头覆盖它。
+
+### Rancher OAuth Token 透传认证
+
+Rancher OAuth token 透传是静态凭据与每请求 token 之外的另一种可选方式。MCP 客户端
+在本服务之外获取 Rancher access token，并以 `Authorization: Bearer <token>` 发送到
+`/mcp`；服务端在构造 Rancher 客户端之前，会校验它的 RS256 签名、issuer、带十秒
+容差的时间声明，以及 `offline_access` 与 `rancher:mcp` scope。audience 不校验，
+expiration 也不是必需。无效或缺失的 token 会收到 `401 Unauthorized` 与
+`WWW-Authenticate` 资源元数据挑战，且不会发起任何 Rancher API 调用。
+
+仅在 Streamable HTTP 模式下使用：
+
+```shell
+rancher-mcp-server --port 8080 \
+  --rancher-server-url https://rancher.example.com \
+  --rancher-oauth-token-auth \
+  --rancher-oauth-authorization-server-url https://rancher.example.com/oidc \
+  --rancher-oauth-jwks-url https://rancher.example.com/oidc/.well-known/jwks.json \
+  --rancher-oauth-resource-url https://mcp.example.com
+```
+
+要求与限制：
+
+- 必须提供 `--rancher-oauth-token-auth` 与三个 OAuth URL，且必须提供 Rancher
+  服务器 URL。OAuth 模式不能与静态凭据或 `--rancher-request-token-auth` 组合，
+  在 stdio 模式下会被拒绝。
+- 已移除的 audience YAML 键及其派生环境变量不会被新增拒绝；当前配置加载会忽略
+  未知的历史输入。
+- 资源 URL 必须是公开根 URL，不支持挂载在子路径下的部署。服务端不校验 URL 格式、
+  URL 路径或 HTTPS，这些由部署方自行保证。
+- OAuth 模式只注册 `/mcp` 与 `/.well-known/oauth-protected-resource` 作为 MCP
+  传输路由。它不提供 OAuth SSE 或会话主体状态，因此 `/sse` 与 `/message` 返回
+  `404`；`/healthz` 与 `/debug/vars` 仍可用。
+- 本服务从不读取、转发、存储或记录 `R_SESS` 等 Rancher 浏览器 Cookie，也不实现
+  授权码交换、token 交换、refresh token 或动态客户端注册。
+- 服务端在启动时加载 JWKS，若其中没有可用的 RS256 签名校验密钥则启动失败。JWKS
+  每小时刷新一次；遇到未知 key ID 可触发一次额外刷新，频率限制为每五分钟一次。
+  刷新失败或结果不可用时保留最后一次可用的密钥集；刷新成功后，授权服务器不再
+  发布的密钥会被立即移除。
+- 这是一个明确接受的 Rancher token 透传模式：它提供与参考实现兼容的元数据与挑战，
+  但不声称兼容通用 MCP OAuth 或 RFC 9728 互操作。
+
+### Rancher 版本支持
+
+各认证模式与各 Rancher 版本的对应关系：
+
+| Rancher | 静态凭据 | `--rancher-request-token-auth` | `--rancher-oauth-token-auth` |
+|---|---|---|---|
+| 2.11 及更早 | 支持 | 支持 | 不可用：Rancher 没有 OIDC provider |
+| 2.12 - 2.13 | 支持 | 支持 | 不可用：Rancher API 拒绝 OIDC access token（JWT 认证由 [rancher/rancher#53016](https://github.com/rancher/rancher/pull/53016) 在 2.14 引入） |
+| 2.14 - 2.15 | 支持 | 支持 | 支持，需满足下面的前置条件 |
+
+2.14 及以后版本的 OAuth 透传前置条件：
+
+- 必须启用 `oidc-provider` feature。它仅在 Rancher Prime 上默认开启；社区版需要
+  手动开启，开启后 Rancher 会重启一次。
+- `OIDCClient` 必须允许本服务要求的 scope。在默认的必需 scope 集合下，客户端需要
+  `offline_access` 与 `rancher:mcp`，而 Rancher 只有当 `rancher:mcp` 出现在
+  `OIDCClient.spec.scopes` 中时才会签发它。默认配置的客户端只签发 `openid`、
+  `profile` 和 `offline_access`，会被本服务拒绝。
+- 必须配置 `server-url` 设置。否则签发的 token 携带相对路径 `/oidc` 作为 issuer，
+  任何外部校验方都无法匹配。
+
+2.11 及更早与 2.12 两行基于 Rancher 源码分析；2.13.3、2.14.3、2.15.1 的行为由
+[测试](#测试) 章节所述的集成测试覆盖。
 
 ## 工具与功能 <a id="tools-and-functionalities"></a>
 
@@ -1045,8 +1154,19 @@ make build
 ### 测试
 
 ```shell
-make test
+make test        # 仅单元测试，无需 Docker
 ```
+
+集成测试用 Docker 启动真实 Rancher 容器，并驱动构建出的服务端访问它们。它需要
+Docker、每个版本数分钟时间，以及足以同时只运行一个 Rancher 容器的内存：
+
+```shell
+go test -tags=integration -timeout 45m ./test/integration/...                       # 2.13.3、2.14.3、2.15.1
+RANCHER_TEST_VERSIONS=2.14.3 go test -tags=integration -timeout 30m ./test/integration/...
+```
+
+设置 `RANCHER_TEST_KEEP=1` 可保留 Rancher 容器以便排查。同一套测试也由
+`Integration` GitHub Actions workflow 运行。
 
 ### Lint
 

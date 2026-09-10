@@ -22,6 +22,7 @@ import (
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes"
 	rancherToolset "github.com/futuretea/rancher-mcp-server/pkg/toolset/rancher"
+	urlutil "github.com/futuretea/rancher-mcp-server/pkg/util/url"
 )
 
 // contextKey is a custom type for context keys to avoid collisions.
@@ -80,7 +81,7 @@ func NewServer(configuration Configuration) (*Server, error) {
 
 	if oauthVerifier != nil {
 		logging.Info("auth mode: Rancher OAuth token")
-		logging.Info("rancher server URL: %s", configuration.RancherServerURL)
+		logging.Info("rancher server URL: %s", urlutil.RedactCredentials(configuration.RancherServerURL))
 
 		s.clientResolver = &oauthTokenResolver{
 			serverURL:     configuration.RancherServerURL,
@@ -92,7 +93,7 @@ func NewServer(configuration Configuration) (*Server, error) {
 		s.combinedClient = toolset.NewCombinedClient(nil, nil, false)
 	} else if configuration.RancherRequestTokenAuth {
 		logging.Info("auth mode: per-request token (RancherRequestTokenAuth=true)")
-		logging.Info("rancher server URL: %s", configuration.RancherServerURL)
+		logging.Info("rancher server URL: %s", urlutil.RedactCredentials(configuration.RancherServerURL))
 
 		s.clientResolver = &requestTokenResolver{
 			serverURL:     configuration.RancherServerURL,

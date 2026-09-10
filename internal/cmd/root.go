@@ -13,6 +13,7 @@ import (
 	"github.com/futuretea/rancher-mcp-server/pkg/core/version"
 	internalhttp "github.com/futuretea/rancher-mcp-server/pkg/server/http"
 	"github.com/futuretea/rancher-mcp-server/pkg/server/mcp"
+	urlutil "github.com/futuretea/rancher-mcp-server/pkg/util/url"
 )
 
 // IOStreams represents standard input, output, and error streams
@@ -193,7 +194,7 @@ func runServer(cfgFile string, streams IOStreams) error {
 	logging.Info("Starting Rancher MCP Server in HTTP/SSE mode on port %d", cfg.Port)
 	logging.Info("Enabled tools: %v", server.GetEnabledTools())
 	if cfg.SSEBaseURL != "" {
-		logging.Info("SSE Base URL: %s", cfg.SSEBaseURL)
+		logging.Info("SSE Base URL: %s", urlutil.RedactCredentials(cfg.SSEBaseURL))
 	}
 
 	ctx := context.Background()

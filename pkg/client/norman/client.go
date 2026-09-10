@@ -7,7 +7,6 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
-	"net/url"
 	"regexp"
 	"strings"
 
@@ -74,7 +73,7 @@ func redactURLCredentials(err error, rawURL string) error {
 
 	masked := err.Error()
 	if rawURL != "" {
-		masked = strings.ReplaceAll(masked, rawURL, redactedURL(rawURL))
+		masked = strings.ReplaceAll(masked, rawURL, urlutil.RedactCredentials(rawURL))
 	}
 	masked = urlUserInfoPattern.ReplaceAllString(masked, "$1***@")
 
@@ -82,40 +81,6 @@ func redactURLCredentials(err error, rawURL string) error {
 		return err
 	}
 	return errors.New(masked)
-}
-
-// redactedURL returns rawURL with any credentials removed from its userinfo
-// segment, keeping scheme, host and path so the message stays diagnosable.
-// A value that does not parse as a URL is masked conservatively up to its last
-// "@", because an invalid URL cannot be split into authority and path.
-func redactedURL(rawURL string) string {
-	parsed, parseErr := url.Parse(rawURL)
-	if parseErr == nil && parsed.User == nil {
-		return rawURL
-	}
-
-	const separator = "://"
-	schemeEnd := strings.Index(rawURL, separator)
-	if schemeEnd < 0 {
-		return rawURL
-	}
-	prefixEnd := schemeEnd + len(separator)
-	rest := rawURL[prefixEnd:]
-
-	authorityEnd := len(rest)
-	if i := strings.IndexAny(rest, "/?#"); i >= 0 {
-		authorityEnd = i
-	}
-
-	// The userinfo ends at the last "@" of the authority, matching net/url.
-	searchEnd := authorityEnd
-	if parseErr != nil {
-		searchEnd = len(rest)
-	}
-	if at := strings.LastIndex(rest[:searchEnd], "@"); at >= 0 {
-		return rawURL[:prefixEnd] + "***@" + rest[at+1:]
-	}
-	return rawURL
 }
 
 func newClient(serverURL, token, accessKey, secretKey string, insecure bool) (*Client, error) {

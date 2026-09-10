@@ -3,8 +3,8 @@ module github.com/futuretea/rancher-mcp-server
 go 1.26.0
 
 require (
-	github.com/MicahParks/jwkset v0.11.0
-	github.com/MicahParks/keyfunc/v3 v3.8.0
+	github.com/MicahParks/jwkset v0.11.3
+	github.com/MicahParks/keyfunc/v3 v3.8.2
 	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/mark3labs/mcp-go v0.41.1
 	github.com/rancher/norman v0.7.0
@@ -12,7 +12,7 @@ require (
 	github.com/rs/zerolog v1.33.0
 	github.com/spf13/cobra v1.10.1
 	github.com/spf13/viper v1.18.0
-	golang.org/x/time v0.9.0
+	golang.org/x/time v0.15.0
 	gopkg.in/yaml.v3 v3.0.1
 	k8s.io/api v0.33.1
 	k8s.io/apimachinery v0.33.2

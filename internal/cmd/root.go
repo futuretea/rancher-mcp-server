@@ -162,8 +162,9 @@ func runServer(cfgFile string, streams IOStreams) error {
 
 	// Initialize logging early with configuration
 	if cfg.Port == 0 {
-		// Enable stdio mode - suppress all logging to avoid interfering with MCP protocol
-		logging.SetStdioMode(true)
+		// Enable stdio mode - keep warnings and errors on stderr, stdout stays
+		// reserved for the MCP protocol
+		logging.SetStdioMode(true, streams.ErrOut)
 	} else {
 		// HTTP/SSE mode - initialize normal logging
 		logging.Initialize(cfg.LogLevel, streams.ErrOut)
@@ -184,7 +185,7 @@ func runServer(cfgFile string, streams IOStreams) error {
 
 	// Start server based on port configuration
 	if cfg.Port == 0 {
-		// Stdio mode - use fmt.Fprintf for startup messages as logging is disabled
+		// Stdio mode - Info logs are suppressed, so print the startup summary directly
 		_, _ = fmt.Fprintf(streams.ErrOut, "Starting Rancher MCP Server in stdio mode\n")
 		_, _ = fmt.Fprintf(streams.ErrOut, "Enabled tools: %v\n", server.GetEnabledTools())
 		return server.ServeStdio()

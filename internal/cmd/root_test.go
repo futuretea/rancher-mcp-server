@@ -210,7 +210,7 @@ func TestKubeconfigPathsFlagBindsOrderedValues(t *testing.T) {
 
 func TestWarnKubeconfigHTTPExposure(t *testing.T) {
 	output := &bytes.Buffer{}
-	logging.SetStdioMode(false)
+	logging.SetStdioMode(false, nil)
 	logging.Initialize(5, output)
 
 	warnKubeconfigHTTPExposure(&config.StaticConfig{

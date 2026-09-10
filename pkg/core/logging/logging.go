@@ -11,19 +11,30 @@ import (
 )
 
 var (
-	// stdioMode indicates if logging should be disabled to avoid interfering with stdio protocol
+	// stdioMode restricts logging to warnings and errors on the configured
+	// writer so stdout stays reserved for the MCP protocol.
 	stdioMode bool
 )
 
-// SetStdioMode enables or disables stdio mode
-// In stdio mode, all logs are suppressed to avoid interfering with MCP protocol
-func SetStdioMode(enabled bool) {
+// SetStdioMode switches logging between the stdio and the HTTP/SSE policy.
+// In stdio mode only warnings and errors are written, to the given writer:
+// they are the only diagnostics a user sees when the server cannot reach
+// Rancher. Callers MUST pass a non-stdout writer, because stdout is reserved
+// for the MCP protocol. When enabled is false the writer is ignored and the
+// current sink is left untouched; call Initialize to configure logging again.
+func SetStdioMode(enabled bool, output io.Writer) {
 	stdioMode = enabled
-	if enabled {
-		// Disable all logging in stdio mode
-		zerolog.SetGlobalLevel(zerolog.Disabled)
-		log.Logger = zerolog.Nop()
+	if !enabled {
+		return
 	}
+
+	if output == nil {
+		output = os.Stderr
+	}
+
+	zerolog.TimeFieldFormat = zerolog.TimeFormatUnix
+	zerolog.SetGlobalLevel(zerolog.WarnLevel)
+	log.Logger = zerolog.New(output).With().Timestamp().Logger()
 }
 
 // Initialize initializes the global logger with the specified log level and output writer

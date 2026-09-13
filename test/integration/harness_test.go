@@ -237,7 +237,31 @@ func (e *rancherEnv) setServerURL() {
 	e.t.Helper()
 	// Without server-url the issued tokens carry a relative "/oidc" issuer,
 	// which no external verifier can match.
-	e.mustRequest(http.MethodPut, "/v3/settings/server-url", e.adminToken, map[string]any{"value": e.baseURL})
+	//
+	// Rancher answers /ping and issues tokens before the global role binding
+	// controller has created the admin's ClusterRoleBinding, so the first
+	// cluster-scoped write after login can be rejected with a transient 403
+	// (seen on v2.14.3). Retry until the binding lands: reading settings is not
+	// a strong enough gate, because the default "user" role allows that.
+	deadline := time.Now().Add(2 * time.Minute)
+	retrying := false
+	for {
+		status, body := e.request(http.MethodPut, "/v3/settings/server-url", e.adminToken, map[string]any{"value": e.baseURL})
+		if status >= 200 && status < 300 {
+			return
+		}
+		if status != http.StatusForbidden {
+			e.t.Fatalf("PUT /v3/settings/server-url returned %d: %s", status, body)
+		}
+		if !retrying {
+			retrying = true
+			e.t.Logf("PUT /v3/settings/server-url forbidden, waiting for the admin ClusterRoleBinding: %s", body)
+		}
+		if time.Now().After(deadline) {
+			e.t.Fatalf("PUT /v3/settings/server-url still forbidden after 2m: %s", body)
+		}
+		time.Sleep(time.Second)
+	}
 }
 
 func (e *rancherEnv) ensureOIDCProvider() {

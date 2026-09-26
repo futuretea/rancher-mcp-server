@@ -43,6 +43,7 @@ A [Model Context Protocol (MCP)](https://modelcontextprotocol.io/) server for Ra
     - When enabled: Per-tool `showSensitiveData` parameter controls visibility
     - Applies to: Kubernetes Secret `data` and `stringData` fields
     - Affects tools: `kubernetes_get`, `kubernetes_list`, `kubernetes_describe`
+  - `allowed_namespaces`: Optional per-cluster namespace allowlist. A cluster is restricted only when its array contains names
   - `enable_container_exec`: Explicit opt-in for pod command execution (default: `false`, also requires `read_only=false`)
   - `enable_container_file_upload` / `enable_container_file_download`: Explicit opt-in for container file transfer tools; upload also requires `read_only=false`
 - **Output Formats**: Table, YAML, and JSON
@@ -185,6 +186,16 @@ rancher_token: your-bearer-token
 #   - /etc/rancher-mcp/kubeconfig
 #   - /etc/rancher-mcp/extra-kubeconfig
 
+# Optional per-cluster namespace allowlist. A cluster is restricted only when its
+# array contains namespace names. A missing field, {}, a missing key, and an empty
+# array leave that scope unrestricted. Quote keys that contain a colon.
+# allowed_namespaces:
+#   c-abc12:
+#     - default
+#     - app
+#   "kubeconfig:production":
+#     - app
+
 read_only: true  # default: true
 disable_destructive: false
 
@@ -244,6 +255,28 @@ or restrict network access to trusted callers.
 For an MCP client that uses `npx`, pass the same arguments after the package
 name: `npx -y @futuretea/rancher-mcp-server@latest --config ./config.yaml`.
 
+### Namespace allowlist
+
+`allowed_namespaces` limits Kubernetes tools on selected clusters. A cluster is
+restricted only when its array lists namespace names. On a restricted cluster,
+naming a namespace outside the list returns an error and does not call the
+backend. Omitting the namespace returns only listed namespaces. `scanNamespace`
+follows the same rule. A listed namespace that no longer exists is skipped
+instead of failing the query. Node and PersistentVolume stay available. A
+Namespace object is limited to the listed names. Whether any other resource
+type is cluster-scoped is resolved the same way the backend resolves it:
+built-in types are known statically, and custom resources are checked against
+the cluster's API discovery.
+
+`--allowed-namespaces` replaces `RANCHER_MCP_ALLOWED_NAMESPACES`, which replaces
+the file value. The CLI and environment value is one JSON object, not a
+comma-separated list. An empty string, invalid JSON, a whitespace-only name, or
+a duplicate name fails startup.
+
+```shell
+rancher-mcp-server --allowed-namespaces '{"c-abc12":["default","app"]}'
+```
+
 ### Environment Variables
 
 Use `RANCHER_MCP_` prefix with underscores:
@@ -253,6 +286,7 @@ RANCHER_MCP_PORT=8080
 RANCHER_MCP_RANCHER_SERVER_URL=https://rancher.example.com
 RANCHER_MCP_RANCHER_TOKEN=your-token
 RANCHER_MCP_KUBECONFIG_PATHS=/etc/rancher-mcp/kubeconfig,/etc/rancher-mcp/extra-kubeconfig
+RANCHER_MCP_ALLOWED_NAMESPACES='{"c-abc12":["default","app"]}'
 RANCHER_MCP_READ_ONLY=true
 RANCHER_MCP_SHOW_SENSITIVE_DATA=false  # Global admin control for sensitive data
 RANCHER_MCP_ENABLE_CONTAINER_EXEC=false
@@ -502,7 +536,7 @@ Show Kubernetes cluster resource capacity, requests, limits, and utilization. Si
 | `showLabels` | boolean | No | Include node labels in the output (default: false) |
 | `hideRequests` | boolean | No | Hide request columns from output (default: false) |
 | `hideLimits` | boolean | No | Hide limit columns from output (default: false) |
-| `namespace` | string | No | Filter by namespace (empty for all namespaces) |
+| `namespace` | string | No | Filter by namespace (empty for all namespaces; on restricted clusters, see [Namespace allowlist](#namespace-allowlist)) |
 | `labelSelector` | string | No | Filter pods by label selector (e.g., "app=nginx,env=prod") |
 | `nodeLabelSelector` | string | No | Filter nodes by label selector (e.g., "node-role.kubernetes.io/worker=true") |
 | `namespaceLabelSelector` | string | No | Filter namespaces by label selector (e.g., "env=production") |
@@ -564,7 +598,7 @@ the result includes a warning. Pod rankings also support restart count.
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | No | Resource kind to rank: `pod` or `node` (default: `pod`) |
-| `namespace` | string | No | Namespace (empty = all namespaces) |
+| `namespace` | string | No | Namespace (empty = all namespaces; on restricted clusters, see [Namespace allowlist](#namespace-allowlist)) |
 | `labelSelector` | string | No | Label selector for filtering (e.g., "app=nginx,env=prod") |
 | `sortBy` | string | No | Sort by field. Pods: `cpu.util`, `mem.util`, `cpu.request`, `mem.request`, `cpu.limit`, `mem.limit`, `restart.count`. Nodes: `cpu.util`, `mem.util`, `cpu.request`, `mem.request`, `cpu.limit`, `mem.limit`, `cpu.util.percentage`, `mem.util.percentage`, `name` |
 | `limit` | integer | No | Maximum results to return (default: 50, max: 500) |
@@ -609,7 +643,7 @@ Get a health summary for Deployments, StatefulSets, and DaemonSets. Shows ready 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
-| `namespace` | string | No | Namespace (empty = all namespaces) |
+| `namespace` | string | No | Namespace (empty = all namespaces; on restricted clusters, see [Namespace allowlist](#namespace-allowlist)) |
 | `kind` | string | No | Workload kind: `deployment`, `statefulset`, `daemonset`, or `all` (default: `all`) |
 | `labelSelector` | string | No | Label selector for filtering |
 | `sortBy` | string | No | Sort by: `unready.count`, `ready.ratio`, `name` |
@@ -644,7 +678,7 @@ Aggregate pod/container resources by namespace or label key. Returns total reque
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
-| `namespace` | string | No | Namespace filter (empty = all namespaces) |
+| `namespace` | string | No | Namespace filter (empty = all namespaces; on restricted clusters, see [Namespace allowlist](#namespace-allowlist)) |
 | `labelSelector` | string | No | Label selector for filtering pods |
 | `groupBy` | string | No | Group by: `namespace` or `label` (default: `namespace`) |
 | `groupByKey` | string | No | Label key to group by (required when `groupBy=label`) |
@@ -682,7 +716,7 @@ Group and rank Kubernetes events by reason, kind, and frequency. Useful for iden
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
-| `namespace` | string | No | Namespace (empty = all namespaces) |
+| `namespace` | string | No | Namespace (empty = all namespaces; on restricted clusters, see [Namespace allowlist](#namespace-allowlist)) |
 | `kind` | string | No | Filter by involved object kind (e.g., Pod, Deployment, Node) |
 | `type` | string | No | Filter by event type: `Warning` or `Normal` |
 | `since` | string | No | Only include events newer than this duration (e.g., "1h30m", "2h") |
@@ -760,7 +794,7 @@ List Kubernetes resources by kind.
 | `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, App) |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
-| `namespace` | string | No | Namespace (empty = all namespaces) |
+| `namespace` | string | No | Namespace (empty = all namespaces; on restricted clusters, see [Namespace allowlist](#namespace-allowlist)) |
 | `name` | string | No | Filter by name (partial match) |
 | `labelSelector` | string | No | Label selector (e.g., "app=nginx,env=prod") |
 | `limit` | integer | No | Items per page (default: 100) |
@@ -922,7 +956,7 @@ Get really all Kubernetes resources in the cluster (inspired by [ketall](https:/
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
-| `namespace` | string | No | Filter by namespace (optional, empty for all namespaces) |
+| `namespace` | string | No | Filter by namespace (optional, empty for all namespaces; on restricted clusters, see [Namespace allowlist](#namespace-allowlist)) |
 | `name` | string | No | Filter by resource name (partial match, client-side) |
 | `labelSelector` | string | No | Label selector for filtering (e.g., "app=nginx,env=prod") |
 | `excludeEvents` | boolean | No | Exclude events from output (default: true, as events are often noisy) |
@@ -976,7 +1010,7 @@ Watch Kubernetes resources and return git-style diffs of changes at regular inte
 | `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
 | `kind` | string | Yes | Resource kind (e.g., pod, deployment, service, App) |
 | `apiVersion` | string | No | API version for CRDs or ambiguous kinds (e.g., catalog.cattle.io/v1) |
-| `namespace` | string | No | Namespace (empty = all namespaces or cluster-scoped resources) |
+| `namespace` | string | No | Namespace (empty = all namespaces or cluster-scoped resources; on restricted clusters, see [Namespace allowlist](#namespace-allowlist)) |
 | `labelSelector` | string | No | Label selector (e.g., "app=nginx,env=prod") |
 | `fieldSelector` | string | No | Field selector for filtering resources |
 | `ignoreStatus` | boolean | No | Ignore changes under the `status` field when computing diffs (similar to `--no-status`) |
@@ -1030,7 +1064,7 @@ List Kubernetes events. Supports filtering by namespace, involved object name, a
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | Cluster reference: Rancher ID or `kubeconfig:<context>` |
-| `namespace` | string | No | Namespace (empty = all namespaces) |
+| `namespace` | string | No | Namespace (empty = all namespaces; on restricted clusters, see [Namespace allowlist](#namespace-allowlist)) |
 | `name` | string | No | Filter by involved object name |
 | `kind` | string | No | Filter by involved object kind (e.g., Pod, Deployment, Node) |
 | `limit` | integer | No | Events per page (default: 50) |

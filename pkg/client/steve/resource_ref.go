@@ -88,10 +88,10 @@ func findPreferredGroupVersion(groups *metav1.APIGroupList, apiGroup string) (st
 	return "", false
 }
 
-func findAPIResourceGVR(groupVersion, resourceName string, resources []metav1.APIResource) (schema.GroupVersionResource, bool) {
+func findAPIResourceGVR(groupVersion, resourceName string, resources []metav1.APIResource) (schema.GroupVersionResource, bool, bool) {
 	gv, err := schema.ParseGroupVersion(groupVersion)
 	if err != nil {
-		return schema.GroupVersionResource{}, false
+		return schema.GroupVersionResource{}, false, false
 	}
 	for _, r := range resources {
 		if strings.Contains(r.Name, "/") {
@@ -102,29 +102,34 @@ func findAPIResourceGVR(groupVersion, resourceName string, resources []metav1.AP
 				Group:    gv.Group,
 				Version:  gv.Version,
 				Resource: r.Name,
-			}, true
+			}, r.Namespaced, true
 		}
 	}
-	return schema.GroupVersionResource{}, false
+	return schema.GroupVersionResource{}, false, false
 }
 
-func appendUniqueGVR(matches []schema.GroupVersionResource, gvr schema.GroupVersionResource) []schema.GroupVersionResource {
-	for _, match := range matches {
-		if match == gvr {
+type scopedGVR struct {
+	gvr        schema.GroupVersionResource
+	namespaced bool
+}
+
+func appendUniqueGVR(matches []scopedGVR, match scopedGVR) []scopedGVR {
+	for _, existing := range matches {
+		if existing.gvr == match.gvr {
 			return matches
 		}
 	}
-	return append(matches, gvr)
+	return append(matches, match)
 }
 
-func describeGVRMatches(matches []schema.GroupVersionResource) string {
+func describeGVRMatches(matches []scopedGVR) string {
 	parts := make([]string, 0, len(matches))
 	for _, match := range matches {
-		apiVersion := match.Version
-		if match.Group != "" {
-			apiVersion = match.Group + "/" + match.Version
+		apiVersion := match.gvr.Version
+		if match.gvr.Group != "" {
+			apiVersion = match.gvr.Group + "/" + match.gvr.Version
 		}
-		parts = append(parts, fmt.Sprintf("%s %s", apiVersion, match.Resource))
+		parts = append(parts, fmt.Sprintf("%s %s", apiVersion, match.gvr.Resource))
 	}
 	return strings.Join(parts, ", ")
 }
@@ -151,7 +156,7 @@ func (c *Client) resolveGVR(clusterID, kind string) (schema.GroupVersionResource
 		if gvr, ok := GetGVR(normalizedKind); ok && gvrMatchesAPIVersion(gvr, apiVersion) {
 			return gvr, nil
 		}
-		gvr, err := c.discoverGVRForAPIVersionKind(clusterID, apiVersion, normalizedKind)
+		gvr, _, err := c.discoverGVRForAPIVersionKind(clusterID, apiVersion, normalizedKind)
 		if err != nil {
 			return schema.GroupVersionResource{}, fmt.Errorf("unsupported resource kind: %s (%w)", original, err)
 		}
@@ -164,53 +169,132 @@ func (c *Client) resolveGVR(clusterID, kind string) (schema.GroupVersionResource
 	}
 
 	if strings.Contains(normalized, ".") {
-		gvr, err := c.discoverDottedGVR(clusterID, normalized)
+		gvr, _, err := c.discoverDottedGVR(clusterID, normalized)
 		if err == nil {
 			return gvr, nil
 		}
 	}
 
-	gvr, err := c.discoverGVRByKind(clusterID, normalized)
+	gvr, _, err := c.discoverGVRByKind(clusterID, normalized)
 	if err != nil {
 		return schema.GroupVersionResource{}, fmt.Errorf("unsupported resource kind: %s (%w)", original, err)
 	}
 	return gvr, nil
 }
 
-func (c *Client) discoverGVRForAPIVersionKind(clusterID, apiVersion, kind string) (schema.GroupVersionResource, error) {
+// ResolveResourceScope resolves kind through the same static and discovery
+// paths as resolveGVR and also reports whether the resolved resource is
+// namespaced. Statically resolved kinds outside the built-in set only have
+// their scope discovered, keeping the resolved GVR identical to resolveGVR.
+func (c *Client) ResolveResourceScope(clusterID, kind string) (schema.GroupVersionResource, bool, error) {
+	if gvr, namespaced, ok := ResolveStaticScope(kind); ok {
+		return gvr, namespaced, nil
+	}
+
+	original := strings.TrimSpace(kind)
+	if original == "" {
+		return schema.GroupVersionResource{}, false, fmt.Errorf("unsupported resource kind: %s", kind)
+	}
+
+	if apiVersion, apiKind, ok := parseAPIVersionKind(original); ok {
+		normalizedKind := strings.ToLower(apiKind)
+		if gvr, ok := GetGVR(normalizedKind); ok && gvrMatchesAPIVersion(gvr, apiVersion) {
+			namespaced, err := c.discoverScopeForGVR(clusterID, gvr)
+			if err != nil {
+				return schema.GroupVersionResource{}, false, fmt.Errorf("failed to discover scope for %s: %w", original, err)
+			}
+			return gvr, namespaced, nil
+		}
+		gvr, namespaced, err := c.discoverGVRForAPIVersionKind(clusterID, apiVersion, normalizedKind)
+		if err != nil {
+			return schema.GroupVersionResource{}, false, fmt.Errorf("unsupported resource kind: %s (%w)", original, err)
+		}
+		return gvr, namespaced, nil
+	}
+
+	normalized := strings.ToLower(original)
+	if gvr, ok := GetGVR(normalized); ok {
+		namespaced, err := c.discoverScopeForGVR(clusterID, gvr)
+		if err != nil {
+			return schema.GroupVersionResource{}, false, fmt.Errorf("failed to discover scope for %s: %w", original, err)
+		}
+		return gvr, namespaced, nil
+	}
+
+	if strings.Contains(normalized, ".") {
+		gvr, namespaced, err := c.discoverDottedGVR(clusterID, normalized)
+		if err == nil {
+			return gvr, namespaced, nil
+		}
+	}
+
+	gvr, namespaced, err := c.discoverGVRByKind(clusterID, normalized)
+	if err != nil {
+		return schema.GroupVersionResource{}, false, fmt.Errorf("unsupported resource kind: %s (%w)", original, err)
+	}
+	return gvr, namespaced, nil
+}
+
+// discoverScopeForGVR looks up the namespaced bit of an already resolved GVR
+// in its own group-version, so statically resolved non-built-in kinds keep
+// the exact GVR the backend will use.
+func (c *Client) discoverScopeForGVR(clusterID string, gvr schema.GroupVersionResource) (bool, error) {
 	clientset, err := c.getClientset(clusterID)
 	if err != nil {
-		return schema.GroupVersionResource{}, fmt.Errorf("failed to create clientset: %w", err)
+		return false, fmt.Errorf("failed to create clientset: %w", err)
+	}
+
+	groupVersion := gvr.GroupVersion().String()
+	resourceList, err := clientset.Discovery().ServerResourcesForGroupVersion(groupVersion)
+	if err != nil {
+		return false, fmt.Errorf("failed to discover resources for %s: %w", groupVersion, err)
+	}
+
+	for _, r := range resourceList.APIResources {
+		if strings.Contains(r.Name, "/") {
+			continue
+		}
+		if r.Name == gvr.Resource {
+			return r.Namespaced, nil
+		}
+	}
+	return false, fmt.Errorf("resource %s not found in %s", gvr.Resource, groupVersion)
+}
+
+func (c *Client) discoverGVRForAPIVersionKind(clusterID, apiVersion, kind string) (schema.GroupVersionResource, bool, error) {
+	clientset, err := c.getClientset(clusterID)
+	if err != nil {
+		return schema.GroupVersionResource{}, false, fmt.Errorf("failed to create clientset: %w", err)
 	}
 
 	resourceList, err := clientset.Discovery().ServerResourcesForGroupVersion(apiVersion)
 	if err != nil {
-		return schema.GroupVersionResource{}, fmt.Errorf("failed to discover resources for %s: %w", apiVersion, err)
+		return schema.GroupVersionResource{}, false, fmt.Errorf("failed to discover resources for %s: %w", apiVersion, err)
 	}
 
-	if gvr, ok := findAPIResourceGVR(apiVersion, kind, resourceList.APIResources); ok {
-		return gvr, nil
+	if gvr, namespaced, ok := findAPIResourceGVR(apiVersion, kind, resourceList.APIResources); ok {
+		return gvr, namespaced, nil
 	}
 
-	return schema.GroupVersionResource{}, fmt.Errorf("resource kind %s not found in %s", kind, apiVersion)
+	return schema.GroupVersionResource{}, false, fmt.Errorf("resource kind %s not found in %s", kind, apiVersion)
 }
 
-func (c *Client) discoverGVRByKind(clusterID, kind string) (schema.GroupVersionResource, error) {
+func (c *Client) discoverGVRByKind(clusterID, kind string) (schema.GroupVersionResource, bool, error) {
 	clientset, err := c.getClientset(clusterID)
 	if err != nil {
-		return schema.GroupVersionResource{}, fmt.Errorf("failed to create clientset: %w", err)
+		return schema.GroupVersionResource{}, false, fmt.Errorf("failed to create clientset: %w", err)
 	}
 
-	var matches []schema.GroupVersionResource
+	var matches []scopedGVR
 	if resourceList, err := clientset.Discovery().ServerResourcesForGroupVersion("v1"); err == nil {
-		if gvr, ok := findAPIResourceGVR("v1", kind, resourceList.APIResources); ok {
-			matches = appendUniqueGVR(matches, gvr)
+		if gvr, namespaced, ok := findAPIResourceGVR("v1", kind, resourceList.APIResources); ok {
+			matches = appendUniqueGVR(matches, scopedGVR{gvr: gvr, namespaced: namespaced})
 		}
 	}
 
 	groups, err := clientset.Discovery().ServerGroups()
 	if err != nil {
-		return schema.GroupVersionResource{}, fmt.Errorf("failed to discover API groups: %w", err)
+		return schema.GroupVersionResource{}, false, fmt.Errorf("failed to discover API groups: %w", err)
 	}
 
 	for _, group := range groups.Groups {
@@ -219,38 +303,38 @@ func (c *Client) discoverGVRByKind(clusterID, kind string) (schema.GroupVersionR
 		if err != nil {
 			continue
 		}
-		if gvr, ok := findAPIResourceGVR(groupVersion, kind, resourceList.APIResources); ok {
-			matches = appendUniqueGVR(matches, gvr)
+		if gvr, namespaced, ok := findAPIResourceGVR(groupVersion, kind, resourceList.APIResources); ok {
+			matches = appendUniqueGVR(matches, scopedGVR{gvr: gvr, namespaced: namespaced})
 		}
 	}
 
 	switch len(matches) {
 	case 0:
-		return schema.GroupVersionResource{}, fmt.Errorf("resource kind %s not found", kind)
+		return schema.GroupVersionResource{}, false, fmt.Errorf("resource kind %s not found", kind)
 	case 1:
-		return matches[0], nil
+		return matches[0].gvr, matches[0].namespaced, nil
 	default:
-		return schema.GroupVersionResource{}, fmt.Errorf("resource kind %s is ambiguous; specify apiVersion. Matches: %s", kind, describeGVRMatches(matches))
+		return schema.GroupVersionResource{}, false, fmt.Errorf("resource kind %s is ambiguous; specify apiVersion. Matches: %s", kind, describeGVRMatches(matches))
 	}
 }
 
 // discoverDottedGVR resolves dotted resource kinds to a GroupVersionResource using
 // Kubernetes API discovery. It supports both historical <resource>.<apiGroup>
 // input and Steve-style <apiGroup>.<resource-or-kind> input.
-func (c *Client) discoverDottedGVR(clusterID, dottedKind string) (schema.GroupVersionResource, error) {
+func (c *Client) discoverDottedGVR(clusterID, dottedKind string) (schema.GroupVersionResource, bool, error) {
 	candidates := parseDottedKindCandidates(dottedKind)
 	if len(candidates) == 0 {
-		return schema.GroupVersionResource{}, fmt.Errorf("invalid dotted kind format: %s", dottedKind)
+		return schema.GroupVersionResource{}, false, fmt.Errorf("invalid dotted kind format: %s", dottedKind)
 	}
 
 	clientset, err := c.getClientset(clusterID)
 	if err != nil {
-		return schema.GroupVersionResource{}, fmt.Errorf("failed to create clientset: %w", err)
+		return schema.GroupVersionResource{}, false, fmt.Errorf("failed to create clientset: %w", err)
 	}
 
 	groups, err := clientset.Discovery().ServerGroups()
 	if err != nil {
-		return schema.GroupVersionResource{}, fmt.Errorf("failed to discover API groups: %w", err)
+		return schema.GroupVersionResource{}, false, fmt.Errorf("failed to discover API groups: %w", err)
 	}
 
 	for _, candidate := range candidates {
@@ -262,12 +346,12 @@ func (c *Client) discoverDottedGVR(clusterID, dottedKind string) (schema.GroupVe
 		if err != nil {
 			continue
 		}
-		if gvr, ok := findAPIResourceGVR(groupVersion, candidate.resource, resourceList.APIResources); ok {
-			return gvr, nil
+		if gvr, namespaced, ok := findAPIResourceGVR(groupVersion, candidate.resource, resourceList.APIResources); ok {
+			return gvr, namespaced, nil
 		}
 	}
 
-	return schema.GroupVersionResource{}, fmt.Errorf("resource %s not found", dottedKind)
+	return schema.GroupVersionResource{}, false, fmt.Errorf("resource %s not found", dottedKind)
 }
 
 // normalizedResourceNames returns the lowercased, trimmed singular, plural and kind

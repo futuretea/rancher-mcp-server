@@ -1,6 +1,44 @@
 package kubernetes
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"strings"
+	"testing"
+)
+
+func TestDepHandler_MultipleAllowedNamespacesReturnsOneJSONDocument(t *testing.T) {
+	t.Cleanup(resetNamespaceAllowlist)
+	SetNamespaceAllowlist(map[string][]string{"c-abc12": {"default", "app"}})
+	rec := newRecordingReader()
+	node := nodeObject("worker-1")
+	node.SetUID("worker-1")
+	rec.inner.AddResource(node)
+	defaultPod := podObject("default", "pod-default")
+	defaultPod.SetUID("pod-default")
+	defaultPod.Object["spec"] = map[string]interface{}{"nodeName": "worker-1"}
+	rec.inner.AddResource(defaultPod)
+	appPod := podObject("app", "pod-app")
+	appPod.SetUID("pod-app")
+	appPod.Object["spec"] = map[string]interface{}{"nodeName": "worker-1"}
+	rec.inner.AddResource(appPod)
+
+	out, err := depHandler(context.Background(), rec, map[string]interface{}{
+		"cluster": "c-abc12",
+		"kind":    "node",
+		"name":    "worker-1",
+		"format":  "json",
+	})
+	if err != nil {
+		t.Fatalf("depHandler() error = %v", err)
+	}
+	if !json.Valid([]byte(out)) {
+		t.Fatalf("depHandler() JSON = %q, want one valid JSON document", out)
+	}
+	if !strings.Contains(out, "pod-default") || !strings.Contains(out, "pod-app") {
+		t.Fatalf("depHandler() JSON = %q, want dependents from both namespaces", out)
+	}
+}
 
 func TestParseNumeric(t *testing.T) {
 	tests := []struct {

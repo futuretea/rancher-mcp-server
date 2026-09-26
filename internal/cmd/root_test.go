@@ -2,6 +2,8 @@ package cmd
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -289,6 +291,36 @@ func TestStdioOAuthRejectedByCommand(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "rancher_oauth_token_auth is not supported in stdio mode") {
 		t.Fatalf("expected OAuth stdio rejection message, got: %v", err)
+	}
+}
+
+func TestAllowedNamespacesFlagReplacesEnvironment(t *testing.T) {
+	viper.Reset()
+	t.Cleanup(viper.Reset)
+	t.Setenv("RANCHER_MCP_ALLOWED_NAMESPACES", `{"c-env":["from-env"]}`)
+
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	body := "list_output: json\nallowed_namespaces:\n  c-file:\n    - from-file\n"
+	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+		t.Fatalf("write config fixture: %v", err)
+	}
+
+	streams := IOStreams{In: &bytes.Buffer{}, Out: &bytes.Buffer{}, ErrOut: &bytes.Buffer{}}
+	cmd := NewMCPServer(streams)
+	if err := cmd.ParseFlags([]string{"--allowed-namespaces", `{"c-cli":["from-cli"]}`}); err != nil {
+		t.Fatalf("ParseFlags: %v", err)
+	}
+	if err := bindFlags(cmd); err != nil {
+		t.Fatalf("bindFlags: %v", err)
+	}
+
+	cfg, err := config.LoadConfig(path)
+	if err != nil {
+		t.Fatalf("LoadConfig() error = %v", err)
+	}
+	want := map[string][]string{"c-cli": {"from-cli"}}
+	if !reflect.DeepEqual(cfg.AllowedNamespaces, want) {
+		t.Fatalf("AllowedNamespaces = %#v, want %#v", cfg.AllowedNamespaces, want)
 	}
 }
 

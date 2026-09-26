@@ -88,6 +88,9 @@ func (a *Analyzer) buildNodeInfoMap(ctx context.Context, p Params) (map[string]*
 
 // processPods processes all pods and aggregates resources by node
 func (a *Analyzer) processPods(ctx context.Context, nodeInfoMap map[string]*NodeInfo, p Params) error {
+	if len(p.Namespaces) > 0 {
+		return a.processPodsInNamespaces(ctx, nodeInfoMap, p)
+	}
 	namespaceFilter, err := a.buildNamespaceFilter(ctx, p)
 	if err != nil {
 		return err

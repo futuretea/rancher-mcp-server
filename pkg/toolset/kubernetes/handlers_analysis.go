@@ -10,46 +10,99 @@ import (
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/dep"
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
+	"k8s.io/apimachinery/pkg/types"
 )
 
 // depHandler handles the kubernetes_dep tool
 func depHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	request, err := buildDepRequest(params)
 	if err != nil {
 		return "", err
 	}
-
-	result, err := dep.Resolve(
-		ctx,
-		steveClient,
-		request.Cluster,
-		request.Kind,
-		request.Namespace,
-		request.Name,
-		request.ResolveOptions,
-	)
+	if err := allowNamedAccess(client, request.Cluster, request.Kind, request.Namespace, request.Name); err != nil {
+		return "", err
+	}
+	scans, err := depScanNamespaces(client, request.Cluster, request.ResolveOptions.ScanNamespace)
 	if err != nil {
-		return "", fmt.Errorf("failed to resolve dependencies: %w", err)
+		return "", err
 	}
+	reader, err := kubernetesReader(client)
+	if err != nil {
+		return "", err
+	}
+	return resolveDepScans(ctx, reader, request, scans)
+}
 
-	depsIsDependencies := request.ResolveOptions.Direction == "dependencies"
+func depScanNamespaces(client interface{}, cluster, scanNamespace string) ([]string, error) {
+	query, err := planNamespaceQuery(client, cluster, "pod", scanNamespace)
+	if err != nil {
+		return nil, err
+	}
+	if query.passthrough {
+		return []string{scanNamespace}, nil
+	}
+	return query.names, nil
+}
 
-	switch request.Format {
-	case "json":
+func resolveDepScans(ctx context.Context, reader steve.ResourceReader, request *depRequest, scans []string) (string, error) {
+	var merged *dep.Result
+	for _, scanNamespace := range scans {
+		options := request.ResolveOptions
+		options.ScanNamespace = scanNamespace
+		result, err := dep.Resolve(ctx, reader, request.Cluster, request.Kind, request.Namespace, request.Name, options)
+		if err != nil {
+			return "", fmt.Errorf("failed to resolve dependencies: %w", err)
+		}
+		if merged == nil {
+			merged = result
+			continue
+		}
+		if err := mergeDepResult(merged, result); err != nil {
+			return "", err
+		}
+	}
+	return formatDepResult(merged, request.ResolveOptions.Direction, request.Format)
+}
+
+func mergeDepResult(target, source *dep.Result) error {
+	if target.RootUID != source.RootUID {
+		return fmt.Errorf("dependency scans resolved different root resources")
+	}
+	for uid, sourceNode := range source.NodeMap {
+		targetNode, exists := target.NodeMap[uid]
+		if !exists {
+			target.NodeMap[uid] = sourceNode
+			continue
+		}
+		mergeRelationshipMap(targetNode.Dependencies, sourceNode.Dependencies)
+		mergeRelationshipMap(targetNode.Dependents, sourceNode.Dependents)
+	}
+	return nil
+}
+
+func mergeRelationshipMap(target, source map[types.UID]dep.RelationshipSet) {
+	for uid, sourceRelationships := range source {
+		targetRelationships, exists := target[uid]
+		if !exists {
+			targetRelationships = dep.RelationshipSet{}
+			target[uid] = targetRelationships
+		}
+		for relationship := range sourceRelationships {
+			targetRelationships[relationship] = struct{}{}
+		}
+	}
+}
+
+func formatDepResult(result *dep.Result, direction, format string) (string, error) {
+	depsIsDependencies := direction == "dependencies"
+	if format == "json" {
 		return dep.FormatJSON(result, depsIsDependencies)
-	default: // tree
-		return dep.FormatTree(result, depsIsDependencies), nil
 	}
+	return dep.FormatTree(result, depsIsDependencies), nil
 }
 
 type depRequest struct {
@@ -137,11 +190,6 @@ type NodePodInfo struct {
 
 // nodeAnalysisHandler handles the kubernetes_node_analysis tool
 func nodeAnalysisHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -151,13 +199,17 @@ func nodeAnalysisHandler(ctx context.Context, client interface{}, params map[str
 		return "", err
 	}
 	format := paramutil.ExtractFormat(params)
+	reader, err := kubernetesReader(client)
+	if err != nil {
+		return "", err
+	}
 
-	node, err := steveClient.GetResource(ctx, cluster, "node", "", name)
+	node, err := reader.GetResource(ctx, cluster, "node", "", name)
 	if err != nil {
 		return "", fmt.Errorf("failed to get node: %w", err)
 	}
 
-	result, err := buildNodeAnalysisResult(ctx, steveClient, cluster, node, name)
+	result, err := buildNodeAnalysisResult(ctx, reader, cluster, node, name)
 	if err != nil {
 		return "", err
 	}
@@ -166,7 +218,7 @@ func nodeAnalysisHandler(ctx context.Context, client interface{}, params map[str
 }
 
 // buildNodeAnalysisResult aggregates node metadata and the pods scheduled on it.
-func buildNodeAnalysisResult(ctx context.Context, client *steve.Client, cluster string, node *unstructured.Unstructured, name string) (*NodeAnalysisResult, error) {
+func buildNodeAnalysisResult(ctx context.Context, client steve.ResourceReader, cluster string, node *unstructured.Unstructured, name string) (*NodeAnalysisResult, error) {
 	result := &NodeAnalysisResult{
 		Node:      node,
 		Capacity:  extractStringMap(node.Object, "status", "capacity"),
@@ -176,7 +228,7 @@ func buildNodeAnalysisResult(ctx context.Context, client *steve.Client, cluster 
 		Pods:      []NodePodInfo{},
 	}
 
-	pods, err := client.ListResources(ctx, cluster, "pod", "", &steve.ListOptions{
+	pods, err := listResourcesAllowed(ctx, client, cluster, "pod", "", &steve.ListOptions{
 		FieldSelector: "spec.nodeName=" + name,
 	})
 	if err != nil {

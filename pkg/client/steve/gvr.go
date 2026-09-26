@@ -1,7 +1,11 @@
 // Package steve provides a Kubernetes dynamic client for accessing clusters via Rancher's Steve API.
 package steve
 
-import "k8s.io/apimachinery/pkg/runtime/schema"
+import (
+	"strings"
+
+	"k8s.io/apimachinery/pkg/runtime/schema"
+)
 
 // K8sKindsToGVRs maps lowercase Kubernetes resource kind names to their corresponding
 // GroupVersionResource (GVR) identifiers. This mapping is used for dynamic client operations
@@ -121,4 +125,103 @@ var K8sKindsToGVRs = map[string]schema.GroupVersionResource{
 func GetGVR(kind string) (schema.GroupVersionResource, bool) {
 	gvr, ok := K8sKindsToGVRs[kind]
 	return gvr, ok
+}
+
+// builtinGVRScopes records the namespaced bit of built-in Kubernetes GVRs.
+// Static entries outside this set (Rancher, fleet, and cert-manager kinds)
+// have their scope discovered from the cluster instead. New built-in entries
+// added to K8sKindsToGVRs must also be recorded here.
+var builtinGVRScopes = map[schema.GroupVersionResource]bool{
+	{Group: "", Version: "v1", Resource: "pods"}:                                          true,
+	{Group: "", Version: "v1", Resource: "services"}:                                      true,
+	{Group: "", Version: "v1", Resource: "configmaps"}:                                    true,
+	{Group: "", Version: "v1", Resource: "secrets"}:                                       true,
+	{Group: "", Version: "v1", Resource: "events"}:                                        true,
+	{Group: "", Version: "v1", Resource: "namespaces"}:                                    false,
+	{Group: "", Version: "v1", Resource: "nodes"}:                                         false,
+	{Group: "", Version: "v1", Resource: "serviceaccounts"}:                               true,
+	{Group: "", Version: "v1", Resource: "persistentvolumes"}:                             false,
+	{Group: "", Version: "v1", Resource: "persistentvolumeclaims"}:                        true,
+	{Group: "", Version: "v1", Resource: "resourcequotas"}:                                true,
+	{Group: "", Version: "v1", Resource: "limitranges"}:                                   true,
+	{Group: "", Version: "v1", Resource: "endpoints"}:                                     true,
+	{Group: "apps", Version: "v1", Resource: "deployments"}:                               true,
+	{Group: "apps", Version: "v1", Resource: "statefulsets"}:                              true,
+	{Group: "apps", Version: "v1", Resource: "daemonsets"}:                                true,
+	{Group: "apps", Version: "v1", Resource: "replicasets"}:                               true,
+	{Group: "batch", Version: "v1", Resource: "jobs"}:                                     true,
+	{Group: "batch", Version: "v1", Resource: "cronjobs"}:                                 true,
+	{Group: "networking.k8s.io", Version: "v1", Resource: "ingresses"}:                    true,
+	{Group: "networking.k8s.io", Version: "v1", Resource: "networkpolicies"}:              true,
+	{Group: "networking.k8s.io", Version: "v1", Resource: "ingressclasses"}:               false,
+	{Group: "autoscaling", Version: "v2", Resource: "horizontalpodautoscalers"}:           true,
+	{Group: "autoscaling.k8s.io", Version: "v1", Resource: "verticalpodautoscalers"}:      true,
+	{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "roles"}:                true,
+	{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "rolebindings"}:         true,
+	{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterroles"}:         false,
+	{Group: "rbac.authorization.k8s.io", Version: "v1", Resource: "clusterrolebindings"}:  false,
+	{Group: "storage.k8s.io", Version: "v1", Resource: "storageclasses"}:                  false,
+	{Group: "storage.k8s.io", Version: "v1", Resource: "volumeattachments"}:               false,
+	{Group: "apiextensions.k8s.io", Version: "v1", Resource: "customresourcedefinitions"}: false,
+	{Group: "discovery.k8s.io", Version: "v1", Resource: "endpointslices"}:                true,
+	{Group: "policy", Version: "v1", Resource: "poddisruptionbudgets"}:                    true,
+	{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "nodes"}:                      false,
+	{Group: "metrics.k8s.io", Version: "v1beta1", Resource: "pods"}:                       true,
+}
+
+// ResolveStaticScope resolves kind to its GVR and namespaced bit without
+// contacting the cluster. It mirrors the static branches of resolveGVR and
+// returns ok=false when the scope must be discovered instead: unknown kinds,
+// apiVersion-qualified references whose group does not match the static table
+// entry, and static entries outside the built-in Kubernetes set (Rancher,
+// fleet, and cert-manager kinds) whose scope is not hard-coded.
+func ResolveStaticScope(kind string) (gvr schema.GroupVersionResource, namespaced, ok bool) {
+	original := strings.TrimSpace(kind)
+	if original == "" {
+		return schema.GroupVersionResource{}, false, false
+	}
+	if apiVersion, apiKind, parsed := parseAPIVersionKind(original); parsed {
+		name := strings.ToLower(apiKind)
+		if gvr, hit := GetGVR(name); hit && gvrMatchesAPIVersion(gvr, apiVersion) {
+			namespaced, ok = builtinGVRScope(gvr)
+			return gvr, namespaced, ok
+		}
+		// Plural resource names match only a built-in GVR of the same
+		// group-version; a different group must fall through to discovery so
+		// a conflicting custom resource cannot inherit the built-in scope.
+		if gvr, namespaced, hit := findBuiltinGVRByResource(name, apiVersion); hit {
+			return gvr, namespaced, true
+		}
+		return schema.GroupVersionResource{}, false, false
+	}
+	name := strings.ToLower(original)
+	if gvr, hit := GetGVR(name); hit {
+		namespaced, ok = builtinGVRScope(gvr)
+		return gvr, namespaced, ok
+	}
+	if gvr, namespaced, hit := findBuiltinGVRByResource(name, ""); hit {
+		return gvr, namespaced, true
+	}
+	return schema.GroupVersionResource{}, false, false
+}
+
+func builtinGVRScope(gvr schema.GroupVersionResource) (namespaced, known bool) {
+	namespaced, known = builtinGVRScopes[gvr]
+	return namespaced, known
+}
+
+// findBuiltinGVRByResource matches a plural resource name against the
+// built-in scope table. With an empty apiVersion the first match wins; a
+// non-empty apiVersion must match the GVR's group-version.
+func findBuiltinGVRByResource(resource, apiVersion string) (schema.GroupVersionResource, bool, bool) {
+	for gvr, namespaced := range builtinGVRScopes {
+		if gvr.Resource != resource {
+			continue
+		}
+		if apiVersion != "" && !gvrMatchesAPIVersion(gvr, apiVersion) {
+			continue
+		}
+		return gvr, namespaced, true
+	}
+	return schema.GroupVersionResource{}, false, false
 }

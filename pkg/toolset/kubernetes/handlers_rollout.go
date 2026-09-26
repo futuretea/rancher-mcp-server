@@ -24,12 +24,14 @@ type RevisionInfo struct {
 
 // rolloutHistoryHandler handles the kubernetes_rollout_history tool
 func rolloutHistoryHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
+	cluster, namespace, name, err := extractRolloutParams(params)
 	if err != nil {
 		return "", err
 	}
-
-	cluster, namespace, name, err := extractRolloutParams(params)
+	if err := allowNamedAccess(client, cluster, "deployment", namespace, name); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}

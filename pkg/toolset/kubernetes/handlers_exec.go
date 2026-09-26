@@ -24,11 +24,6 @@ func handleExec(ctx context.Context, client interface{}, params map[string]inter
 		return "", paramutil.ErrReadOnlyMode
 	}
 
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -42,6 +37,13 @@ func handleExec(ctx context.Context, client interface{}, params map[string]inter
 		return "", err
 	}
 	command, err := parseExecCommand(params)
+	if err != nil {
+		return "", err
+	}
+	if err := allowNamedAccess(client, cluster, "pod", namespace, name); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}

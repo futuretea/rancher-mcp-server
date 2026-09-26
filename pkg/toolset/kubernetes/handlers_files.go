@@ -37,11 +37,6 @@ func parseMaxFileSize(params map[string]interface{}) (int64, error) {
 }
 
 func handleDownloadFile(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -55,6 +50,13 @@ func handleDownloadFile(ctx context.Context, client interface{}, params map[stri
 		return "", err
 	}
 	filePath, err := paramutil.ExtractRequiredString(params, paramutil.ParamFilePath)
+	if err != nil {
+		return "", err
+	}
+	if err := allowNamedAccess(client, cluster, "pod", namespace, name); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
@@ -100,11 +102,6 @@ func handleUploadFile(ctx context.Context, client interface{}, params map[string
 		return "", paramutil.ErrReadOnlyMode
 	}
 
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -122,6 +119,13 @@ func handleUploadFile(ctx context.Context, client interface{}, params map[string
 		return "", err
 	}
 	contentBase64, err := paramutil.ExtractRequiredString(params, paramutil.ParamContent)
+	if err != nil {
+		return "", err
+	}
+	if err := allowNamedAccess(client, cluster, "pod", namespace, name); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}

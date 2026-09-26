@@ -16,11 +16,6 @@ import (
 
 // getHandler handles the kubernetes_get tool
 func getHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -37,7 +32,15 @@ func getHandler(ctx context.Context, client interface{}, params map[string]inter
 	format := paramutil.ExtractFormat(params)
 	filter := paramutil.NewResourceFilterFromParams(params)
 
-	resource, err := steveClient.GetResource(ctx, cluster, kind, namespace, name)
+	if err := allowNamedAccess(client, cluster, kind, namespace, name); err != nil {
+		return "", err
+	}
+	reader, err := kubernetesReader(client)
+	if err != nil {
+		return "", err
+	}
+
+	resource, err := reader.GetResource(ctx, cluster, kind, namespace, name)
 	if err != nil {
 		return "", fmt.Errorf("failed to get resource: %w", err)
 	}
@@ -52,11 +55,6 @@ func getHandler(ctx context.Context, client interface{}, params map[string]inter
 
 // listHandler handles the kubernetes_list tool
 func listHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -78,7 +76,7 @@ func listHandler(ctx context.Context, client interface{}, params map[string]inte
 		LabelSelector: labelSelector,
 	}
 
-	list, err := steveClient.ListResources(ctx, cluster, kind, namespace, opts)
+	list, err := listResourcesAllowed(ctx, client, cluster, kind, namespace, opts)
 	if err != nil {
 		return "", fmt.Errorf("failed to list resources: %w", err)
 	}
@@ -106,11 +104,6 @@ func createHandler(ctx context.Context, client interface{}, params map[string]in
 		return "", paramutil.ErrReadOnlyMode
 	}
 
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -126,6 +119,13 @@ func createHandler(ctx context.Context, client interface{}, params map[string]in
 	if err := json.Unmarshal([]byte(resourceJSON), &resource.Object); err != nil {
 		return "", fmt.Errorf("failed to parse resource JSON: %w", err)
 	}
+	if err := allowNamedAccess(client, cluster, steve.KindWithAPIVersion(resource.GetAPIVersion(), resource.GetKind()), resource.GetNamespace(), resource.GetName()); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
+	if err != nil {
+		return "", err
+	}
 
 	created, err := steveClient.CreateResource(ctx, cluster, &resource)
 	if err != nil {
@@ -140,11 +140,6 @@ func patchHandler(ctx context.Context, client interface{}, params map[string]int
 	// Check read-only mode
 	if readOnly, ok := params["readOnly"].(bool); ok && readOnly {
 		return "", paramutil.ErrReadOnlyMode
-	}
-
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
 	}
 
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
@@ -165,6 +160,18 @@ func patchHandler(ctx context.Context, client interface{}, params map[string]int
 		return "", err
 	}
 	filter := paramutil.NewResourceFilterFromParams(params)
+	if err := allowNamedAccess(client, cluster, kind, namespace, name); err != nil {
+		return "", err
+	}
+	if patchedNamespace := namespaceFromPatch(patchStr); patchedNamespace != "" {
+		if err := denyNamespace(cluster, patchedNamespace); err != nil {
+			return "", err
+		}
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
+	if err != nil {
+		return "", err
+	}
 
 	patched, err := steveClient.PatchResource(ctx, cluster, kind, namespace, name, []byte(patchStr))
 	if err != nil {
@@ -185,11 +192,6 @@ func deleteHandler(ctx context.Context, client interface{}, params map[string]in
 		return "", paramutil.ErrDestructiveDisabled
 	}
 
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -203,6 +205,13 @@ func deleteHandler(ctx context.Context, client interface{}, params map[string]in
 		return "", err
 	}
 	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
+	if err := allowNamedAccess(client, cluster, kind, namespace, name); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
+	if err != nil {
+		return "", err
+	}
 
 	if err := steveClient.DeleteResource(ctx, cluster, kind, namespace, name); err != nil {
 		return "", fmt.Errorf("failed to delete resource: %w", err)

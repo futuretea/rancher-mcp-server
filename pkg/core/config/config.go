@@ -3,10 +3,13 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
+	"gopkg.in/yaml.v3"
 )
 
 // StaticConfig represents the static configuration for the Rancher MCP Server
@@ -20,16 +23,16 @@ type StaticConfig struct {
 	LogLevel int `mapstructure:"log_level"`
 
 	// Rancher configuration
-	RancherServerURL                   string `mapstructure:"rancher_server_url"`
-	RancherToken                       string `mapstructure:"rancher_token"`
-	RancherAccessKey                   string `mapstructure:"rancher_access_key"`
-	RancherSecretKey                   string `mapstructure:"rancher_secret_key"`
-	RancherTLSInsecure                 bool   `mapstructure:"rancher_tls_insecure"`
-	RancherRequestTokenAuth            bool   `mapstructure:"rancher_request_token_auth"`
-	RancherOAuthTokenAuth              bool   `mapstructure:"rancher_oauth_token_auth"`
-	RancherOAuthAuthorizationServerURL string `mapstructure:"rancher_oauth_authorization_server_url"`
-	RancherOAuthJWKSURL                string `mapstructure:"rancher_oauth_jwks_url"`
-	RancherOAuthResourceURL            string `mapstructure:"rancher_oauth_resource_url"`
+	RancherServerURL                   string   `mapstructure:"rancher_server_url"`
+	RancherToken                       string   `mapstructure:"rancher_token"`
+	RancherAccessKey                   string   `mapstructure:"rancher_access_key"`
+	RancherSecretKey                   string   `mapstructure:"rancher_secret_key"`
+	RancherTLSInsecure                 bool     `mapstructure:"rancher_tls_insecure"`
+	RancherRequestTokenAuth            bool     `mapstructure:"rancher_request_token_auth"`
+	RancherOAuthTokenAuth              bool     `mapstructure:"rancher_oauth_token_auth"`
+	RancherOAuthAuthorizationServerURL string   `mapstructure:"rancher_oauth_authorization_server_url"`
+	RancherOAuthJWKSURL                string   `mapstructure:"rancher_oauth_jwks_url"`
+	RancherOAuthResourceURL            string   `mapstructure:"rancher_oauth_resource_url"`
 	KubeconfigPaths                    []string `mapstructure:"kubeconfig_paths"`
 
 	// Security configuration
@@ -51,6 +54,12 @@ type StaticConfig struct {
 	Toolsets      []string `mapstructure:"toolsets"`
 	EnabledTools  []string `mapstructure:"enabled_tools"`
 	DisabledTools []string `mapstructure:"disabled_tools"`
+
+	// AllowedNamespaces maps a cluster id to namespace names.
+	// A missing field, an empty object, a missing cluster key, and an empty
+	// array leave that scope unrestricted. CLI and environment values are JSON
+	// objects and replace this map as a whole.
+	AllowedNamespaces map[string][]string `mapstructure:"allowed_namespaces"`
 }
 
 // Validate validates the configuration
@@ -76,8 +85,27 @@ func (c *StaticConfig) Validate() error {
 	if err := c.validateKubeconfigAuthModeExclusion(); err != nil {
 		return err
 	}
+	if err := c.validateAllowedNamespaces(); err != nil {
+		return err
+	}
 
 	return c.validateRancherConfiguration()
+}
+
+func (c *StaticConfig) validateAllowedNamespaces() error {
+	for cluster, names := range c.AllowedNamespaces {
+		seen := make(map[string]struct{}, len(names))
+		for _, name := range names {
+			if strings.TrimSpace(name) == "" {
+				return fmt.Errorf("allowed_namespaces[%s] contains a whitespace-only namespace name", cluster)
+			}
+			if _, ok := seen[name]; ok {
+				return fmt.Errorf("allowed_namespaces[%s] contains duplicate namespace %q", cluster, name)
+			}
+			seen[name] = struct{}{}
+		}
+	}
+	return nil
 }
 
 func (c *StaticConfig) validateKubeconfigAuthModeExclusion() error {
@@ -185,6 +213,7 @@ func (c *StaticConfig) hasStaticCredentials() bool {
 func LoadConfig(configPath string) (*StaticConfig, error) {
 	// Use the global viper instance to access bound command-line flags
 	v := viper.GetViper()
+	var fileAllowedNamespaces map[string][]string
 
 	// Set configuration file if provided
 	if configPath != "" {
@@ -192,6 +221,11 @@ func LoadConfig(configPath string) (*StaticConfig, error) {
 		v.SetConfigType("yaml")
 		if err := v.ReadInConfig(); err != nil {
 			return nil, fmt.Errorf("failed to read config file: %w", err)
+		}
+		var err error
+		fileAllowedNamespaces, err = allowedNamespacesFromYAML(configPath)
+		if err != nil {
+			return nil, err
 		}
 	}
 
@@ -202,10 +236,17 @@ func LoadConfig(configPath string) (*StaticConfig, error) {
 	v.SetEnvKeyReplacer(strings.NewReplacer("-", "_", ".", "_"))
 	v.AutomaticEnv()
 
+	if err := applyAllowedNamespacesOverride(v); err != nil {
+		return nil, err
+	}
+
 	// Unmarshal configuration into struct
 	config := &StaticConfig{}
 	if err := v.Unmarshal(config); err != nil {
 		return nil, fmt.Errorf("failed to unmarshal config: %w", err)
+	}
+	if configPath != "" && !allowedNamespacesOverrideIsSet(v) {
+		config.AllowedNamespaces = fileAllowedNamespaces
 	}
 
 	// Validate configuration
@@ -214,6 +255,68 @@ func LoadConfig(configPath string) (*StaticConfig, error) {
 	}
 
 	return config, nil
+}
+
+// allowedNamespacesFromYAML decodes this map outside Viper because cluster IDs
+// are data, and kubeconfig context names are case-sensitive.
+func allowedNamespacesFromYAML(configPath string) (map[string][]string, error) {
+	data, err := os.ReadFile(configPath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read config file: %w", err)
+	}
+	var config struct {
+		AllowedNamespaces map[string][]string `yaml:"allowed_namespaces"`
+	}
+	if err := yaml.Unmarshal(data, &config); err != nil {
+		return nil, fmt.Errorf("failed to parse allowed_namespaces: %w", err)
+	}
+	return config.AllowedNamespaces, nil
+}
+
+// applyAllowedNamespacesOverride decodes a CLI or environment JSON object.
+// The CLI value replaces the environment value, which replaces the file object.
+func applyAllowedNamespacesOverride(v *viper.Viper) error {
+	if v.IsSet("allowed_namespaces_json") {
+		parsed, err := decodeAllowedNamespacesJSON(v.GetString("allowed_namespaces_json"))
+		if err != nil {
+			return err
+		}
+		v.Set("allowed_namespaces", parsed)
+		return nil
+	}
+
+	raw, ok := os.LookupEnv("RANCHER_MCP_ALLOWED_NAMESPACES")
+	if !ok {
+		return nil
+	}
+	parsed, err := decodeAllowedNamespacesJSON(raw)
+	if err != nil {
+		return err
+	}
+	v.Set("allowed_namespaces", parsed)
+	return nil
+}
+
+func allowedNamespacesOverrideIsSet(v *viper.Viper) bool {
+	if v.IsSet("allowed_namespaces_json") {
+		return true
+	}
+	_, ok := os.LookupEnv("RANCHER_MCP_ALLOWED_NAMESPACES")
+	return ok
+}
+
+func decodeAllowedNamespacesJSON(raw string) (map[string][]string, error) {
+	if raw == "" {
+		return nil, fmt.Errorf("allowed_namespaces JSON is empty")
+	}
+	var parsed map[string][]string
+	if err := json.Unmarshal([]byte(raw), &parsed); err != nil {
+		return nil, fmt.Errorf("allowed_namespaces: invalid JSON: %w", err)
+	}
+	if parsed == nil {
+		return nil, fmt.Errorf("allowed_namespaces: invalid JSON: expected an object")
+	}
+	return parsed, nil
 }
 
 // HasRancherConfig returns true if Rancher configuration is present

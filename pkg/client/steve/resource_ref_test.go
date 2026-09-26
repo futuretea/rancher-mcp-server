@@ -112,12 +112,15 @@ func TestMatchesResourceName(t *testing.T) {
 func TestFindAPIResourceGVRByAPIVersionAndKind(t *testing.T) {
 	resources := []metav1.APIResource{
 		{Name: "apps/status", Kind: "App"},
-		{Name: "apps", SingularName: "app", Kind: "App"},
+		{Name: "apps", SingularName: "app", Kind: "App", Namespaced: true},
 	}
 
-	got, ok := findAPIResourceGVR("catalog.cattle.io/v1", "App", resources)
+	got, namespaced, ok := findAPIResourceGVR("catalog.cattle.io/v1", "App", resources)
 	if !ok {
 		t.Fatal("findAPIResourceGVR() ok = false, want true")
+	}
+	if !namespaced {
+		t.Fatal("findAPIResourceGVR() namespaced = false, want true")
 	}
 
 	want := schema.GroupVersionResource{
@@ -170,8 +173,8 @@ func TestFindPreferredGroupVersion(t *testing.T) {
 }
 
 func TestAppendUniqueGVR(t *testing.T) {
-	gvr1 := schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
-	gvr2 := schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}
+	gvr1 := scopedGVR{gvr: schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}, namespaced: true}
+	gvr2 := scopedGVR{gvr: schema.GroupVersionResource{Group: "batch", Version: "v1", Resource: "jobs"}, namespaced: true}
 
 	matches := appendUniqueGVR(nil, gvr1)
 	if len(matches) != 1 || matches[0] != gvr1 {
@@ -190,10 +193,10 @@ func TestAppendUniqueGVR(t *testing.T) {
 }
 
 func TestDescribeGVRMatches(t *testing.T) {
-	matches := []schema.GroupVersionResource{
-		{Group: "apps", Version: "v1", Resource: "deployments"},
-		{Group: "", Version: "v1", Resource: "pods"},
-		{Group: "batch", Version: "v1beta1", Resource: "cronjobs"},
+	matches := []scopedGVR{
+		{gvr: schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}},
+		{gvr: schema.GroupVersionResource{Group: "", Version: "v1", Resource: "pods"}},
+		{gvr: schema.GroupVersionResource{Group: "batch", Version: "v1beta1", Resource: "cronjobs"}},
 	}
 
 	got := describeGVRMatches(matches)

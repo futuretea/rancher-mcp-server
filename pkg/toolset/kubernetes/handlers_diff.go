@@ -13,6 +13,7 @@ import (
 
 // diffHandler handles the kubernetes_diff tool.
 // It compares two Kubernetes resource versions and shows the differences as a git-style diff.
+// Not applicable for the namespace allowlist: the handler reads caller-supplied JSON and does not query a namespace.
 func diffHandler(_ context.Context, _ interface{}, params map[string]interface{}) (string, error) {
 	// Extract required parameters
 	resource1JSON, err := paramutil.ExtractRequiredString(params, "resource1")
@@ -43,11 +44,6 @@ func diffHandler(_ context.Context, _ interface{}, params map[string]interface{}
 }
 
 func resourceDiffHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	kind, err := extractResourceKind(params)
 	if err != nil {
 		return "", err
@@ -58,6 +54,16 @@ func resourceDiffHandler(ctx context.Context, client interface{}, params map[str
 		return "", err
 	}
 	right, err := extractDiffTarget(params, "right")
+	if err != nil {
+		return "", err
+	}
+	if err := allowNamedAccess(client, left.Cluster, kind, left.Namespace, left.Name); err != nil {
+		return "", err
+	}
+	if err := allowNamedAccess(client, right.Cluster, kind, right.Namespace, right.Name); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}

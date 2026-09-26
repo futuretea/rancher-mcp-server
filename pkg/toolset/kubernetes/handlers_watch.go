@@ -19,12 +19,14 @@ import (
 // evaluates the current state of matching resources at a configurable
 // interval and returns the concatenated diffs from all iterations.
 func watchDiffHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
+	request, err := buildWatchRequest(params)
 	if err != nil {
 		return "", err
 	}
-
-	request, err := buildWatchRequest(params)
+	if _, err := planNamespaceQuery(client, request.cluster, request.kind, request.namespace); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}
@@ -107,7 +109,7 @@ func watchDiffWithReader(ctx context.Context, reader steve.ResourceReader, reque
 			return "", err
 		}
 
-		list, err := reader.ListResources(ctx, request.cluster, request.kind, request.namespace, &steve.ListOptions{
+		list, err := listResourcesAllowed(ctx, reader, request.cluster, request.kind, request.namespace, &steve.ListOptions{
 			LabelSelector: request.labelSelector,
 			FieldSelector: request.fieldSelector,
 			Limit:         int64(request.maxItems + 1),

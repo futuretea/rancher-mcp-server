@@ -28,6 +28,7 @@ func ClampLimit(limit int) int {
 type TopParams struct {
 	Cluster       string
 	Namespace     string
+	Namespaces    []string
 	LabelSelector string
 	Kind          string // "pod" or "node"
 	SortBy        string
@@ -62,6 +63,7 @@ type TopItem struct {
 type WorkloadParams struct {
 	Cluster       string
 	Namespace     string
+	Namespaces    []string
 	Kind          string // "deployment", "statefulset", "daemonset", "all"
 	LabelSelector string
 	SortBy        string
@@ -96,6 +98,7 @@ type WorkloadItem struct {
 type SummaryParams struct {
 	Cluster       string
 	Namespace     string
+	Namespaces    []string
 	LabelSelector string
 	GroupBy       string // "namespace" or "label"
 	GroupByKey    string
@@ -125,14 +128,15 @@ type SummaryItem struct {
 
 // EventParams holds parameters for event summary analysis
 type EventParams struct {
-	Cluster   string
-	Namespace string
-	Kind      string
-	Type      string // "Warning" or "Normal"
-	Since     string
-	SortBy    string
-	Limit     int
-	Format    string
+	Cluster    string
+	Namespace  string
+	Namespaces []string
+	Kind       string
+	Type       string // "Warning" or "Normal"
+	Since      string
+	SortBy     string
+	Limit      int
+	Format     string
 }
 
 // EventResult holds the result of event summary analysis

@@ -9,8 +9,10 @@ import (
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 
 	corev1 "k8s.io/api/core/v1"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 )
 
 var _ steve.ResourceReader = (*Client)(nil)
@@ -46,7 +48,7 @@ func (c *Client) GetResource(_ context.Context, _ string, kind, namespace, name 
 			return r, nil
 		}
 	}
-	return nil, fmt.Errorf("resource not found: %s/%s (kind %s)", namespace, name, kind)
+	return nil, apierrors.NewNotFound(schema.GroupResource{Resource: normalizeKind(kind)}, name)
 }
 
 // ListResources lists resources by kind, filtered by namespace and label selector.

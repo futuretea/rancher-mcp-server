@@ -3,24 +3,34 @@ package kubernetes
 import (
 	"context"
 
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes/capacity"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 )
 
 // capacityHandler handles the kubernetes_capacity tool
 func capacityHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	p, err := extractCapacityParams(params)
 	if err != nil {
 		return "", err
 	}
+	namespace, namespaces, err := listedNamespaces(client, p.Cluster, "pod", p.Namespace)
+	if err != nil {
+		return "", err
+	}
+	p.Namespace = namespace
+	p.Namespaces = namespaces
+	// An explicit namespace still has to intersect namespaceLabelSelector with
+	// the allowlist. Listing every namespace would read names outside the list.
+	if _, restricted := restrictedNames(p.Cluster); restricted && p.NamespaceLabelSelector != "" && len(p.Namespaces) == 0 && namespace != "" {
+		p.Namespaces = []string{namespace}
+		p.Namespace = ""
+	}
+	reader, err := kubernetesReader(client)
+	if err != nil {
+		return "", err
+	}
 
-	analyzer := capacity.NewAnalyzer(steveClient)
+	analyzer := capacity.NewAnalyzer(reader)
 	result, err := analyzer.Analyze(ctx, p)
 	if err != nil {
 		return "", err

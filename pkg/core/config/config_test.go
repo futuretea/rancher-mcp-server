@@ -440,6 +440,168 @@ func TestValidate_RancherOAuthModeRequiresAllFields(t *testing.T) {
 	}
 }
 
+func TestLoadConfig_AllowedNamespaces(t *testing.T) {
+	t.Run("S1 env object replaces file object", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		body := "list_output: json\nallowed_namespaces:\n  c-a:\n    - default\n"
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write config fixture: %v", err)
+		}
+		t.Setenv("RANCHER_MCP_ALLOWED_NAMESPACES", `{"c-b":["app"]}`)
+
+		cfg, err := LoadConfig(path)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+		want := map[string][]string{"c-b": {"app"}}
+		if !reflect.DeepEqual(cfg.AllowedNamespaces, want) {
+			t.Fatalf("AllowedNamespaces = %#v, want %#v", cfg.AllowedNamespaces, want)
+		}
+	})
+
+	t.Run("file names stay when env is unset", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		body := "list_output: json\nallowed_namespaces:\n  c-a:\n    - default\n    - app\n"
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write config fixture: %v", err)
+		}
+
+		cfg, err := LoadConfig(path)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+		want := map[string][]string{"c-a": {"default", "app"}}
+		if !reflect.DeepEqual(cfg.AllowedNamespaces, want) {
+			t.Fatalf("AllowedNamespaces = %#v, want %#v", cfg.AllowedNamespaces, want)
+		}
+	})
+
+	t.Run("file preserves case-sensitive kubeconfig cluster id", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+
+		path := filepath.Join(t.TempDir(), "config.yaml")
+		body := "list_output: json\nallowed_namespaces:\n  'kubeconfig:Production':\n    - app\n"
+		if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
+			t.Fatalf("write config fixture: %v", err)
+		}
+
+		cfg, err := LoadConfig(path)
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+		want := map[string][]string{"kubeconfig:Production": {"app"}}
+		if !reflect.DeepEqual(cfg.AllowedNamespaces, want) {
+			t.Fatalf("AllowedNamespaces = %#v, want %#v", cfg.AllowedNamespaces, want)
+		}
+	})
+
+	t.Run("empty JSON object loads", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("list_output", "json")
+		t.Setenv("RANCHER_MCP_ALLOWED_NAMESPACES", `{}`)
+
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+		if len(cfg.AllowedNamespaces) != 0 {
+			t.Fatalf("AllowedNamespaces = %#v, want empty", cfg.AllowedNamespaces)
+		}
+	})
+
+	t.Run("missing field stays unrestricted", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("list_output", "json")
+
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+		if len(cfg.AllowedNamespaces) != 0 {
+			t.Fatalf("AllowedNamespaces = %#v, want empty", cfg.AllowedNamespaces)
+		}
+	})
+
+	t.Run("empty object and empty array load", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("list_output", "json")
+		t.Setenv("RANCHER_MCP_ALLOWED_NAMESPACES", `{"c-abc12":[]}`)
+
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+		want := map[string][]string{"c-abc12": {}}
+		if !reflect.DeepEqual(cfg.AllowedNamespaces, want) {
+			t.Fatalf("AllowedNamespaces = %#v, want %#v", cfg.AllowedNamespaces, want)
+		}
+	})
+
+	t.Run("invalid JSON fails", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("list_output", "json")
+		t.Setenv("RANCHER_MCP_ALLOWED_NAMESPACES", `{`)
+
+		_, err := LoadConfig("")
+		if err == nil || !strings.Contains(err.Error(), "allowed_namespaces") {
+			t.Fatalf("LoadConfig() error = %v, want allowed_namespaces JSON error", err)
+		}
+	})
+
+	t.Run("empty string fails", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("list_output", "json")
+		t.Setenv("RANCHER_MCP_ALLOWED_NAMESPACES", "")
+
+		_, err := LoadConfig("")
+		if err == nil || !strings.Contains(err.Error(), "allowed_namespaces") {
+			t.Fatalf("LoadConfig() error = %v, want empty allowed_namespaces error", err)
+		}
+	})
+
+	t.Run("whitespace-only name fails", func(t *testing.T) {
+		cfg := &StaticConfig{ListOutput: "json", AllowedNamespaces: map[string][]string{"c-a": {"  "}}}
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("expected whitespace-only namespace to fail validation")
+		}
+	})
+
+	t.Run("duplicate name fails", func(t *testing.T) {
+		cfg := &StaticConfig{ListOutput: "json", AllowedNamespaces: map[string][]string{"c-a": {"default", "default"}}}
+		if err := cfg.Validate(); err == nil {
+			t.Fatal("expected duplicate namespace to fail validation")
+		}
+	})
+
+	t.Run("S6 kubeconfig cluster id", func(t *testing.T) {
+		viper.Reset()
+		t.Cleanup(viper.Reset)
+		viper.Set("list_output", "json")
+		t.Setenv("RANCHER_MCP_ALLOWED_NAMESPACES", `{"kubeconfig:production":["app"]}`)
+
+		cfg, err := LoadConfig("")
+		if err != nil {
+			t.Fatalf("LoadConfig() error = %v", err)
+		}
+		want := map[string][]string{"kubeconfig:production": {"app"}}
+		if !reflect.DeepEqual(cfg.AllowedNamespaces, want) {
+			t.Fatalf("AllowedNamespaces = %#v, want %#v", cfg.AllowedNamespaces, want)
+		}
+	})
+}
+
 func validRancherOAuthConfig() StaticConfig {
 	return StaticConfig{
 		Port:                               8080,

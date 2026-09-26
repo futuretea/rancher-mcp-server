@@ -13,6 +13,7 @@ import (
 	"github.com/futuretea/rancher-mcp-server/pkg/core/version"
 	internalhttp "github.com/futuretea/rancher-mcp-server/pkg/server/http"
 	"github.com/futuretea/rancher-mcp-server/pkg/server/mcp"
+	"github.com/futuretea/rancher-mcp-server/pkg/toolset/kubernetes"
 	urlutil "github.com/futuretea/rancher-mcp-server/pkg/util/url"
 )
 
@@ -71,6 +72,14 @@ func bindFlags(cmd *cobra.Command) error {
 		}
 		if err := viper.BindPFlag(key, pflag); err != nil {
 			return fmt.Errorf("bind flag %s to config key %s: %w", flag, key, err)
+		}
+	}
+
+	// Bind only when the operator passed the flag, so an unset flag does not
+	// replace the file or environment object with an empty string.
+	if allowed := flags.Lookup("allowed-namespaces"); allowed != nil && allowed.Changed {
+		if err := viper.BindPFlag("allowed_namespaces_json", allowed); err != nil {
+			return fmt.Errorf("bind flag allowed-namespaces: %w", err)
 		}
 	}
 	return nil
@@ -140,6 +149,7 @@ for network access.`,
 	cmd.Flags().StringSlice("toolsets", []string{"kubernetes", "rancher"}, "Comma-separated list of toolsets to enable")
 	cmd.Flags().StringSlice("enabled-tools", []string{}, "Comma-separated list of tools to enable")
 	cmd.Flags().StringSlice("disabled-tools", []string{}, "Comma-separated list of tools to disable")
+	cmd.Flags().String("allowed-namespaces", "", "JSON object mapping cluster id to allowed namespace names; replaces the file and environment value")
 
 	// Add version command
 	cmd.AddCommand(newVersionCommand(streams))
@@ -170,6 +180,7 @@ func runServer(cfgFile string, streams IOStreams) error {
 		logging.Initialize(cfg.LogLevel, streams.ErrOut)
 	}
 	warnKubeconfigHTTPExposure(cfg)
+	kubernetes.SetNamespaceAllowlist(cfg.AllowedNamespaces)
 
 	// Create MCP server configuration
 	mcpConfig := mcp.Configuration{

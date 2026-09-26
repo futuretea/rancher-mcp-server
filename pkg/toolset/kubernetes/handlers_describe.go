@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/futuretea/rancher-mcp-server/pkg/toolset"
+	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
 	"github.com/futuretea/rancher-mcp-server/pkg/toolset/paramutil"
 	"gopkg.in/yaml.v3"
 	corev1 "k8s.io/api/core/v1"
@@ -16,11 +16,6 @@ import (
 
 // describeHandler handles the kubernetes_describe tool
 func describeHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -35,10 +30,25 @@ func describeHandler(ctx context.Context, client interface{}, params map[string]
 	}
 	namespace := paramutil.ExtractOptionalString(params, paramutil.ParamNamespace)
 	format := paramutil.ExtractFormat(params)
+	if err := allowNamedAccess(client, cluster, kind, namespace, name); err != nil {
+		return "", err
+	}
+	reader, err := kubernetesReader(client)
+	if err != nil {
+		return "", err
+	}
 
-	result, err := steveClient.DescribeResource(ctx, cluster, kind, namespace, name)
+	resource, err := reader.GetResource(ctx, cluster, kind, namespace, name)
 	if err != nil {
 		return "", fmt.Errorf("failed to describe resource: %w", err)
+	}
+	result := &steve.DescribeResult{Resource: resource}
+	query, err := planNamespaceQuery(client, cluster, "event", namespace)
+	if err != nil {
+		return "", err
+	}
+	if events, err := eventsForQuery(ctx, reader, cluster, namespace, name, resource.GetKind(), query); err == nil {
+		result.Events = events
 	}
 
 	// Mask sensitive data (e.g., Secret data) unless showSensitiveData is true
@@ -60,11 +70,6 @@ func describeHandler(ctx context.Context, client interface{}, params map[string]
 
 // eventsHandler handles the kubernetes_events tool
 func eventsHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -76,7 +81,16 @@ func eventsHandler(ctx context.Context, client interface{}, params map[string]in
 	page := paramutil.ExtractInt64(params, paramutil.ParamPage, 1)
 	format := paramutil.ExtractOptionalStringWithDefault(params, paramutil.ParamFormat, paramutil.FormatTable)
 
-	events, err := steveClient.GetEvents(ctx, cluster, namespace, nameFilter, kindFilter)
+	query, err := planNamespaceQuery(client, cluster, "event", namespace)
+	if err != nil {
+		return "", err
+	}
+	reader, err := kubernetesReader(client)
+	if err != nil {
+		return "", err
+	}
+
+	events, err := eventsForQuery(ctx, reader, cluster, namespace, nameFilter, kindFilter, query)
 	if err != nil {
 		return "", fmt.Errorf("failed to get events: %w", err)
 	}
@@ -105,6 +119,26 @@ func eventsHandler(ctx context.Context, client interface{}, params map[string]in
 		}
 		return string(data), nil
 	}
+}
+
+func eventsForQuery(ctx context.Context, reader steve.ResourceReader, cluster, namespace, nameFilter, kindFilter string, query namespaceQuery) ([]corev1.Event, error) {
+	if query.passthrough {
+		events, err := reader.GetEvents(ctx, cluster, namespace, nameFilter, kindFilter)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get events: %w", err)
+		}
+		return events, nil
+	}
+
+	var events []corev1.Event
+	for _, name := range query.names {
+		batch, err := reader.GetEvents(ctx, cluster, name, nameFilter, kindFilter)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get events: %w", err)
+		}
+		events = append(events, batch...)
+	}
+	return events, nil
 }
 
 // eventTime returns the most relevant timestamp for an event,

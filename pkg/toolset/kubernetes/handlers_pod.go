@@ -32,11 +32,6 @@ type allContainerLogClient interface {
 
 // logsHandler handles the kubernetes_logs tool
 func logsHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -46,6 +41,13 @@ func logsHandler(ctx context.Context, client interface{}, params map[string]inte
 		return "", err
 	}
 	name := paramutil.ExtractOptionalString(params, paramutil.ParamName)
+	if err := allowNamedAccess(client, cluster, "pod", namespace, name); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
+	if err != nil {
+		return "", err
+	}
 	labelSelector := paramutil.ExtractOptionalString(params, paramutil.ParamLabelSelector)
 	container := paramutil.ExtractOptionalString(params, paramutil.ParamContainer)
 	tailLines := paramutil.ExtractInt64(params, paramutil.ParamTailLines, 100)
@@ -303,11 +305,6 @@ func formatTimestampedContent(timestamp time.Time, content string) string {
 
 // inspectPodHandler handles the kubernetes_inspect_pod tool
 func inspectPodHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -317,6 +314,13 @@ func inspectPodHandler(ctx context.Context, client interface{}, params map[strin
 		return "", err
 	}
 	name, err := paramutil.ExtractRequiredString(params, paramutil.ParamName)
+	if err != nil {
+		return "", err
+	}
+	if err := allowNamedAccess(client, cluster, "pod", namespace, name); err != nil {
+		return "", err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
 	if err != nil {
 		return "", err
 	}

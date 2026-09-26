@@ -15,11 +15,6 @@ import (
 
 // getAllHandler handles the kubernetes_get_all tool (inspired by ketall)
 func getAllHandler(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
-	steveClient, err := toolset.ValidateSteveClient(client)
-	if err != nil {
-		return "", err
-	}
-
 	cluster, err := paramutil.ExtractRequiredString(params, paramutil.ParamCluster)
 	if err != nil {
 		return "", err
@@ -58,10 +53,9 @@ func getAllHandler(ctx context.Context, client interface{}, params map[string]in
 		Scope:         scope,
 		Limit:         limit,
 	}
-
-	result, err := steveClient.GetAllResources(ctx, cluster, opts)
+	result, err := getAllInScope(ctx, client, cluster, namespace, scope, opts)
 	if err != nil {
-		return "", fmt.Errorf("failed to get all resources: %w", err)
+		return "", err
 	}
 
 	// Apply filters
@@ -69,6 +63,87 @@ func getAllHandler(ctx context.Context, client interface{}, params map[string]in
 
 	// Format and return result
 	return formatAllResources(filteredItems, format)
+}
+
+func getAllInScope(ctx context.Context, client interface{}, cluster, namespace, scope string, opts *steve.GetAllOptions) (*steve.AllResourcesResult, error) {
+	if scope == "cluster" {
+		steveClient, err := toolset.ValidateSteveClient(client)
+		if err != nil {
+			return nil, err
+		}
+		return getAllResourcesAllowed(ctx, steveClient, cluster, opts)
+	}
+
+	query, err := planNamespaceQuery(client, cluster, "pod", namespace)
+	if err != nil {
+		return nil, err
+	}
+	steveClient, err := toolset.ValidateSteveClient(client)
+	if err != nil {
+		return nil, err
+	}
+	if query.passthrough {
+		return getAllResourcesAllowed(ctx, steveClient, cluster, opts)
+	}
+
+	merged := &steve.AllResourcesResult{}
+	for _, name := range query.names {
+		callOpts := *opts
+		callOpts.Namespace = name
+		callOpts.Scope = "namespaced"
+		result, err := steveClient.GetAllResources(ctx, cluster, &callOpts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get all resources: %w", err)
+		}
+		merged.Items = append(merged.Items, result.Items...)
+	}
+	if scope == "" {
+		clusterOpts := *opts
+		clusterOpts.Namespace = ""
+		clusterOpts.Scope = "cluster"
+		result, err := getAllResourcesAllowed(ctx, steveClient, cluster, &clusterOpts)
+		if err != nil {
+			return nil, err
+		}
+		merged.Items = append(merged.Items, result.Items...)
+	}
+	return merged, nil
+}
+
+func getAllResourcesAllowed(ctx context.Context, reader *steve.Client, cluster string, opts *steve.GetAllOptions) (*steve.AllResourcesResult, error) {
+	set, restricted := restrictedNames(cluster)
+	if !restricted {
+		result, err := reader.GetAllResources(ctx, cluster, opts)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get all resources: %w", err)
+		}
+		return result, nil
+	}
+
+	callOpts := *opts
+	callOpts.ExcludeNamespaces = true
+	result, err := reader.GetAllResources(ctx, cluster, &callOpts)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get all resources: %w", err)
+	}
+	if opts.Scope == "namespaced" {
+		return result, nil
+	}
+	namespaces, err := getNamedNamespaces(ctx, reader, cluster, sortedNames(set), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get allowed namespaces: %w", err)
+	}
+	for i := range namespaces.Items {
+		item := &namespaces.Items[i]
+		result.Items = append(result.Items, steve.AllResourceItem{
+			Name:       item.GetName(),
+			Namespace:  item.GetNamespace(),
+			Kind:       item.GetKind(),
+			APIVersion: item.GetAPIVersion(),
+			Resource:   item,
+		})
+	}
+	return result, nil
 }
 
 // filterAllResources applies client-side filters to the resource list.

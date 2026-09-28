@@ -3,8 +3,10 @@ package steve
 import (
 	"context"
 	"errors"
+	"slices"
 	"testing"
 
+	appsv1 "k8s.io/api/apps/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -14,6 +16,46 @@ import (
 	"k8s.io/client-go/kubernetes/scheme"
 	k8stesting "k8s.io/client-go/testing"
 )
+
+func TestGetAllResources_ReturnsCoreAndNamedGroupResourcesOnce(t *testing.T) {
+	client := NewClient("https://example.com", "token", "", "", false)
+	client.dynamicClients["cluster"] = fake.NewSimpleDynamicClient(scheme.Scheme,
+		&corev1.ConfigMap{ObjectMeta: metav1.ObjectMeta{Name: "config", Namespace: "default"}},
+		&appsv1.Deployment{ObjectMeta: metav1.ObjectMeta{Name: "app", Namespace: "default"}},
+	)
+	clientset := k8sfake.NewSimpleClientset()
+	clientset.Discovery().(*fakediscovery.FakeDiscovery).Resources = []*metav1.APIResourceList{
+		{
+			GroupVersion: "v1",
+			APIResources: []metav1.APIResource{
+				{Name: "configmaps", Kind: "ConfigMap", Namespaced: true, Verbs: []string{"list"}},
+			},
+		},
+		{
+			GroupVersion: "apps/v1",
+			APIResources: []metav1.APIResource{
+				{Name: "deployments", Kind: "Deployment", Namespaced: true, Verbs: []string{"list"}},
+			},
+		},
+	}
+	client.clientsets["cluster"] = clientset
+
+	result, err := client.GetAllResources(context.Background(), "cluster", &GetAllOptions{
+		Namespace: "default", Scope: "namespaced",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, item := range result.Items {
+		got = append(got, item.Kind+"/"+item.Namespace+"/"+item.Name)
+	}
+	slices.Sort(got)
+	want := []string{"ConfigMap/default/config", "Deployment/default/app"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("resources = %v, want %v", got, want)
+	}
+}
 
 func TestListResourcesForType_PointersAreDistinct(t *testing.T) {
 	ctx := context.Background()

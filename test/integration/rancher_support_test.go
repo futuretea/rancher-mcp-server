@@ -78,6 +78,10 @@ func TestRancherVersionSupport(t *testing.T) {
 				expectToolSuccess(t, result, err, "kubeconfig direct access")
 			})
 
+			t.Run("namespace_allowlist", func(t *testing.T) {
+				testNamespaceAllowlist(t, env)
+			})
+
 			t.Run("write_path", func(t *testing.T) {
 				serverURL := startMCPServer(t, withArgs(base,
 					"--rancher-request-token-auth",

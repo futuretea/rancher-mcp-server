@@ -73,6 +73,14 @@ func bindFlags(cmd *cobra.Command) error {
 			return fmt.Errorf("bind flag %s to config key %s: %w", flag, key, err)
 		}
 	}
+
+	// Bind only when the operator passed the flag, so an unset flag does not
+	// replace the file or environment object with an empty string.
+	if allowed := flags.Lookup("allowed-namespaces"); allowed != nil && allowed.Changed {
+		if err := viper.BindPFlag("allowed_namespaces_json", allowed); err != nil {
+			return fmt.Errorf("bind flag allowed-namespaces: %w", err)
+		}
+	}
 	return nil
 }
 
@@ -140,6 +148,7 @@ for network access.`,
 	cmd.Flags().StringSlice("toolsets", []string{"kubernetes", "rancher"}, "Comma-separated list of toolsets to enable")
 	cmd.Flags().StringSlice("enabled-tools", []string{}, "Comma-separated list of tools to enable")
 	cmd.Flags().StringSlice("disabled-tools", []string{}, "Comma-separated list of tools to disable")
+	cmd.Flags().String("allowed-namespaces", "", "JSON object mapping cluster id to allowed namespace names; replaces the file and environment value")
 
 	// Add version command
 	cmd.AddCommand(newVersionCommand(streams))

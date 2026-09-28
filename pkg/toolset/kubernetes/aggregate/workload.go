@@ -27,14 +27,14 @@ func (a *WorkloadAnalyzer) Analyze(ctx context.Context, p WorkloadParams) (*Work
 	kind := strings.ToLower(p.Kind)
 	if kind == "" || kind == "all" {
 		for _, k := range []string{"deployment", "statefulset", "daemonset"} {
-			items, err := a.listWorkload(ctx, p.Cluster, p.Namespace, k, p.LabelSelector)
+			items, err := a.listWorkload(ctx, p.Cluster, p.Namespace, k, p.LabelSelector, p.Namespaces)
 			if err != nil {
 				return nil, err
 			}
 			allItems = append(allItems, items...)
 		}
 	} else {
-		items, err := a.listWorkload(ctx, p.Cluster, p.Namespace, kind, p.LabelSelector)
+		items, err := a.listWorkload(ctx, p.Cluster, p.Namespace, kind, p.LabelSelector, p.Namespaces)
 		if err != nil {
 			return nil, err
 		}
@@ -63,13 +63,13 @@ func (a *WorkloadAnalyzer) Analyze(ctx context.Context, p WorkloadParams) (*Work
 }
 
 // listWorkload lists a specific workload kind and extracts health info
-func (a *WorkloadAnalyzer) listWorkload(ctx context.Context, cluster, namespace, kind, labelSelector string) ([]WorkloadItem, error) {
+func (a *WorkloadAnalyzer) listWorkload(ctx context.Context, cluster, namespace, kind, labelSelector string, namespaces []string) ([]WorkloadItem, error) {
 	opts := &steve.ListOptions{}
 	if labelSelector != "" {
 		opts.LabelSelector = labelSelector
 	}
 
-	list, err := a.client.ListResources(ctx, cluster, kind, namespace, opts)
+	list, err := listKind(ctx, a.client, cluster, kind, namespace, namespaces, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list %s: %w", kind, err)
 	}

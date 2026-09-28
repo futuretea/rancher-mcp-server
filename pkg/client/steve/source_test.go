@@ -2,7 +2,10 @@ package steve
 
 import (
 	"bytes"
+	"context"
 	"errors"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -29,6 +32,23 @@ func TestNewClientWithKubeconfigPaths_UsesConfiguredContextDirectly(t *testing.T
 	}
 	if strings.Contains(config.Host, "/k8s/clusters/") {
 		t.Fatalf("Host = %q must not be a Rancher Steve URL", config.Host)
+	}
+}
+
+func TestNewClientWithKubeconfigPaths_UsesTrailingSlashContextExactly(t *testing.T) {
+	path := writeKubeconfig(t, "direct/", "https://direct.example.test", "")
+
+	client, err := NewClientWithKubeconfigPaths("", "", "", "", false, []string{path})
+	if err != nil {
+		t.Fatalf("NewClientWithKubeconfigPaths() error = %v", err)
+	}
+
+	config, err := client.createRestConfig("kubeconfig:direct/")
+	if err != nil {
+		t.Fatalf("createRestConfig() error = %v", err)
+	}
+	if config.Host != "https://direct.example.test" {
+		t.Fatalf("Host = %q, want direct kubeconfig server", config.Host)
 	}
 }
 
@@ -126,6 +146,28 @@ func TestNewClientWithKubeconfigPaths_RoutesBareReferenceToRancherWhenKubeconfig
 	}
 	if config.Host != "https://rancher.example.test/k8s/clusters/c-rancher" {
 		t.Fatalf("Host = %q, want Rancher Steve URL", config.Host)
+	}
+}
+
+func TestRancherClientTrailingSlashTargetsSameClusterPath(t *testing.T) {
+	var paths []string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"PodList","items":[]}`))
+	}))
+	t.Cleanup(server.Close)
+
+	client := NewClient(server.URL, "fixture-token", "", "", false)
+	for _, cluster := range []string{"c-abc12", "c-abc12/"} {
+		if _, err := client.ListResources(context.Background(), cluster, "pod", "kube-system", nil); err != nil {
+			t.Fatalf("ListResources(%q) error = %v", cluster, err)
+		}
+	}
+
+	want := "/k8s/clusters/c-abc12/api/v1/namespaces/kube-system/pods"
+	if !reflect.DeepEqual(paths, []string{want, want}) {
+		t.Fatalf("request paths = %#v, want both %q", paths, want)
 	}
 }
 
@@ -253,5 +295,32 @@ func writeKubeconfigAtWithCluster(t *testing.T, path, contextName, server, clust
 		"  user:" + userConfig + "\n"
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatalf("write kubeconfig fixture: %v", err)
+	}
+}
+
+func TestRancherReferencesRejectURLSyntax(t *testing.T) {
+	client := NewClient("https://rancher.example.test", "", "", "", false)
+	for _, reference := range []string{"c-%61bc12", "c-abc12?x=y", "c-abc12#fragment", "c-abc12/child", `c-abc12\child`, "c-abc12/%2e%2e/c-other"} {
+		_, err := client.createRestConfig(reference)
+		var referenceErr *ClusterReferenceError
+		if !errors.As(err, &referenceErr) {
+			t.Errorf("reference %q: error=%v; want ClusterReferenceError", reference, err)
+		}
+	}
+}
+
+func TestKubeconfigContextPreservesURLPunctuation(t *testing.T) {
+	const contextName = "direct%61?x=y#fragment"
+	path := writeKubeconfig(t, contextName, "https://direct.example.test", "")
+	client, err := NewClientWithKubeconfigPaths("", "", "", "", false, []string{path})
+	if err != nil {
+		t.Fatal(err)
+	}
+	config, err := client.createRestConfig("kubeconfig:" + contextName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if config.Host != "https://direct.example.test" {
+		t.Fatalf("unexpected host %q", config.Host)
 	}
 }

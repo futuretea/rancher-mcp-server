@@ -28,7 +28,7 @@ func (a *SummaryAnalyzer) Analyze(ctx context.Context, p SummaryParams) (*Summar
 		opts.LabelSelector = p.LabelSelector
 	}
 
-	pods, err := a.client.ListResources(ctx, p.Cluster, "pod", p.Namespace, opts)
+	pods, err := listKind(ctx, a.client, p.Cluster, "pod", p.Namespace, p.Namespaces, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}

@@ -13,13 +13,10 @@ import (
 
 // buildEventFieldSelector constructs a field selector string for filtering events
 // by involved object properties.
-func buildEventFieldSelector(name, namespace, kind string) string {
+func buildEventFieldSelector(name, kind string) string {
 	var selectors []string
 	if name != "" {
 		selectors = append(selectors, "involvedObject.name="+name)
-	}
-	if namespace != "" {
-		selectors = append(selectors, "involvedObject.namespace="+namespace)
 	}
 	if kind != "" {
 		selectors = append(selectors, "involvedObject.kind="+kind)
@@ -27,8 +24,8 @@ func buildEventFieldSelector(name, namespace, kind string) string {
 	return strings.Join(selectors, ",")
 }
 
-// GetEvents retrieves Kubernetes events related to a specific resource.
-// Filters by involvedObject fields: name, namespace, and optionally kind.
+// GetEvents retrieves events stored in namespace, filtered by the involved
+// object's name and kind. Cluster-scoped objects have no involved namespace.
 func (c *Client) GetEvents(ctx context.Context, clusterID, namespace, name, kind string) ([]corev1.Event, error) {
 	clientset, err := c.getClientset(clusterID)
 	if err != nil {
@@ -36,7 +33,7 @@ func (c *Client) GetEvents(ctx context.Context, clusterID, namespace, name, kind
 	}
 
 	listOpts := metav1.ListOptions{
-		FieldSelector: buildEventFieldSelector(name, namespace, kind),
+		FieldSelector: buildEventFieldSelector(name, kind),
 	}
 
 	eventList, err := clientset.CoreV1().Events(namespace).List(ctx, listOpts)

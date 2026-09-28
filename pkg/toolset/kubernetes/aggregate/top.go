@@ -47,7 +47,7 @@ func (a *TopAnalyzer) analyzePods(ctx context.Context, p TopParams) (*TopResult,
 		opts.LabelSelector = p.LabelSelector
 	}
 
-	pods, err := a.client.ListResources(ctx, p.Cluster, "pod", p.Namespace, opts)
+	pods, err := listKind(ctx, a.client, p.Cluster, "pod", p.Namespace, p.Namespaces, opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to list pods: %w", err)
 	}
@@ -56,7 +56,7 @@ func (a *TopAnalyzer) analyzePods(ctx context.Context, p TopParams) (*TopResult,
 	metricsMap := make(map[string]*podMetrics)
 	var warning string
 	if needsMetrics(p.SortBy) {
-		m, w := a.fetchPodMetrics(ctx, p.Cluster, p.Namespace)
+		m, w := a.fetchPodMetrics(ctx, p.Cluster, p.Namespace, p.Namespaces)
 		metricsMap = m
 		warning = w
 	}
@@ -108,8 +108,8 @@ type nodeMetrics struct {
 }
 
 // fetchPodMetrics retrieves pod metrics from metrics-server
-func (a *TopAnalyzer) fetchPodMetrics(ctx context.Context, cluster, namespace string) (map[string]*podMetrics, string) {
-	metricsList, err := a.client.ListResources(ctx, cluster, "pod.metrics.k8s.io", namespace, nil)
+func (a *TopAnalyzer) fetchPodMetrics(ctx context.Context, cluster, namespace string, namespaces []string) (map[string]*podMetrics, string) {
+	metricsList, err := listKind(ctx, a.client, cluster, "pod.metrics.k8s.io", namespace, namespaces, nil)
 	if err != nil {
 		logging.Debug("Failed to get pod metrics (metrics-server may not be installed): %v", err)
 		return nil, "metrics-server unavailable: utilization data omitted"

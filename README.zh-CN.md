@@ -43,6 +43,7 @@
     - 启用时：由各工具的 `showSensitiveData` 参数控制可见性
     - 适用范围：Kubernetes Secret 的 `data` 和 `stringData` 字段
     - 影响的工具：`kubernetes_get`、`kubernetes_list`、`kubernetes_describe`
+  - `allowed_namespaces`：可选的按集群命名空间允许列表。只有数组里写了名称的集群才会受到限制
   - `enable_container_exec`：显式启用 Pod 命令执行（默认：`false`，且需要 `read_only=false`）
   - `enable_container_file_upload` / `enable_container_file_download`：显式启用容器文件传输工具
 - **输出格式**：Table、YAML、JSON
@@ -183,6 +184,16 @@ rancher_token: your-bearer-token
 #   - /etc/rancher-mcp/kubeconfig
 #   - /etc/rancher-mcp/extra-kubeconfig
 
+# 可选：按集群限制命名空间。只有数组中写了名称的集群会受到限制。
+# 字段缺失、{}、缺少某个集群键、以及空数组都表示对应范围不受限制。
+# 键名包含冒号时需要加引号。
+# allowed_namespaces:
+#   c-abc12:
+#     - default
+#     - app
+#   "kubeconfig:production":
+#     - app
+
 read_only: true  # default: true
 disable_destructive: false
 
@@ -229,6 +240,7 @@ RANCHER_MCP_PORT=8080
 RANCHER_MCP_RANCHER_SERVER_URL=https://rancher.example.com
 RANCHER_MCP_RANCHER_TOKEN=your-token
 RANCHER_MCP_KUBECONFIG_PATHS=/etc/rancher-mcp/kubeconfig,/etc/rancher-mcp/extra-kubeconfig
+RANCHER_MCP_ALLOWED_NAMESPACES='{"c-abc12":["default","app"]}'
 RANCHER_MCP_READ_ONLY=true
 RANCHER_MCP_SHOW_SENSITIVE_DATA=false  # Global admin control for sensitive data
 RANCHER_MCP_ENABLE_CONTAINER_EXEC=false
@@ -263,6 +275,24 @@ kubeconfig 请求提供 HTTP 鉴权。请优先使用 stdio，或仅向可信调
 
 对于使用 `npx` 的 MCP 客户端，把同样的参数放在包名之后：
 `npx -y @futuretea/rancher-mcp-server@latest --config ./config.yaml`。
+
+### 命名空间允许列表
+
+`allowed_namespaces` 用来限制选定集群上的 Kubernetes 工具。只有数组里写了
+命名空间名称的集群会受到限制。在受限集群上，指定列表外的命名空间会返回错误，
+并且不会访问后端。省略命名空间时，只返回列表中的命名空间。`scanNamespace`
+使用同一规则。列表中已不存在的命名空间会被跳过，不会导致整个查询失败。
+Node 和 PersistentVolume 仍然可见。Namespace 对象本身也只允许
+列表中的名称。其他资源类型是否为集群级，按后端的解析方式判定：内置类型
+静态已知，自定义资源通过集群的 API discovery 确认。
+
+`--allowed-namespaces` 替换 `RANCHER_MCP_ALLOWED_NAMESPACES`，后者再替换文件中的
+整个对象。命令行和环境变量的值是一个 JSON 对象，不是逗号分隔的列表。空字符串、
+非法 JSON、仅含空白的名称或重复名称都会导致启动失败。
+
+```shell
+rancher-mcp-server --allowed-namespaces '{"c-abc12":["default","app"]}'
+```
 
 ### HTTP/SSE 模式
 
@@ -476,7 +506,7 @@ data:
 | `showLabels` | boolean | No | 在输出中包含节点标签（默认：false） |
 | `hideRequests` | boolean | No | 从输出中隐藏 request 列（默认：false） |
 | `hideLimits` | boolean | No | 从输出中隐藏 limit 列（默认：false） |
-| `namespace` | string | No | 按命名空间过滤（空表示所有命名空间） |
+| `namespace` | string | No | 按命名空间过滤（空表示所有命名空间；受限集群见[命名空间允许列表](#命名空间允许列表)） |
 | `labelSelector` | string | No | 按标签选择器过滤 Pod（例如："app=nginx,env=prod"） |
 | `nodeLabelSelector` | string | No | 按标签选择器过滤节点（例如："node-role.kubernetes.io/worker=true"） |
 | `namespaceLabelSelector` | string | No | 按标签选择器过滤命名空间（例如："env=production"） |
@@ -536,7 +566,7 @@ data:
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | No | 要排序的资源类型：`pod` 或 `node`（默认：`pod`） |
-| `namespace` | string | No | 命名空间（空 = 所有命名空间） |
+| `namespace` | string | No | 命名空间（空 = 所有命名空间；受限集群见[命名空间允许列表](#命名空间允许列表)） |
 | `labelSelector` | string | No | 标签选择器过滤（例如："app=nginx,env=prod"） |
 | `sortBy` | string | No | 排序字段。Pod：`cpu.util`、`mem.util`、`cpu.request`、`mem.request`、`cpu.limit`、`mem.limit`、`restart.count`。Node：`cpu.util`、`mem.util`、`cpu.util.percentage`、`mem.util.percentage`、`pod.count` |
 | `limit` | integer | No | 最大返回结果数（默认：50，最大：500） |
@@ -581,7 +611,7 @@ data:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
-| `namespace` | string | No | 命名空间（空 = 所有命名空间） |
+| `namespace` | string | No | 命名空间（空 = 所有命名空间；受限集群见[命名空间允许列表](#命名空间允许列表)） |
 | `kind` | string | No | 工作负载类型：`deployment`、`statefulset`、`daemonset` 或 `all`（默认：`all`） |
 | `labelSelector` | string | No | 标签选择器过滤 |
 | `sortBy` | string | No | 排序字段：`unready.count`、`ready.ratio`、`name` |
@@ -616,7 +646,7 @@ data:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
-| `namespace` | string | No | 命名空间过滤（空 = 所有命名空间） |
+| `namespace` | string | No | 命名空间过滤（空 = 所有命名空间；受限集群见[命名空间允许列表](#命名空间允许列表)） |
 | `labelSelector` | string | No | 标签选择器过滤 Pod |
 | `groupBy` | string | No | 分组方式：`namespace` 或 `label`（默认：`namespace`） |
 | `groupByKey` | string | No | 按标签键分组（`groupBy=label` 时必填） |
@@ -654,7 +684,7 @@ data:
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
-| `namespace` | string | No | 命名空间（空 = 所有命名空间） |
+| `namespace` | string | No | 命名空间（空 = 所有命名空间；受限集群见[命名空间允许列表](#命名空间允许列表)） |
 | `kind` | string | No | 按关联对象 kind 过滤（例如：Pod、Deployment、Node） |
 | `type` | string | No | 按事件类型过滤：`Warning` 或 `Normal` |
 | `since` | string | No | 仅包含比此时间跨度更新的事件（例如："1h30m"、"2h"） |
@@ -730,7 +760,7 @@ data:
 | `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | Yes | 资源 kind（例如：pod、deployment、service、App） |
 | `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：catalog.cattle.io/v1） |
-| `namespace` | string | No | 命名空间（空 = 所有命名空间） |
+| `namespace` | string | No | 命名空间（空 = 所有命名空间；受限集群见[命名空间允许列表](#命名空间允许列表)） |
 | `name` | string | No | 按名称过滤（部分匹配） |
 | `labelSelector` | string | No | 标签选择器（例如："app=nginx,env=prod"） |
 | `limit` | integer | No | 每页条目数（默认：100） |
@@ -890,7 +920,7 @@ CRD 可直接使用其清单标识：
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
-| `namespace` | string | No | 按命名空间过滤（可选，空表示所有命名空间） |
+| `namespace` | string | No | 按命名空间过滤（可选，空表示所有命名空间；受限集群见[命名空间允许列表](#命名空间允许列表)） |
 | `name` | string | No | 按资源名称过滤（部分匹配，客户端侧） |
 | `labelSelector` | string | No | 标签选择器过滤（例如："app=nginx,env=prod"） |
 | `excludeEvents` | boolean | No | 从输出中排除事件（默认：true，因事件通常较嘈杂） |
@@ -944,7 +974,7 @@ CRD 可直接使用其清单标识：
 | `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
 | `kind` | string | Yes | 资源 kind（例如：pod、deployment、service、App） |
 | `apiVersion` | string | No | CRD 或歧义 kind 的 API 版本（例如：catalog.cattle.io/v1） |
-| `namespace` | string | No | 命名空间（空 = 所有命名空间或集群级资源） |
+| `namespace` | string | No | 命名空间（空 = 所有命名空间或集群级资源；受限集群见[命名空间允许列表](#命名空间允许列表)） |
 | `labelSelector` | string | No | 标签选择器（例如："app=nginx,env=prod"） |
 | `fieldSelector` | string | No | 字段选择器过滤资源 |
 | `ignoreStatus` | boolean | No | 计算 diff 时忽略 `status` 字段下的变更（类似 `--no-status`） |
@@ -998,7 +1028,7 @@ CRD 可直接使用其清单标识：
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
 | `cluster` | string | Yes | 集群引用：Rancher ID 或 `kubeconfig:<context>` |
-| `namespace` | string | No | 命名空间（空 = 所有命名空间） |
+| `namespace` | string | No | 命名空间（空 = 所有命名空间；受限集群见[命名空间允许列表](#命名空间允许列表)） |
 | `name` | string | No | 按关联对象名称过滤 |
 | `kind` | string | No | 按关联对象 kind 过滤（例如：Pod、Deployment、Node） |
 | `limit` | integer | No | 每页事件数（默认：50） |

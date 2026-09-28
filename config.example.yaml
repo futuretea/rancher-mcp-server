@@ -71,6 +71,19 @@ rancher_token: your-bearer-token-here
 #   - /etc/rancher-mcp/kubeconfig
 #   - /etc/rancher-mcp/extra-kubeconfig
 
+# Optional per-cluster namespace allowlist. A cluster is restricted only when its
+# array contains namespace names. A missing field, {}, a missing key, and an empty
+# array leave that scope unrestricted. The CLI flag --allowed-namespaces and
+# RANCHER_MCP_ALLOWED_NAMESPACES each replace this whole object. Quote keys that
+# contain a colon. An empty string, invalid JSON, a whitespace-only name, or a
+# duplicate name fails startup.
+# allowed_namespaces:
+#   c-abc12:
+#     - default
+#     - app
+#   "kubeconfig:production":
+#     - app
+
 # Security configuration
 read_only: true  # Read-only mode (default: true)
 disable_destructive: false  # Disable destructive operations

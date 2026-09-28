@@ -36,7 +36,7 @@ func (a *EventAnalyzer) Analyze(ctx context.Context, p EventParams) (*EventResul
 	}
 
 	// Get events; kind filter is applied to involvedObject.kind
-	events, err := a.client.GetEvents(ctx, p.Cluster, p.Namespace, "", p.Kind)
+	events, err := getEventsInNamespaces(ctx, a.client, p.Cluster, p.Namespace, "", p.Kind, p.Namespaces)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get events: %w", err)
 	}

@@ -50,6 +50,9 @@ func (c *Client) ListAPIResources(_ context.Context, clusterID string) ([]APIRes
 	}
 
 	for _, g := range groups.Groups {
+		if g.Name == "" {
+			continue // The core API resources were loaded above.
+		}
 		groupVersion := g.PreferredVersion.GroupVersion
 		resources, err := clientset.Discovery().ServerResourcesForGroupVersion(groupVersion)
 		if err != nil {

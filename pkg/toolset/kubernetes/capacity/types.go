@@ -68,6 +68,7 @@ type Result struct {
 type Params struct {
 	Cluster                string
 	Namespace              string
+	Namespaces             []string
 	LabelSelector          string
 	NodeLabelSelector      string
 	NamespaceLabelSelector string

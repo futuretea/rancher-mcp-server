@@ -16,6 +16,16 @@ import (
 
 const kubeconfigPrefix = "kubeconfig:"
 
+// CanonicalClusterReference returns the identity used for Rancher cluster
+// references. Kubeconfig context names remain exact because they are
+// case-sensitive user-defined names.
+func CanonicalClusterReference(reference string) string {
+	if strings.HasPrefix(reference, kubeconfigPrefix) {
+		return reference
+	}
+	return strings.TrimRight(reference, "/")
+}
+
 // ClusterReferenceError reports an invalid or unavailable cluster reference.
 type ClusterReferenceError struct {
 	Reference string
@@ -135,10 +145,15 @@ func parseClusterReference(reference string, rancher clusterSource, kubeconfig *
 	if strings.Contains(reference, ":") {
 		return nil, "", &ClusterReferenceError{Reference: reference, Reason: "unknown cluster source prefix"}
 	}
+	// Rancher references are path segments, not URLs. Reject syntax that
+	// could make the backend identity differ from the allowlist identity.
+	if strings.ContainsAny(CanonicalClusterReference(reference), "%?#\\/") {
+		return nil, "", &ClusterReferenceError{Reference: reference, Reason: "rancher reference must be a literal cluster ID"}
+	}
 	if rancher == nil {
 		return nil, "", &ClusterReferenceError{Reference: reference, Reason: "rancher source is not configured"}
 	}
-	return rancher, reference, nil
+	return rancher, CanonicalClusterReference(reference), nil
 }
 
 func hasPathTraversal(reference string) bool {

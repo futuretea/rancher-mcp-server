@@ -56,5 +56,9 @@ func (t *Toolset) GetTools(_ interface{}) []toolset.ServerTool {
 	// Add write operations (see toolset_write.go)
 	tools = t.appendWriteTools(tools)
 
+	for i := range tools {
+		tools[i].Handler = withNamespaceAllowlist(tools[i].Handler)
+	}
+
 	return tools
 }

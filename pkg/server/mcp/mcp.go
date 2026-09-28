@@ -40,15 +40,16 @@ type Configuration struct {
 
 // Server represents the MCP server
 type Server struct {
-	configuration  *Configuration
-	server         *server.MCPServer
-	enabledTools   []string
-	normanClient   *norman.Client
-	steveClient    *steve.Client
-	combinedClient *toolset.CombinedClient
-	clientResolver toolset.ClientResolver
-	metrics        Metrics
-	oauthVerifier  *oauthTokenVerifier
+	configuration      *Configuration
+	server             *server.MCPServer
+	enabledTools       []string
+	normanClient       *norman.Client
+	steveClient        *steve.Client
+	combinedClient     *toolset.CombinedClient
+	clientResolver     toolset.ClientResolver
+	namespaceAllowlist map[string][]string
+	metrics            Metrics
+	oauthVerifier      *oauthTokenVerifier
 }
 
 // NewServer creates a new MCP server with the given configuration
@@ -72,11 +73,16 @@ func NewServer(configuration Configuration) (*Server, error) {
 		server.WithLogging(),
 	}
 
+	allowedNamespaces := make(map[string][]string, len(configuration.AllowedNamespaces))
+	for cluster, names := range configuration.AllowedNamespaces {
+		allowedNamespaces[cluster] = slices.Clone(names)
+	}
 	s := &Server{
-		configuration: &configuration,
-		server:        server.NewMCPServer(version.BinaryName, version.Version, serverOptions...),
-		metrics:       NewExpvarMetrics(),
-		oauthVerifier: oauthVerifier,
+		configuration:      &configuration,
+		namespaceAllowlist: allowedNamespaces,
+		server:             server.NewMCPServer(version.BinaryName, version.Version, serverOptions...),
+		metrics:            NewExpvarMetrics(),
+		oauthVerifier:      oauthVerifier,
 	}
 
 	if oauthVerifier != nil {
@@ -267,6 +273,8 @@ func (s *Server) configureTool(tool toolset.ServerTool) toolset.ServerTool {
 		Tool:        tool.Tool,
 		Annotations: tool.Annotations,
 		Handler: func(ctx context.Context, client interface{}, params map[string]interface{}) (string, error) {
+			// Always replace caller input, including when this server is unrestricted.
+			params["namespaceAllowlist"] = s.namespaceAllowlist
 			// Inject default output format if not specified
 			if _, hasOutput := params["output"]; !hasOutput && s.configuration.ListOutput != "" {
 				params["output"] = s.configuration.ListOutput

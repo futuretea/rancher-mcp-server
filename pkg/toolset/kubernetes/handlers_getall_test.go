@@ -1,7 +1,11 @@
 package kubernetes
 
 import (
+	"context"
+	"net/http"
+	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -9,6 +13,97 @@ import (
 
 	"k8s.io/apimachinery/pkg/apis/meta/v1/unstructured"
 )
+
+func TestGetAllHandler_RestrictedNamespacesAreReadByName(t *testing.T) {
+	for _, test := range []struct {
+		scope             string
+		namespace         string
+		includeNamespaces bool
+	}{
+		{scope: "cluster", includeNamespaces: true},
+		{scope: "", includeNamespaces: true},
+		{scope: "namespaced", namespace: "app", includeNamespaces: false},
+	} {
+		t.Run("scope="+test.scope, func(t *testing.T) {
+			t.Cleanup(resetNamespaceAllowlist)
+			SetNamespaceAllowlist(map[string][]string{"kubeconfig:direct": {"app"}})
+
+			var mu sync.Mutex
+			var paths []string
+			apiServer := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				mu.Lock()
+				paths = append(paths, r.URL.Path)
+				mu.Unlock()
+				w.Header().Set("Content-Type", "application/json")
+				switch r.URL.Path {
+				case "/api":
+					_, _ = w.Write([]byte(`{"kind":"APIVersions","versions":["v1"]}`))
+				case "/apis":
+					_, _ = w.Write([]byte(`{"kind":"APIGroupList","groups":[]}`))
+				case "/api/v1":
+					_, _ = w.Write([]byte(`{"groupVersion":"v1","resources":[{"name":"namespaces","singularName":"namespace","namespaced":false,"kind":"Namespace","verbs":["list"]},{"name":"nodes","singularName":"node","namespaced":false,"kind":"Node","verbs":["list"]},{"name":"pods","singularName":"pod","namespaced":true,"kind":"Pod","verbs":["list"]}]}`))
+				case "/api/v1/nodes":
+					_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"NodeList","items":[{"apiVersion":"v1","kind":"Node","metadata":{"name":"worker-1"}}]}`))
+				case "/api/v1/namespaces/app":
+					_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"app"}}`))
+				case "/api/v1/namespaces/app/pods":
+					_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"PodList","items":[]}`))
+				case "/api/v1/namespaces":
+					_, _ = w.Write([]byte(`{"apiVersion":"v1","kind":"NamespaceList","items":[{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"app"}},{"apiVersion":"v1","kind":"Namespace","metadata":{"name":"kube-system"}}]}`))
+				default:
+					http.NotFound(w, r)
+				}
+			}))
+			t.Cleanup(apiServer.Close)
+
+			client, err := steve.NewClientWithKubeconfigPaths("", "", "", "", false, []string{writeDiffKubeconfigForServer(t, apiServer.URL)})
+			if err != nil {
+				t.Fatalf("NewClientWithKubeconfigPaths() error = %v", err)
+			}
+			out, err := getAllHandler(context.Background(), client, map[string]interface{}{
+				"cluster":   "kubeconfig:direct",
+				"namespace": test.namespace,
+				"scope":     test.scope,
+				"format":    "json",
+			})
+			if err != nil {
+				t.Fatalf("getAllHandler() error = %v", err)
+			}
+			if strings.Contains(out, "kube-system") {
+				t.Fatalf("getAllHandler() = %s, must not include a disallowed Namespace", out)
+			}
+			if test.includeNamespaces && !strings.Contains(out, "app") {
+				t.Fatalf("getAllHandler() = %s, want the allowed Namespace", out)
+			}
+			if !test.includeNamespaces && strings.Contains(out, "Namespace") {
+				t.Fatalf("getAllHandler() = %s, namespaced scope must not include Namespace objects", out)
+			}
+
+			mu.Lock()
+			defer mu.Unlock()
+			for _, path := range paths {
+				if path == "/api/v1/namespaces" {
+					t.Fatalf("GetAll requested every Namespace: %#v", paths)
+				}
+			}
+			if test.includeNamespaces && !containsPath(paths, "/api/v1/namespaces/app") {
+				t.Fatalf("GetAll paths = %#v, want the allowed Namespace read", paths)
+			}
+			if !test.includeNamespaces && containsPath(paths, "/api/v1/namespaces/app") {
+				t.Fatalf("GetAll paths = %#v, namespaced scope must not read Namespace objects", paths)
+			}
+		})
+	}
+}
+
+func containsPath(paths []string, want string) bool {
+	for _, path := range paths {
+		if path == want {
+			return true
+		}
+	}
+	return false
+}
 
 func TestMatchesLabelSelector(t *testing.T) {
 	labels := map[string]string{"app": "nginx", "env": "prod", "tier": "frontend"}

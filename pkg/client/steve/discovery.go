@@ -96,10 +96,11 @@ func (c *Client) listCoreAPIResources(clientset kubernetes.Interface) ([]APIReso
 
 // GetAllOptions contains options for GetAllResources.
 type GetAllOptions struct {
-	Namespace     string
-	ExcludeEvents bool
-	Scope         string // "namespaced", "cluster", or "" (all)
-	Limit         int64
+	Namespace         string
+	ExcludeEvents     bool
+	ExcludeNamespaces bool
+	Scope             string // "namespaced", "cluster", or "" (all)
+	Limit             int64
 }
 
 // AllResourceItem represents a single resource found by GetAllResources.
@@ -163,6 +164,9 @@ func (c *Client) shouldFetchResource(ar APIResourceInfo, opts *GetAllOptions) bo
 		return false
 	}
 	if opts.ExcludeEvents && ar.Name == "events" {
+		return false
+	}
+	if opts.ExcludeNamespaces && ar.Group == "" && ar.Name == "namespaces" {
 		return false
 	}
 	return matchesScope(ar.Namespaced, opts.Scope)

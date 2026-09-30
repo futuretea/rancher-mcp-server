@@ -201,28 +201,40 @@ func testDeniedNamespaceWrites(t *testing.T, env *rancherEnv, serverURL, cluster
 func testNamespaceAllowlistConfiguration(t *testing.T, base []string, headers map[string]string) {
 	path := filepath.Join(t.TempDir(), "config.yaml")
 	body := fmt.Sprintf("allowed_namespaces:\n  local: [%s]\n", allowlistOther)
-	if err := os.WriteFile(path, []byte(body), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	app := fmt.Sprintf(`{"local":[%q]}`, allowlistApp)
 	for _, test := range []struct {
-		name string
-		env  string
-		flag string
-		want []string
+		name      string
+		env       string
+		flag      string
+		fileJSON  string
+		hiddenEnv string
+		want      []string
 	}{
 		{name: "file", want: []string{allowlistOther + "/" + allowlistMarker}},
 		{name: "environment_replaces_file", env: app, want: []string{allowlistApp + "/" + allowlistMarker}},
+		{name: "hidden_JSON_keys_cannot_clear_restrictions", env: app, fileJSON: "{}", hiddenEnv: "{}", want: []string{allowlistApp + "/" + allowlistMarker}},
 		{name: "CLI_replaces_invalid_environment", env: "{", flag: app, want: []string{allowlistApp + "/" + allowlistMarker}},
 		{name: "empty_object_clears_restrictions", env: app, flag: "{}", want: []string{allowlistApp + "/" + allowlistMarker, allowlistOther + "/" + allowlistMarker}},
 		{name: "empty_array_is_unrestricted", flag: `{"local":[]}`, want: []string{allowlistApp + "/" + allowlistMarker, allowlistOther + "/" + allowlistMarker}},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			t.Setenv("RANCHER_MCP_ALLOWED_NAMESPACES", test.env)
-			if test.env == "" {
-				if err := os.Unsetenv("RANCHER_MCP_ALLOWED_NAMESPACES"); err != nil {
-					t.Fatal(err)
+			for key, value := range map[string]string{
+				"RANCHER_MCP_ALLOWED_NAMESPACES":      test.env,
+				"RANCHER_MCP_ALLOWED_NAMESPACES_JSON": test.hiddenEnv,
+			} {
+				t.Setenv(key, value)
+				if value == "" {
+					if err := os.Unsetenv(key); err != nil {
+						t.Fatal(err)
+					}
 				}
+			}
+			fileBody := body
+			if test.fileJSON != "" {
+				fileBody += "allowed_namespaces_json: '" + test.fileJSON + "'\n"
+			}
+			if err := os.WriteFile(path, []byte(fileBody), 0o600); err != nil {
+				t.Fatal(err)
 			}
 			args := withArgs(base, "--config", path)
 			if test.flag != "" {

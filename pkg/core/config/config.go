@@ -9,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/futuretea/rancher-mcp-server/pkg/client/steve"
+	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
@@ -300,8 +301,8 @@ func allowedNamespacesFromYAML(configPath string) (map[string][]string, error) {
 // The CLI value replaces the environment value, which replaces the file object.
 func applyAllowedNamespacesOverride(v *viper.Viper) (bool, error) {
 	var raw string
-	if v.IsSet("allowed_namespaces_json") {
-		raw = v.GetString("allowed_namespaces_json")
+	if flag, ok := v.Get("allowed_namespaces_json").(*pflag.Flag); ok && flag.Changed {
+		raw = flag.Value.String()
 	} else {
 		var ok bool
 		raw, ok = os.LookupEnv("RANCHER_MCP_ALLOWED_NAMESPACES")

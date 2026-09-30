@@ -52,9 +52,7 @@ func TestLoadConfig_AllowedNamespacesDuplicateKeysOverrides(t *testing.T) {
 				if err := cmd.Flags().Set("allowed-namespaces", test.raw); err != nil {
 					t.Fatal(err)
 				}
-				if err := viper.BindPFlag("allowed_namespaces_json", cmd.Flags().Lookup("allowed-namespaces")); err != nil {
-					t.Fatal(err)
-				}
+				viper.Set("allowed_namespaces_json", cmd.Flags().Lookup("allowed-namespaces"))
 			}
 			cfg, err := LoadConfig(path)
 			if err != nil {

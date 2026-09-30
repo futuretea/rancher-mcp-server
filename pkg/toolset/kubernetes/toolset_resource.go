@@ -162,7 +162,7 @@ func getAllTool() toolset.ServerTool {
 					},
 					"limit": map[string]any{
 						"type":        "integer",
-						"description": "Limit number of resources per API call (0 for no limit)",
+						"description": "Maximum objects to fetch per resource type across namespaces, before client-side filters (0 for no limit)",
 						"default":     0,
 					},
 					"format": map[string]any{

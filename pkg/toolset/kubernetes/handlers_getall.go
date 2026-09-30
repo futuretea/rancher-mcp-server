@@ -86,28 +86,9 @@ func getAllInScope(ctx context.Context, client interface{}, cluster, namespace, 
 		return getAllResourcesAllowed(ctx, steveClient, cluster, opts)
 	}
 
-	merged := &steve.AllResourcesResult{}
-	for _, name := range query.names {
-		callOpts := *opts
-		callOpts.Namespace = name
-		callOpts.Scope = "namespaced"
-		result, err := steveClient.GetAllResources(ctx, cluster, &callOpts)
-		if err != nil {
-			return nil, fmt.Errorf("failed to get all resources: %w", err)
-		}
-		merged.Items = append(merged.Items, result.Items...)
-	}
-	if scope == "" {
-		clusterOpts := *opts
-		clusterOpts.Namespace = ""
-		clusterOpts.Scope = "cluster"
-		result, err := getAllResourcesAllowed(ctx, steveClient, cluster, &clusterOpts)
-		if err != nil {
-			return nil, err
-		}
-		merged.Items = append(merged.Items, result.Items...)
-	}
-	return merged, nil
+	callOpts := *opts
+	callOpts.Namespaces = query.names
+	return getAllResourcesAllowed(ctx, steveClient, cluster, &callOpts)
 }
 
 func getAllResourcesAllowed(ctx context.Context, reader *steve.Client, cluster string, opts *steve.GetAllOptions) (*steve.AllResourcesResult, error) {
@@ -129,9 +110,13 @@ func getAllResourcesAllowed(ctx context.Context, reader *steve.Client, cluster s
 	if opts.Scope == "namespaced" {
 		return result, nil
 	}
+	var namespaceCount int64
 	for _, name := range sortedNames(set) {
 		if err := ctx.Err(); err != nil {
 			return nil, err
+		}
+		if opts.Limit > 0 && namespaceCount >= opts.Limit {
+			break
 		}
 		item, err := reader.GetResource(ctx, cluster, "namespace", "", name)
 		if err != nil {
@@ -148,6 +133,7 @@ func getAllResourcesAllowed(ctx context.Context, reader *steve.Client, cluster s
 			APIVersion: item.GetAPIVersion(),
 			Resource:   item,
 		})
+		namespaceCount++
 	}
 	return result, nil
 }

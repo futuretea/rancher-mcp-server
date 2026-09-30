@@ -74,12 +74,10 @@ func bindFlags(cmd *cobra.Command) error {
 		}
 	}
 
-	// Bind only when the operator passed the flag, so an unset flag does not
-	// replace the file or environment object with an empty string.
-	if allowed := flags.Lookup("allowed-namespaces"); allowed != nil && allowed.Changed {
-		if err := viper.BindPFlag("allowed_namespaces_json", allowed); err != nil {
-			return fmt.Errorf("bind flag allowed-namespaces: %w", err)
-		}
+	// Carry the actual flag so configuration loading can distinguish an
+	// explicit CLI value from Viper's file and automatic environment sources.
+	if allowed := flags.Lookup("allowed-namespaces"); allowed != nil {
+		viper.Set("allowed_namespaces_json", allowed)
 	}
 	return nil
 }

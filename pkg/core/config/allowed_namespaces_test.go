@@ -52,9 +52,7 @@ func TestLoadConfig_AllowedNamespacesInvalidFileOverrides(t *testing.T) {
 				if err := flags.Set("allowed-namespaces", tt.override); err != nil {
 					t.Fatal(err)
 				}
-				if err := viper.BindPFlag("allowed_namespaces_json", flags.Lookup("allowed-namespaces")); err != nil {
-					t.Fatal(err)
-				}
+				viper.Set("allowed_namespaces_json", flags.Lookup("allowed-namespaces"))
 			}
 
 			cfg, err := LoadConfig(path)
@@ -97,9 +95,7 @@ func TestLoadConfig_AllowedNamespacesKeyCase(t *testing.T) {
 					if err := flags.Set("allowed-namespaces", `{"c-cli":["cli"]}`); err != nil {
 						t.Fatal(err)
 					}
-					if err := viper.BindPFlag("allowed_namespaces_json", flags.Lookup("allowed-namespaces")); err != nil {
-						t.Fatal(err)
-					}
+					viper.Set("allowed_namespaces_json", flags.Lookup("allowed-namespaces"))
 					want = map[string][]string{"c-cli": {"cli"}}
 				}
 				cfg, err := LoadConfig(path)

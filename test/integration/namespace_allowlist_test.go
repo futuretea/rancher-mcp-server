@@ -16,9 +16,10 @@ import (
 )
 
 const (
-	allowlistApp    = "mcp-allowlist-app"
-	allowlistOther  = "mcp-allowlist-other"
-	allowlistMarker = "mcp-allowlist-marker"
+	allowlistApp     = "mcp-allowlist-app"
+	allowlistOther   = "mcp-allowlist-other"
+	allowlistOutside = "mcp-allowlist-outside"
+	allowlistMarker  = "mcp-allowlist-marker"
 )
 
 func testNamespaceAllowlist(t *testing.T, env *rancherEnv) {
@@ -26,6 +27,8 @@ func testNamespaceAllowlist(t *testing.T, env *rancherEnv) {
 		env.kubectl("create", "namespace", namespace)
 		env.kubectl("create", "configmap", allowlistMarker, "-n", namespace, "--from-literal=value=original")
 	}
+	env.kubectl("create", "namespace", allowlistOutside)
+	env.kubectl("create", "configmap", "outside-budget-fixture", "-n", allowlistOutside, "--from-literal=value=outside")
 	rancherArgs := []string{
 		"--rancher-server-url", env.baseURL, "--rancher-tls-insecure",
 		"--rancher-request-token-auth", "--toolsets", "kubernetes", "--read-only=false",
@@ -50,6 +53,9 @@ func testNamespaceAllowlist(t *testing.T, env *rancherEnv) {
 			})
 			t.Run("get_all", func(t *testing.T) {
 				testNamespaceAllowlistGetAll(t, serverURL, connection.cluster, connection.headers)
+			})
+			t.Run("get_all_shared_limit", func(t *testing.T) {
+				testNamespaceAllowlistGetAllLimits(t, connection.args, connection.cluster, connection.headers)
 			})
 			t.Run("allowed_writes", func(t *testing.T) {
 				testAllowedNamespaceWrites(t, env, serverURL, connection.cluster, connection.headers)
@@ -131,6 +137,60 @@ func testNamespaceAllowlistGetAll(t *testing.T, serverURL, cluster string, heade
 	if len(items) != 1 || items[0].Name != allowlistMarker || items[0].Namespace != allowlistApp || items[0].Kind != "ConfigMap" {
 		t.Fatalf("get-all resources = %+v, want only the allowed ConfigMap", items)
 	}
+}
+
+func testNamespaceAllowlistGetAllLimits(t *testing.T, base []string, cluster string, headers map[string]string) {
+	allowlist := fmt.Sprintf(`{%q:[%q,%q]}`, cluster, allowlistApp, allowlistOther)
+	serverURL := startMCPServer(t, withArgs(base, "--allowed-namespaces", allowlist)...)
+
+	unlimited := getAllAllowlistConfigMaps(t, serverURL, cluster, headers, 0)
+	for _, namespace := range []string{allowlistApp, allowlistOther} {
+		if !slices.Contains(unlimited[namespace], allowlistMarker) {
+			t.Fatalf("unlimited get-all omitted the fixture in %s", namespace)
+		}
+	}
+
+	// Include system ConfigMaps in the fetch budget. One more than the first
+	// namespace's count must leave exactly one slot for the second namespace.
+	firstCount := len(unlimited[allowlistApp])
+	for _, limit := range []int{1, firstCount + 1} {
+		t.Run(fmt.Sprintf("limit_%d", limit), func(t *testing.T) {
+			got := getAllAllowlistConfigMaps(t, serverURL, cluster, headers, limit)
+			if count := len(got[allowlistApp]) + len(got[allowlistOther]); count != limit {
+				t.Fatalf("ConfigMap count = %d, want shared limit %d", count, limit)
+			}
+			if limit > firstCount && len(got[allowlistOther]) != 1 {
+				t.Fatalf("second namespace returned %d ConfigMaps, want one remaining slot", len(got[allowlistOther]))
+			}
+		})
+	}
+}
+
+func getAllAllowlistConfigMaps(t *testing.T, serverURL, cluster string, headers map[string]string, limit int) map[string][]string {
+	t.Helper()
+	result, err := callTool(t, serverURL, headers, "kubernetes_get_all", map[string]any{
+		"cluster": cluster, "scope": "namespaced", "format": "json", "limit": limit,
+	})
+	expectToolSuccess(t, result, err, "get-all with a shared namespace limit")
+	var items []struct {
+		Name       string `json:"name"`
+		Namespace  string `json:"namespace"`
+		Kind       string `json:"kind"`
+		APIVersion string `json:"apiVersion"`
+	}
+	if err := json.Unmarshal([]byte(toolResultText(result)), &items); err != nil {
+		t.Fatalf("decode get-all resources: %v", err)
+	}
+	configMaps := make(map[string][]string)
+	for _, item := range items {
+		if item.Namespace != allowlistApp && item.Namespace != allowlistOther {
+			t.Fatalf("get-all returned %s %s/%s outside the allowlist", item.Kind, item.Namespace, item.Name)
+		}
+		if item.Kind == "ConfigMap" && item.APIVersion == "v1" {
+			configMaps[item.Namespace] = append(configMaps[item.Namespace], item.Name)
+		}
+	}
+	return configMaps
 }
 
 func testAllowedNamespaceWrites(t *testing.T, env *rancherEnv, serverURL, cluster string, headers map[string]string) {

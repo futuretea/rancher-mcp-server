@@ -274,17 +274,25 @@ func allowedNamespacesFromYAML(configPath string) (map[string][]string, error) {
 	if err := yaml.Unmarshal(data, &config); err != nil {
 		return nil, fmt.Errorf("failed to parse allowed_namespaces: %w", err)
 	}
+	var allowlistNode *yaml.Node
 	for key, value := range config {
 		// Match Viper's top-level keys without normalizing cluster IDs.
-		if strings.ToLower(key) == "allowed_namespaces" {
-			var allowed map[string][]string
-			if err := value.Decode(&allowed); err != nil {
-				return nil, fmt.Errorf("failed to parse allowed_namespaces: %w", err)
-			}
-			return allowed, nil
+		if strings.ToLower(key) != "allowed_namespaces" {
+			continue
 		}
+		if allowlistNode != nil {
+			return nil, fmt.Errorf("allowed_namespaces contains duplicate case-insensitive configuration keys")
+		}
+		allowlistNode = &value
 	}
-	return nil, nil
+	if allowlistNode == nil {
+		return nil, nil
+	}
+	var allowed map[string][]string
+	if err := allowlistNode.Decode(&allowed); err != nil {
+		return nil, fmt.Errorf("failed to parse allowed_namespaces: %w", err)
+	}
+	return allowed, nil
 }
 
 // applyAllowedNamespacesOverride applies a CLI or environment JSON object and

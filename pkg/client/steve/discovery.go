@@ -99,11 +99,13 @@ func (c *Client) listCoreAPIResources(clientset kubernetes.Interface) ([]APIReso
 
 // GetAllOptions contains options for GetAllResources.
 type GetAllOptions struct {
-	Namespace         string
+	Namespace string
+	// Namespaces overrides Namespace for namespaced resources when nonempty.
+	Namespaces        []string
 	ExcludeEvents     bool
 	ExcludeNamespaces bool
 	Scope             string // "namespaced", "cluster", or "" (all)
-	Limit             int64
+	Limit             int64  // Per-resource fetch budget across namespaces; 0 is unlimited.
 }
 
 // AllResourceItem represents a single resource found by GetAllResources.
@@ -147,16 +149,28 @@ func (c *Client) GetAllResources(ctx context.Context, clusterID string, opts *Ge
 			continue
 		}
 
-		namespace := resolveResourceNamespace(ar, opts.Namespace)
-		items, err := c.listResourcesForType(ctx, clusterID, ar, namespace, opts.Limit)
-		if err != nil {
-			if ctxErr := ctx.Err(); ctxErr != nil {
-				return nil, ctxErr
-			}
-			// Skip resources that cannot be listed.
-			continue
+		namespaces := []string{resolveResourceNamespace(ar, opts.Namespace)}
+		if ar.Namespaced && len(opts.Namespaces) > 0 {
+			namespaces = opts.Namespaces
 		}
-		result.Items = append(result.Items, items...)
+		remaining := opts.Limit
+		for _, namespace := range namespaces {
+			if opts.Limit > 0 && remaining <= 0 {
+				break
+			}
+			items, err := c.listResourcesForType(ctx, clusterID, ar, namespace, remaining)
+			if err != nil {
+				if ctxErr := ctx.Err(); ctxErr != nil {
+					return nil, ctxErr
+				}
+				// Skip resources that cannot be listed.
+				continue
+			}
+			result.Items = append(result.Items, items...)
+			if opts.Limit > 0 {
+				remaining -= int64(len(items))
+			}
+		}
 	}
 
 	return result, nil

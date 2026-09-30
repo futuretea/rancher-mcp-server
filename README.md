@@ -273,6 +273,10 @@ the file value. The CLI and environment value is one JSON object, not a
 comma-separated list. An empty string, invalid JSON, a whitespace-only name, or
 a duplicate name fails startup.
 
+When the file value is effective, duplicate `allowed_namespaces` top-level keys
+that differ only by case also fail startup. A CLI or environment object still
+replaces the file value as a whole.
+
 ```shell
 rancher-mcp-server --allowed-namespaces '{"c-abc12":["default","app"]}'
 ```
@@ -962,7 +966,7 @@ Get really all Kubernetes resources in the cluster (inspired by [ketall](https:/
 | `excludeEvents` | boolean | No | Exclude events from output (default: true, as events are often noisy) |
 | `scope` | string | No | Filter by scope: 'namespaced' for namespaced resources only, 'cluster' for cluster-scoped resources only, or empty for all |
 | `since` | string | No | Only show resources created since this duration (e.g., '1h30m', '2d', '1w') |
-| `limit` | integer | No | Limit number of resources per API call (0 for no limit, default: 0) |
+| `limit` | integer | No | Maximum objects to fetch per resource type across namespaces, before client-side filters; Namespace objects have their own budget (0 for no limit, default: 0) |
 | `format` | string | No | Output format: json, table, yaml (default: table) |
 
 **Examples:**

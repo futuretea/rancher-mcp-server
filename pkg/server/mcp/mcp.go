@@ -85,7 +85,22 @@ func NewServer(configuration Configuration) (*Server, error) {
 		oauthVerifier:      oauthVerifier,
 	}
 
-	if oauthVerifier != nil {
+	if err := s.initializeClients(); err != nil {
+		return nil, err
+	}
+
+	// Register tools
+	if err := s.registerTools(); err != nil {
+		s.Close()
+		return nil, err
+	}
+
+	return s, nil
+}
+
+func (s *Server) initializeClients() error {
+	configuration := s.configuration
+	if s.oauthVerifier != nil {
 		logging.Info("auth mode: Rancher OAuth token")
 		logging.Info("rancher server URL: %s", urlutil.RedactCredentials(configuration.RancherServerURL))
 
@@ -131,7 +146,7 @@ func NewServer(configuration Configuration) (*Server, error) {
 				configuration.KubeconfigPaths,
 			)
 			if err != nil {
-				return nil, fmt.Errorf("initialize Steve client: %w", err)
+				return fmt.Errorf("initialize Steve client: %w", err)
 			}
 			logging.Info("Steve client initialized for Kubernetes resources")
 		}
@@ -143,13 +158,7 @@ func NewServer(configuration Configuration) (*Server, error) {
 		s.clientResolver = &staticResolver{client: s.combinedClient}
 	}
 
-	// Register tools
-	if err := s.registerTools(); err != nil {
-		s.Close()
-		return nil, err
-	}
-
-	return s, nil
+	return nil
 }
 
 // registerTools registers all available tools based on configuration
